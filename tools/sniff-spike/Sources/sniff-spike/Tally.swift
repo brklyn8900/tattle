@@ -18,6 +18,8 @@ final class Flow {
     var quicFailure: QUIC.Failure?
     var tlsBuffer: [UInt8]? = []  // nil once the stream is known not to be TLS
     var preexisting = false  // first packet seen was mid-connection; cannot be named
+    var sawPayload = false
+    var nextSeq: UInt32 = 0  // TCP: sequence number the next in-order payload must carry
     var quicAssembly = QUICAssembly()
 
     init(key: FlowKey, start: Double, dnsName: String?) {
@@ -39,7 +41,7 @@ final class Flow {
 }
 
 final class Tally {
-    private let local: Set<IPAddress>
+    private var local: Set<IPAddress>
     private let log: FileHandle?
     private let debug: Bool
     private let startedAt = Date()
@@ -59,6 +61,11 @@ final class Tally {
 
     private let finalizeAfter = 20.0
     private let udpFlowGap = 120.0
+
+    // Addresses change with DHCP leases and network switches; refreshed by the main loop.
+    func updateLocalAddresses(_ addresses: Set<IPAddress>) {
+        if !addresses.isEmpty { local = addresses }
+    }
 
     init(localAddresses: Set<IPAddress>, logPath: String?, debug: Bool) {
         self.local = localAddresses
@@ -91,11 +98,21 @@ final class Tally {
         case .tcp:
             let syn = p.tcpFlags & 0x02 != 0 && p.tcpFlags & 0x10 == 0
             if syn {
-                flows[key] = Flow(key: key, start: ts, dnsName: dnsMap[p.dst])
+                let flow = Flow(key: key, start: ts, dnsName: dnsMap[p.dst])
+                flow.nextSeq = p.tcpSeq &+ 1
+                flows[key] = flow
                 return
             }
             guard let flow = flows[key], !p.payload.isEmpty else { return }
-            inspectTCP(flow, payload: p.payload)
+            flow.sawPayload = true
+            // Only the in-order segment extends the buffer: a retransmit (seq behind) is
+            // dropped, and a gap (seq ahead) ends buffering rather than risk a shifted parse.
+            if p.tcpSeq == flow.nextSeq {
+                flow.nextSeq = flow.nextSeq &+ UInt32(p.payload.count)
+                inspectTCP(flow, payload: p.payload)
+            } else if p.tcpSeq &- flow.nextSeq < 0x8000_0000 {
+                flow.tlsBuffer = nil
+            }
         case .udp:
             let last = udpLastSeen[key]
             udpLastSeen[key] = ts
@@ -107,6 +124,7 @@ final class Tally {
                 flows[key] = flow
             }
             guard let flow = flows[key], flow.quicName == nil else { return }
+            flow.sawPayload = true
             inspectUDP(flow, payload: p.payload)
         }
     }
@@ -199,6 +217,7 @@ final class Tally {
             "port": Int(flow.key.dstPort),
             "scope": isLocal ? "local" : flow.preexisting ? "preexisting" : "remote",
             "method": flow.method,
+            "payload": flow.sawPayload,
         ]
         if let v = flow.dnsName { record["dns"] = v }
         if let v = flow.sni { record["sni"] = v }

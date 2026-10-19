@@ -123,6 +123,7 @@ signal(SIGTERM) { _ in stopRequested = true }
 fputs("sniff-spike: capturing on \(interface) (dlt \(device.dataLinkType)), summary every \(Int(every))s; Ctrl-C to stop\n", stderr)
 
 var lastSummary = Date()
+var lastAddressRefresh = Date()
 let deadline = duration.map { Date().addingTimeInterval($0) }
 while !stopRequested {
     if let deadline, Date() >= deadline { break }
@@ -137,6 +138,10 @@ while !stopRequested {
         break
     }
     tally.expire(now: Date().timeIntervalSince1970)
+    if Date().timeIntervalSince(lastAddressRefresh) >= 60 {
+        tally.updateLocalAddresses(localAddresses())
+        lastAddressRefresh = Date()
+    }
     if Date().timeIntervalSince(lastSummary) >= every {
         tally.printSummary()
         lastSummary = Date()

@@ -8,7 +8,7 @@ It reads packets from `/dev/bpf*` and names each new outbound connection from, i
 preference: the TLS ClientHello's server name (TCP), the same name inside a decrypted QUIC
 Initial packet (UDP), the Host header of plaintext HTTP, or a DNS reply seen earlier for
 that address. It never writes to the network and keeps no packet contents; the optional
-log holds one line per connection with the names found.
+log holds one line per connection with the names found and whether any payload was seen.
 
 ## Run
 

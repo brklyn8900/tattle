@@ -39,6 +39,7 @@ struct Packet {
     let dstPort: UInt16
     let proto: Proto
     let tcpFlags: UInt8
+    let tcpSeq: UInt32
     let payload: ArraySlice<UInt8>
 
     static func parse(_ bytes: [UInt8], dlt: UInt32) -> Packet? {
@@ -101,19 +102,20 @@ struct Packet {
             let transportStart = r.pos
             let sport = try r.u16()
             let dport = try r.u16()
-            try r.skip(8)
+            let seq = try r.u32()
+            try r.skip(4)
             let dataOffset = Int(try r.u8() >> 4) * 4
             let flags = try r.u8()
             guard transportStart + dataOffset <= r.end else { return nil }
             r.pos = transportStart + dataOffset
             return Packet(src: src, dst: dst, srcPort: sport, dstPort: dport,
-                          proto: .tcp, tcpFlags: flags, payload: r.rest)
+                          proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: r.rest)
         case 17:
             let sport = try r.u16()
             let dport = try r.u16()
             try r.skip(4)
             return Packet(src: src, dst: dst, srcPort: sport, dstPort: dport,
-                          proto: .udp, tcpFlags: 0, payload: r.rest)
+                          proto: .udp, tcpFlags: 0, tcpSeq: 0, payload: r.rest)
         default:
             return nil
         }
