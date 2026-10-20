@@ -71,6 +71,35 @@ struct AppDatabase: Sendable {
                 t.column("value", .text).notNull()
             }
         }
+        migrator.registerMigration("v3-connections") { db in
+            try db.create(table: "connection") { t in
+                t.autoIncrementedPrimaryKey("id")
+                // The tracker's key; the same socket reused is a new row each time.
+                t.column("key", .text).notNull()
+                t.column("proto", .text).notNull()
+                t.column("pid", .integer).notNull()
+                t.column("uid", .integer).notNull()
+                t.column("processName", .text).notNull()
+                t.column("appName", .text)
+                t.column("appPath", .text)
+                t.column("signer", .text)
+                t.column("localPort", .integer).notNull()
+                t.column("remoteAddress", .text).notNull()
+                t.column("remotePort", .integer).notNull()
+                t.column("isIPv6", .boolean).notNull()
+                t.column("scope", .text).notNull()
+                t.column("firstSeen", .datetime).notNull()
+                t.column("lastSeen", .datetime).notNull()
+                t.column("ended", .datetime)
+                t.column("preExisting", .boolean).notNull()
+                // Filled by the sniffer; nil until then.
+                t.column("name", .text)
+                t.column("nameSource", .text)
+            }
+            try db.create(index: "connection_remote", on: "connection", columns: ["remoteAddress"])
+            try db.create(index: "connection_firstSeen", on: "connection", columns: ["firstSeen"])
+            try db.create(index: "connection_open", on: "connection", columns: ["key"], condition: Column("ended") == nil)
+        }
         return migrator
     }
 }
