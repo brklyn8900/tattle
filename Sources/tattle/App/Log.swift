@@ -5,4 +5,5 @@ enum Log {
     static let app = Logger(subsystem: subsystem, category: "app")
     static let settings = Logger(subsystem: subsystem, category: "settings")
     static let knowledge = Logger(subsystem: subsystem, category: "knowledge")
+    static let sniffer = Logger(subsystem: subsystem, category: "sniffer")
 }

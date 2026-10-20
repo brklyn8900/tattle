@@ -19,7 +19,7 @@ final class AppState {
         connections = ConnectionStore(database: database)
         settings = try AppSettings(store: SettingsStore(database: database))
         explainer = Explainer(store: rules, settings: settings)
-        network = NetworkObserver(store: connections, settings: settings)
+        network = NetworkObserver(store: connections, rules: rules, settings: settings)
         if let resources = Bundle.main.resourceURL {
             SeedLoader(rules: rules, settings: SettingsStore(database: database))
                 .load(from: resources.appending(path: "knowledge"))

@@ -46,6 +46,14 @@ struct Connection: Equatable, Sendable, Identifiable {
     static func key(_ entry: SocketEntry) -> String {
         "\(entry.pid):\(entry.proto.rawValue)/\(entry.localPort)>\(entry.remoteAddress):\(entry.remotePort)"
     }
+
+    /// What the sniffer sees of this connection (`FlowKey.text`): the key without the
+    /// pid. An IPv6 socket talking IPv4 shows a mapped address; the wire shows IPv4.
+    var flowKey: String {
+        var remote = remoteAddress
+        if remote.lowercased().hasPrefix("::ffff:") { remote = String(remote.dropFirst(7)) }
+        return "\(proto.rawValue)/\(localPort)>\(remote):\(remotePort)"
+    }
 }
 
 extension SocketEntry {

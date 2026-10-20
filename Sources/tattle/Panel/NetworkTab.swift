@@ -6,7 +6,7 @@ struct NetworkTab: View {
     var body: some View {
         Group {
             if let snapshot = state.network.snapshot {
-                ConnectionsList(snapshot: snapshot, state: state)
+                ConnectionsList(snapshot: snapshot, captureStatus: state.network.captureStatus, state: state)
             } else if let error = state.network.error {
                 Text(error).foregroundStyle(.secondary)
             } else {
@@ -18,6 +18,7 @@ struct NetworkTab: View {
 
 private struct ConnectionsList: View {
     let snapshot: NetworkSnapshot
+    let captureStatus: Sniffer.Status
     let state: AppState
 
     var body: some View {
@@ -47,7 +48,16 @@ private struct ConnectionsList: View {
         var parts: [String] = []
         if snapshot.newCount > 0 { parts.append("\(snapshot.newCount) to addresses never seen before") }
         if snapshot.preExistingCount > 0 { parts.append("\(snapshot.preExistingCount) open since before Tattle started") }
-        parts.append("Destinations are addresses for now; names come with the sniffer.")
+        switch captureStatus {
+        case .capturing:
+            var named: [String] = []
+            if snapshot.namedCount > 0 { named.append("\(snapshot.namedCount) named") }
+            if snapshot.relayedCount > 0 { named.append("\(snapshot.relayedCount) relayed") }
+            if snapshot.hiddenCount > 0 { named.append("\(snapshot.hiddenCount) with the name hidden") }
+            parts.append(named.isEmpty ? "Names appear as connections open" : named.joined(separator: ", "))
+        case .unavailable, .stopped:
+            parts.append("Destinations are addresses: names need packet access, which Tattle does not have yet")
+        }
         return parts.joined(separator: ". ").replacingOccurrences(of: "..", with: ".")
     }
 }
@@ -94,7 +104,7 @@ private struct ConnectionRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(live.destination).font(.body.monospacedDigit())
+                    Text(live.title).font(.body.monospacedDigit())
                     if live.isNew {
                         Text("new").font(.caption).foregroundStyle(.orange)
                     }
@@ -112,7 +122,9 @@ private struct ConnectionRow: View {
     }
 
     private var subtitle: String {
-        var parts = [live.connection.proto.rawValue.uppercased()]
+        var parts: [String] = []
+        if live.name != nil { parts.append(live.destination) }
+        parts.append(live.connection.proto.rawValue.uppercased())
         if let state = live.connection.stateText { parts.append(state) }
         if live.connection.scope == .local { parts.append("this network") }
         if live.owner.app != nil, live.owner.processName != live.owner.displayName { parts.append(live.owner.processName) }
@@ -193,7 +205,7 @@ private struct ConnectionDetail: View {
         let now = state.network.snapshot?.takenAt ?? Date()
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("\(live.owner.displayName) to \(live.destination)").font(.headline)
+                Text("\(live.owner.displayName) to \(live.title)").font(.headline)
                 if current == nil {
                     Text("Closed.")
                         .font(.callout)
@@ -213,7 +225,7 @@ private struct ConnectionDetail: View {
             }
             .padding(12)
         }
-        .navigationTitle(live.destination)
+        .navigationTitle(live.title)
     }
 }
 

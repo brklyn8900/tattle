@@ -80,6 +80,16 @@ struct ConnectionStore: Sendable {
         }
     }
 
+    /// Names the newest row for `key`, open or not: a short connection may have closed
+    /// by the time the DNS fallback runs.
+    func name(key: String, name: String, source: NameSource) throws {
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE connection SET name = ?, nameSource = ? WHERE id = (SELECT MAX(id) FROM connection WHERE key = ?)",
+                arguments: [name, source.rawValue, key])
+        }
+    }
+
     /// Refreshes last-seen for connections still open, so a long one keeps its duration
     /// if the app stops uncleanly.
     func touch(keys: [String], at date: Date) throws {

@@ -10,7 +10,7 @@ struct IPAddress: Hashable {
         bytes.withUnsafeBufferPointer { p in
             _ = inet_ntop(isV4 ? AF_INET : AF_INET6, p.baseAddress, &buf, socklen_t(buf.count))
         }
-        return String(cString: buf)
+        return String(cBuffer: buf)
     }
 
     // Destinations that never need a public name: private, loopback, link-local, multicast.

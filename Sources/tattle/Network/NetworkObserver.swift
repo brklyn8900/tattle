@@ -3,24 +3,37 @@ import Foundation
 import Observation
 
 /// Polls the socket table for the whole run, keeps history, and publishes the open
-/// connections with their owners.
+/// connections with their owners and, when the sniffer has packet access, their names.
 @MainActor @Observable
 final class NetworkObserver {
     private(set) var snapshot: NetworkSnapshot?
     private(set) var error: String?
+    private(set) var captureStatus: Sniffer.Status = .stopped
 
     private let store: ConnectionStore
+    private let rules: RuleStore
     private let settings: AppSettings
     private let signatures = SignatureCache()
     private var tracker = ConnectionTracker()
     private var owners: [Int32: ConnectionOwner] = [:]
     private var known = Set<String>()
+    private var names = PendingNames()
+    /// What a name is, by the knowledge base, looked up once per name.
+    private var kinds: [String: ConnectionName.Kind] = [:]
     private var lastTouch = Date.distantPast
     private var lastPrune = Date.distantPast
     private var task: Task<Void, Never>?
+    private var sniffer: Sniffer?
+    private var isPolling = false
+    private var pollRequested = false
+    private var promptPollScheduled = false
 
-    init(store: ConnectionStore, settings: AppSettings) {
+    /// How soon after a flow opens the socket table is read for its owner.
+    static let promptPollDelay: Duration = .milliseconds(100)
+
+    init(store: ConnectionStore, rules: RuleStore, settings: AppSettings) {
         self.store = store
+        self.rules = rules
         self.settings = settings
     }
 
@@ -40,14 +53,91 @@ final class NetworkObserver {
                 try? await Task.sleep(for: interval)
             }
         }
+        let sniffer = Sniffer(
+            onEvents: { events in Task { @MainActor [weak self] in self?.handle(events) } },
+            onStatus: { status in Task { @MainActor [weak self] in self?.captureStatus = status } })
+        sniffer.start()
+        self.sniffer = sniffer
     }
 
     func stop() {
         task?.cancel()
         task = nil
+        sniffer?.stop()
+        sniffer = nil
     }
 
+    // MARK: Sniffer events
+
+    private func handle(_ events: [FlowEvent]) {
+        let now = Date()
+        var opened = false
+        for event in events {
+            switch event.kind {
+            case .opened:
+                opened = true
+            case .named(let text, let source):
+                let name = ConnectionName(name: text, source: source, kind: kind(of: text))
+                names.set(name, for: event.key.text, at: now)
+                attach(name, toFlow: event.key.text)
+            }
+        }
+        if opened { schedulePromptPoll() }
+    }
+
+    private func kind(of name: String) -> ConnectionName.Kind {
+        if let kind = kinds[name] { return kind }
+        let kind = ConnectionName.kind(forCategory: (try? rules.lookup(kind: .host, key: name))?.category)
+        kinds[name] = kind
+        return kind
+    }
+
+    /// Puts a name on the live row and the history record of the connection it belongs
+    /// to, if the socket table has shown that connection yet.
+    private func attach(_ name: ConnectionName, toFlow flowKey: String) {
+        guard var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flowKey }) else { return }
+        snapshot.connections[index].name = name
+        self.snapshot = snapshot
+        do {
+            try store.name(key: snapshot.connections[index].id, name: name.name, source: name.source)
+        } catch {
+            Log.app.error("connection name write failed: \(error, privacy: .public)")
+        }
+    }
+
+    /// A connection just opened on the wire: read the socket table before it can close,
+    /// once for a burst of them.
+    private func schedulePromptPoll() {
+        guard !promptPollScheduled else { return }
+        promptPollScheduled = true
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.promptPollDelay)
+            guard let self else { return }
+            promptPollScheduled = false
+            await poll()
+        }
+    }
+
+    // MARK: Polling
+
+    /// One reading of the socket table. Readings never overlap: a reading that would
+    /// have, runs after the current one, so an older table is never folded in after a
+    /// newer one and closes connections that are still there.
     private func poll() async {
+        guard !isPolling else {
+            pollRequested = true
+            return
+        }
+        isPolling = true
+        await read()
+        isPolling = false
+        if pollRequested {
+            pollRequested = false
+            await poll()
+        }
+    }
+
+    private func read() async {
         let now = Date()
         let entries: [SocketEntry]
         do {
@@ -84,19 +174,22 @@ final class NetworkObserver {
             let owner = owners[connection.pid] ?? .unknown
             let isNew = !known.contains(connection.remoteAddress)
             known.insert(connection.remoteAddress)
-            opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew))
+            opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, name: names.name(for: connection.flowKey)))
         }
         record(opened: opened, closed: changes.closed, now: now)
 
         let openPids = Set(tracker.live.values.map(\.pid))
         owners = owners.filter { openPids.contains($0.key) }
+        names.prune(now: now, keeping: Set(tracker.live.values.map(\.flowKey)))
 
-        // Keep each live row's "new" mark from when it opened.
+        // Keep each live row's "new" mark and name from when it opened.
         let previous = Dictionary((snapshot?.connections ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let live = tracker.open.map { connection in
-            LiveConnection(connection: connection,
-                           owner: previous[connection.id]?.owner ?? owners[connection.pid] ?? .unknown,
-                           isNew: previous[connection.id]?.isNew ?? opened.first { $0.id == connection.id }?.isNew ?? false)
+            let before = previous[connection.id] ?? opened.first { $0.id == connection.id }
+            return LiveConnection(connection: connection,
+                                  owner: before?.owner ?? owners[connection.pid] ?? .unknown,
+                                  isNew: before?.isNew ?? false,
+                                  name: before?.name ?? names.name(for: connection.flowKey))
         }
         snapshot = NetworkSnapshot(connections: live, takenAt: now)
     }
@@ -104,9 +197,12 @@ final class NetworkObserver {
     private func record(opened: [LiveConnection], closed: [Connection], now: Date) {
         do {
             for live in opened {
-                try store.open(ConnectionRecord(
+                var record = ConnectionRecord(
                     live.connection, processName: live.owner.processName, appName: live.owner.app?.name,
-                    appPath: live.owner.app?.path, signer: live.owner.signature?.summary))
+                    appPath: live.owner.app?.path, signer: live.owner.signature?.summary)
+                record.name = live.name?.name
+                record.nameSource = live.name?.source.rawValue
+                try store.open(record)
             }
             for connection in closed {
                 try store.close(key: connection.id, lastSeen: connection.lastSeen, ended: connection.ended ?? now)

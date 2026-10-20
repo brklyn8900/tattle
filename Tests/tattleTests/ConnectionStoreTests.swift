@@ -40,6 +40,21 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(both.map { $0.ended }, [t0 + 32, t0 + 10], "newest first")
     }
 
+    func testNameGoesOnTheNewestRowOpenOrClosed() throws {
+        let first = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari"))
+        try store.close(key: first.key, lastSeen: t0 + 1, ended: t0 + 2)
+        try store.open(ConnectionRecord(connection(100, "17.1.1.1", at: t0 + 20), processName: "Safari"))
+        try store.name(key: first.key, name: "www.apple.com", source: .sni)
+        let rows = try store.history(remoteAddress: "17.1.1.1")
+        XCTAssertEqual(rows.map(\.name), ["www.apple.com", nil], "the reused key names the newest row only")
+        XCTAssertEqual(rows[0].nameSource, "sni")
+
+        try store.close(key: first.key, lastSeen: t0 + 21, ended: t0 + 22)
+        try store.name(key: first.key, name: "cdn.apple.com", source: .dns)
+        XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1")[0].name, "cdn.apple.com", "a DNS fallback can land after the connection closed")
+        try store.name(key: "999:tcp/1>2.2.2.2:443", name: "nowhere", source: .sni)
+    }
+
     func testTouchStaleAndPrune() throws {
         let a = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "a"))
         try store.open(ConnectionRecord(connection(200, "2.2.2.2", at: t0 + 5), processName: "b"))
