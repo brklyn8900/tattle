@@ -42,6 +42,13 @@ final class ResourceSampleTests: XCTestCase {
         XCTAssertEqual(ByteRate.compact(-5), "0")
     }
 
+    func testFullRate() {
+        XCTAssertEqual(ByteRate.full(0), "0 B/s")
+        XCTAssertEqual(ByteRate.full(981), "981 B/s")
+        XCTAssertEqual(ByteRate.full(12_345), "12 kB/s")
+        XCTAssertEqual(ByteRate.full(1_234_567), "1.2 MB/s")
+    }
+
     func testLiveSnapshotIsSane() throws {
         let snapshot = try XCTUnwrap(SystemSnapshot.read())
         XCTAssertGreaterThan(snapshot.cpu.total, 0)

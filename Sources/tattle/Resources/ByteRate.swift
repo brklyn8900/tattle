@@ -17,8 +17,10 @@ enum ByteRate {
         return scaled.formatted(.number.precision(.fractionLength(digits))) + units[unit]
     }
 
-    /// Panel form: 12 KB/s.
+    /// Panel form, decimal units: 981 B/s, 12 kB/s, 1.2 MB/s.
     static func full(_ bytesPerSecond: Double) -> String {
-        Int64(max(bytesPerSecond, 0)).formatted(.byteCount(style: .decimal)) + "/s"
+        let value = Int64(max(bytesPerSecond, 0))
+        if value < 1000 { return "\(value) B/s" }
+        return value.formatted(.byteCount(style: .decimal)) + "/s"
     }
 }
