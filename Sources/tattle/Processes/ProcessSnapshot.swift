@@ -219,7 +219,11 @@ struct ProcessSnapshot: Equatable, Sendable {
         if let known = memo[pid] { return known }
         memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
         guard let entry = byPid[pid] else { return nil }
-        var result = entry.path.flatMap(AppBundle.containing) ?? runningApp(pid).map { AppBundle(path: $0) }
+        // Launch Services registers some command-line processes too (node servers that
+        // open a browser, say) and then reports the bare executable as their bundle;
+        // only a real .app counts.
+        var result = entry.path.flatMap(AppBundle.containing)
+            ?? runningApp(pid).flatMap { $0.hasSuffix(".app") ? AppBundle(path: $0) : nil }
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {
             result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, memo: &memo)
         }

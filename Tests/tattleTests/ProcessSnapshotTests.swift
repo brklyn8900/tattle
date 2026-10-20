@@ -45,9 +45,14 @@ final class ProcessSnapshotTests: XCTestCase {
         ]
     }
 
-    /// What Launch Services knows: the browser's main process came from /Applications.
+    /// What Launch Services knows: the browser's main process came from /Applications,
+    /// and it registered a node script as an "app" whose bundle is the node binary.
     private func running(_ pid: Int32) -> String? {
-        pid == 500 ? "/Applications/Comet.app" : nil
+        switch pid {
+        case 500: "/Applications/Comet.app"
+        case 202: "/usr/local/bin/claude"
+        default: nil
+        }
     }
 
     func testAttributionAndRollup() {
@@ -74,6 +79,7 @@ final class ProcessSnapshotTests: XCTestCase {
         let iterm = snapshot.group(id: "/Applications/iTerm.app")!
         XCTAssertEqual(Set(iterm.members.map(\.name)), ["iTerm2", "zsh", "claude"], "a shell and what it runs belong to the terminal")
         XCTAssertEqual(iterm.members.first { $0.name == "claude" }?.parentName, "zsh")
+        XCTAssertNil(snapshot.group(id: "/usr/local/bin/claude"), "a bare executable Launch Services reports is not an app")
 
         let ollama = snapshot.group(id: "pid:300")!
         XCTAssertEqual(ollama.kind, .process)
