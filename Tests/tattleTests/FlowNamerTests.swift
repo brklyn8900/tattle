@@ -51,8 +51,21 @@ final class FlowNamerTests: XCTestCase {
         _ = n.observe(tcp(flags: 0x02, seq: 1000), at: t0)
         let record = clientHelloRecord
         _ = n.observe(tcp(flags: 0x18, seq: 1001, Array(record.prefix(50))), at: t0)
-        XCTAssertEqual(n.observe(tcp(flags: 0x18, seq: 1001 + 60, Array(record.dropFirst(60))), at: t0), [], "a gap: parsing a shifted stream would be wrong")
+        XCTAssertEqual(n.observe(tcp(flags: 0x18, seq: 1001 + 60, Array(record.dropFirst(60))), at: t0),
+                       [FlowEvent(key: tcpKey, kind: .unnamed(.gap))], "a gap: parsing a shifted stream would be wrong")
         XCTAssertEqual(n.observe(tcp(flags: 0x18, seq: 1001 + 50, Array(record.dropFirst(50))), at: t0), [], "buffering ended, even for the missing piece")
+    }
+
+    func testNotAHandshakeAndTimeoutAreReported() {
+        var n = namer()
+        _ = n.observe(tcp(port: 22, flags: 0x02, seq: 1), at: t0)
+        let ssh = FlowKey(proto: .tcp, localPort: 50000, remote: peer, remotePort: 22)
+        XCTAssertEqual(n.observe(tcp(port: 22, flags: 0x18, seq: 2, Array("SSH-2.0-OpenSSH\r\n".utf8)), at: t0), [FlowEvent(key: ssh, kind: .unnamed(.notHandshake))])
+        XCTAssertEqual(n.observe(tcp(port: 22, flags: 0x18, seq: 19, [1, 2, 3]), at: t0 + 1), [], "reported once")
+
+        _ = n.observe(tcp(flags: 0x02, seq: 1), at: t0)
+        XCTAssertEqual(n.expire(now: t0 + FlowNamer.finalizeAfter), [FlowEvent(key: tcpKey, kind: .unnamed(.timeout))], "no payload ever came")
+        XCTAssertEqual(n.expire(now: t0 + FlowNamer.finalizeAfter + 1), [], "once")
     }
 
     func testHTTPHostNamesAPlaintextFlow() {
@@ -77,7 +90,8 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.flowCount, 0)
         var otherVersion = SnifferParserTests.rfcInitial
         otherVersion[4] = 2
-        XCTAssertEqual(n.observe(udp(otherVersion), at: t0), [FlowEvent(key: udpKey, kind: .opened)], "opened, but unreadable")
+        XCTAssertEqual(n.observe(udp(otherVersion), at: t0),
+                       [FlowEvent(key: udpKey, kind: .opened), FlowEvent(key: udpKey, kind: .unnamed(.quic(.unsupportedVersion)))], "opened, but unreadable")
     }
 
     func testDNSFallbackAfterThreeSecondsOnlyWhenNothingElseNamed() {

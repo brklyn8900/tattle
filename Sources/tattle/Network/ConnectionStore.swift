@@ -80,13 +80,20 @@ struct ConnectionStore: Sendable {
         }
     }
 
-    /// Names the newest row for `key`, open or not: a short connection may have closed
-    /// by the time the DNS fallback runs.
-    func name(key: String, name: String, source: NameSource) throws {
+    /// Names the newest row of the flow, open or not: a short connection may have
+    /// closed by the time its name arrives. An IPv6 socket talking IPv4 recorded a
+    /// mapped address; the flow carries the plain one.
+    func name(flow: FlowKey, name: String, source: NameSource) throws {
         try database.writer.write { db in
             try db.execute(
-                sql: "UPDATE connection SET name = ?, nameSource = ? WHERE id = (SELECT MAX(id) FROM connection WHERE key = ?)",
-                arguments: [name, source.rawValue, key])
+                sql: """
+                    UPDATE connection SET name = ?, nameSource = ?
+                    WHERE id = (SELECT MAX(id) FROM connection
+                                WHERE proto = ? AND localPort = ? AND remotePort = ?
+                                  AND (remoteAddress = ? OR remoteAddress = '::ffff:' || ?))
+                    """,
+                arguments: [name, source.rawValue, flow.proto == .tcp ? "tcp" : "udp", flow.localPort, flow.remotePort,
+                            flow.remote.text, flow.remote.text])
         }
     }
 

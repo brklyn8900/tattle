@@ -25,11 +25,12 @@ final class NetworkObserver {
     private var task: Task<Void, Never>?
     private var sniffer: Sniffer?
     private var isPolling = false
-    private var pollRequested = false
+    /// A reading asked for while one was running, and whether it must be eager.
+    private var pollRequested: Bool?
     private var promptPollScheduled = false
 
     /// How soon after a flow opens the socket table is read for its owner.
-    static let promptPollDelay: Duration = .milliseconds(100)
+    static let promptPollDelay: Duration = .milliseconds(20)
 
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings) {
         self.store = store
@@ -79,7 +80,9 @@ final class NetworkObserver {
             case .named(let text, let source):
                 let name = ConnectionName(name: text, source: source, kind: kind(of: text))
                 names.set(name, for: event.key.text, at: now)
-                attach(name, toFlow: event.key.text)
+                attach(name, to: event.key)
+            case .unnamed(let reason):
+                Log.sniffer.debug("no name for \(event.key.text, privacy: .public): \(String(describing: reason), privacy: .public)")
             }
         }
         if opened { schedulePromptPoll() }
@@ -92,14 +95,17 @@ final class NetworkObserver {
         return kind
     }
 
-    /// Puts a name on the live row and the history record of the connection it belongs
-    /// to, if the socket table has shown that connection yet.
-    private func attach(_ name: ConnectionName, toFlow flowKey: String) {
-        guard var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flowKey }) else { return }
-        snapshot.connections[index].name = name
-        self.snapshot = snapshot
+    /// Puts a name on the live row, if the socket table has shown the connection yet,
+    /// and on its history record, which may already be closed.
+    private func attach(_ name: ConnectionName, to flow: FlowKey) {
+        if var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flow.text }) {
+            snapshot.connections[index].name = name
+            self.snapshot = snapshot
+        } else {
+            Log.sniffer.debug("name for \(flow.text, privacy: .public) arrived with no live connection")
+        }
         do {
-            try store.name(key: snapshot.connections[index].id, name: name.name, source: name.source)
+            try store.name(flow: flow, name: name.name, source: name.source)
         } catch {
             Log.app.error("connection name write failed: \(error, privacy: .public)")
         }
@@ -114,7 +120,7 @@ final class NetworkObserver {
             try? await Task.sleep(for: Self.promptPollDelay)
             guard let self else { return }
             promptPollScheduled = false
-            await poll()
+            await poll(eager: true)
         }
     }
 
@@ -122,26 +128,31 @@ final class NetworkObserver {
 
     /// One reading of the socket table. Readings never overlap: a reading that would
     /// have, runs after the current one, so an older table is never folded in after a
-    /// newer one and closes connections that are still there.
-    private func poll() async {
+    /// newer one and closes connections that are still there. An eager reading takes
+    /// the process list in the same moment as the socket table, for a connection whose
+    /// process may be gone by the time the owner is looked up.
+    private func poll(eager: Bool = false) async {
         guard !isPolling else {
-            pollRequested = true
+            pollRequested = (pollRequested ?? false) || eager
             return
         }
         isPolling = true
-        await read()
+        await read(eager: eager)
         isPolling = false
-        if pollRequested {
-            pollRequested = false
-            await poll()
+        if let again = pollRequested {
+            pollRequested = nil
+            await poll(eager: again)
         }
     }
 
-    private func read() async {
+    private func read(eager: Bool) async {
         let now = Date()
         let entries: [SocketEntry]
+        var processes: [ProcessEntry]?
         do {
-            entries = try await Task.detached(priority: .utility) { try SocketTable.read() }.value
+            (entries, processes) = try await Task.detached(priority: .utility) {
+                (try SocketTable.read(), eager ? try? ProcessTable.list() : nil)
+            }.value
         } catch {
             self.error = String(describing: error)
             return
@@ -154,8 +165,8 @@ final class NetworkObserver {
         let unknown = Set(changes.opened.map(\.pid)).subtracting(owners.keys)
         if !unknown.isEmpty {
             let signatures = signatures
-            let resolved = await Task.detached(priority: .utility) { () -> [Int32: ConnectionOwner] in
-                guard let list = try? ProcessTable.list() else { return [:] }
+            let resolved = await Task.detached(priority: .utility) { [processes] () -> [Int32: ConnectionOwner] in
+                guard let list = processes ?? (try? ProcessTable.list()) else { return [:] }
                 let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
                 var result: [Int32: ConnectionOwner] = [:]
                 for pid in unknown {

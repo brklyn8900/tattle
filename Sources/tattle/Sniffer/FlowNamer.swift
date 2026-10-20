@@ -39,6 +39,20 @@ struct FlowEvent: Equatable, Sendable {
         /// A connection just started: the moment to read the socket table for its owner.
         case opened
         case named(String, NameSource)
+        /// Nothing more can name this flow, and why: what the spike could not tell apart.
+        case unnamed(Reason)
+    }
+
+    enum Reason: Equatable, Sendable {
+        /// The first bytes were neither a TLS record nor an HTTP request.
+        case notHandshake
+        /// A segment arrived out of order before the handshake was complete.
+        case gap
+        /// A ClientHello without a server name, or one too large to buffer.
+        case noServerName
+        case quic(QUIC.Failure)
+        /// No handshake within the window: no payload, or one that never completed.
+        case timeout
     }
 
     var key: FlowKey
@@ -116,12 +130,18 @@ struct FlowNamer: Sendable {
             // dropped, and a gap (seq ahead) ends buffering rather than risk a shifted parse.
             if p.tcpSeq == flow.nextSeq {
                 flow.nextSeq = flow.nextSeq &+ UInt32(p.payload.count)
-                if let (name, source) = inspectTCP(&flow, payload: p.payload) {
+                switch inspectTCP(&flow, payload: p.payload) {
+                case .named(let name, let source):
                     flow.named = true
                     return [FlowEvent(key: key, kind: .named(name, source))]
+                case .unnamed(let reason):
+                    return [FlowEvent(key: key, kind: .unnamed(reason))]
+                case .pending:
+                    return []
                 }
             } else if p.tcpSeq &- flow.nextSeq < 0x8000_0000 {
                 flow.tlsBuffer = nil
+                return [FlowEvent(key: key, kind: .unnamed(.gap))]
             }
             return []
         case .udp:
@@ -138,36 +158,51 @@ struct FlowNamer: Sendable {
                 events.append(FlowEvent(key: key, kind: .opened))
             }
             guard var flow = flows[key], !flow.finished, QUIC.isLongHeader(datagram) else { return events }
-            if let name = inspectUDP(&flow, datagram: datagram) {
+            switch inspectUDP(&flow, datagram: datagram) {
+            case .named(let name, _):
                 flow.named = true
                 events.append(FlowEvent(key: key, kind: .named(name, .quic)))
+            case .unnamed(let reason):
+                events.append(FlowEvent(key: key, kind: .unnamed(reason)))
+            case .pending:
+                break
             }
             flows[key] = flow
             return events
         }
     }
 
-    private func inspectTCP(_ flow: inout Flow, payload: ArraySlice<UInt8>) -> (String, NameSource)? {
-        guard var buffer = flow.tlsBuffer else { return nil }
+    private enum Inspection {
+        case named(String, NameSource)
+        case unnamed(FlowEvent.Reason)
+        case pending
+    }
+
+    private func inspectTCP(_ flow: inout Flow, payload: ArraySlice<UInt8>) -> Inspection {
+        guard var buffer = flow.tlsBuffer else { return .pending }
         if buffer.isEmpty, payload.first != 0x16 {
             flow.tlsBuffer = nil
-            return HTTP.host(payload).map { ($0, .http) }
+            return HTTP.host(payload).map { .named($0, .http) } ?? .unnamed(.notHandshake)
         }
         buffer.append(contentsOf: payload)
         switch TLS.clientHelloFromRecords(buffer) {
         case .hello(let sni):
             flow.tlsBuffer = nil
-            return sni.map { ($0, .sni) }
+            return sni.map { .named($0, .sni) } ?? .unnamed(.noServerName)
         case .notClientHello:
             flow.tlsBuffer = nil
-            return nil
+            return .unnamed(.notHandshake)
         case .needMore:
-            flow.tlsBuffer = buffer.count < Self.bufferLimit ? buffer : nil
-            return nil
+            guard buffer.count < Self.bufferLimit else {
+                flow.tlsBuffer = nil
+                return .unnamed(.noServerName)
+            }
+            flow.tlsBuffer = buffer
+            return .pending
         }
     }
 
-    private func inspectUDP(_ flow: inout Flow, datagram: [UInt8]) -> String? {
+    private func inspectUDP(_ flow: inout Flow, datagram: [UInt8]) -> Inspection {
         var offset = 0
         while offset < datagram.count, datagram[offset] & 0x80 != 0 {
             switch QUIC.parseInitial(datagram, at: offset) {
@@ -176,17 +211,19 @@ struct FlowNamer: Sendable {
                 offset = initial.nextOffset
                 if case .hello(let sni) = TLS.clientHello(flow.quicAssembly.stream) {
                     flow.quicDone = true
-                    return sni
+                    return sni.map { .named($0, .quic) } ?? .unnamed(.noServerName)
                 }
             case .failure(.unsupportedVersion):
                 // Not a version whose Initial can be read; nothing more will come of it.
                 flow.quicDone = true
-                return nil
+                return .unnamed(.quic(.unsupportedVersion))
             case .failure:
-                return nil
+                // A later Initial may still complete the handshake; the timeout reports
+                // the failure if none does.
+                return .pending
             }
         }
-        return nil
+        return .pending
     }
 
     /// Time-driven work: the DNS fallback for flows nothing else named, giving up on old
@@ -201,9 +238,10 @@ struct FlowNamer: Sendable {
                     events.append(FlowEvent(key: key, kind: .named(entry.name, .dns)))
                 }
             }
-            if !flow.named, now - flow.start >= Self.finalizeAfter {
+            if !flow.named, !flow.finished, now - flow.start >= Self.finalizeAfter {
                 flow.tlsBuffer = nil
                 flow.quicDone = true
+                events.append(FlowEvent(key: key, kind: .unnamed(.timeout)))
             }
             if now - flow.lastSeen >= Self.idleAfter {
                 flows[key] = nil

@@ -40,19 +40,26 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(both.map { $0.ended }, [t0 + 32, t0 + 10], "newest first")
     }
 
-    func testNameGoesOnTheNewestRowOpenOrClosed() throws {
+    func testNameGoesOnTheNewestRowOfTheFlowOpenOrClosed() throws {
+        let flow = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
         let first = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari"))
         try store.close(key: first.key, lastSeen: t0 + 1, ended: t0 + 2)
-        try store.open(ConnectionRecord(connection(100, "17.1.1.1", at: t0 + 20), processName: "Safari"))
-        try store.name(key: first.key, name: "www.apple.com", source: .sni)
+        try store.open(ConnectionRecord(connection(200, "17.1.1.1", at: t0 + 20), processName: "curl"))
+        try store.name(flow: flow, name: "www.apple.com", source: .sni)
         let rows = try store.history(remoteAddress: "17.1.1.1")
-        XCTAssertEqual(rows.map(\.name), ["www.apple.com", nil], "the reused key names the newest row only")
+        XCTAssertEqual(rows.map(\.name), ["www.apple.com", nil], "the reused port names the newest row only, whatever its pid")
         XCTAssertEqual(rows[0].nameSource, "sni")
 
-        try store.close(key: first.key, lastSeen: t0 + 21, ended: t0 + 22)
-        try store.name(key: first.key, name: "cdn.apple.com", source: .dns)
+        try store.close(key: rows[0].key, lastSeen: t0 + 21, ended: t0 + 22)
+        try store.name(flow: flow, name: "cdn.apple.com", source: .dns)
         XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1")[0].name, "cdn.apple.com", "a DNS fallback can land after the connection closed")
-        try store.name(key: "999:tcp/1>2.2.2.2:443", name: "nowhere", source: .sni)
+
+        var mapped = connection(300, "::ffff:17.1.1.1", at: t0 + 30)
+        mapped.isIPv6 = true
+        try store.open(ConnectionRecord(mapped, processName: "node"))
+        try store.name(flow: flow, name: "v6.apple.com", source: .quic)
+        XCTAssertEqual(try store.history(remoteAddress: "::ffff:17.1.1.1")[0].name, "v6.apple.com", "an IPv6 socket talking IPv4")
+        try store.name(flow: FlowKey(proto: .udp, localPort: 1, remote: IPAddress(bytes: [2, 2, 2, 2]), remotePort: 443), name: "nowhere", source: .sni)
     }
 
     func testTouchStaleAndPrune() throws {
