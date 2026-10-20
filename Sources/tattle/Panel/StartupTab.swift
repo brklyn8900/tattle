@@ -46,7 +46,7 @@ private struct StartupList: View {
                             NavigationLink(value: item) { StartupRow(item: item) }
                         }
                     } header: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(group.title)
                             Text(group.description)
                                 .font(.caption)
@@ -56,6 +56,7 @@ private struct StartupList: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .padding(.bottom, 8)
                     }
                 }
             }
@@ -71,15 +72,19 @@ private struct StartupList: View {
         .navigationDestination(for: StartupItem.self) { item in
             StartupDetail(item: item, state: state)
         }
-        .overlay(alignment: .bottomTrailing) {
-            Button {
-                Task { await state.startup.refresh() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
+                Button {
+                    Task { await state.startup.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(state.startup.isLoading)
             }
-            .buttonStyle(.borderless)
-            .padding(8)
-            .disabled(state.startup.isLoading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         }
     }
 }
