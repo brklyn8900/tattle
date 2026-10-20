@@ -1,0 +1,65 @@
+import Foundation
+import GRDB
+
+/// The app's SQLite database: one file under Application Support, opened through GRDB
+/// with versioned migrations. Tests open an in-memory instance.
+struct AppDatabase: Sendable {
+    let writer: any DatabaseWriter
+
+    /// Opens (or creates) the database at `url`, running pending migrations.
+    init(at url: URL) throws {
+        try Self.migrator.migrate(DatabaseQueue(path: url.path))
+        writer = try DatabaseQueue(path: url.path)
+    }
+
+    /// An in-memory database for tests.
+    static func inMemory() throws -> AppDatabase {
+        let queue = try DatabaseQueue()
+        try migrator.migrate(queue)
+        return AppDatabase(writer: queue)
+    }
+
+    /// The default location: ~/Library/Application Support/Tattle/tattle.sqlite.
+    /// The folder is marked so Spotlight does not index connection history (proposal,
+    /// Privacy and retention); Time Machine is left to the user.
+    static func openDefault() throws -> AppDatabase {
+        let support = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+        let folder = support.appending(path: "Tattle", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let noIndex = folder.appending(path: ".metadata_never_index")
+        if !FileManager.default.fileExists(atPath: noIndex.path) {
+            FileManager.default.createFile(atPath: noIndex.path, contents: nil)
+        }
+        return try AppDatabase(at: folder.appending(path: "tattle.sqlite"))
+    }
+
+    private init(writer: any DatabaseWriter) {
+        self.writer = writer
+    }
+
+    private static var migrator: DatabaseMigrator {
+        var migrator = DatabaseMigrator()
+        migrator.registerMigration("v1-rules") { db in
+            try db.create(table: "rule") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull()
+                t.column("match", .text).notNull()
+                t.column("pattern", .text).notNull()
+                t.column("owner", .text)
+                t.column("purpose", .text).notNull()
+                t.column("category", .text)
+                t.column("risk", .text)
+                t.column("confidence", .text)
+                t.column("source", .text).notNull()
+                t.column("confirmed", .datetime)
+                t.column("created", .datetime).notNull()
+                // One rule per (kind, match, pattern, source): a re-explained item or a
+                // reloaded seed replaces the earlier row instead of piling up duplicates.
+                t.uniqueKey(["kind", "match", "pattern", "source"])
+            }
+        }
+        return migrator
+    }
+}
