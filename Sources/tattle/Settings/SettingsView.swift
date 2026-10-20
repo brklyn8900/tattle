@@ -64,7 +64,11 @@ struct SettingsView: View {
             NSApplication.shared.activate()
             // AppKit hands focus to the first text field; nobody opens Settings to type
             // into the command straight away.
-            DispatchQueue.main.async { NSApplication.shared.keyWindow?.makeFirstResponder(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                let window = NSApplication.shared.windows.first { $0.identifier?.rawValue.contains("Settings") == true }
+                    ?? NSApplication.shared.keyWindow
+                window?.makeFirstResponder(nil)
+            }
         }
     }
 
