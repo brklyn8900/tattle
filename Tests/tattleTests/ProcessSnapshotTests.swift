@@ -89,6 +89,7 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(system.explainKey)
         XCTAssertEqual(system.signature?.signer, .apple)
         XCTAssertEqual(system.facts.first?.value, "7")
+        XCTAssertNil(system.path, "macOS is not one place to reveal")
 
         XCTAssertEqual(snapshot.group(id: "/System/Applications/Mail.app")?.name, "Mail", "Apple apps the user opens are their own row")
         XCTAssertTrue(snapshot.groups.allSatisfy { $0.cpu == nil }, "no previous reading, no CPU")

@@ -94,9 +94,13 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     var members: [ProcessItem]
     var signature: CodeSignature?
 
+    /// The bundle, or the top-level program; macOS is not one place.
     var path: String? {
-        if case .app(let bundle) = kind { return bundle.path }
-        return members.first?.path
+        switch kind {
+        case .app(let bundle): bundle.path
+        case .process: leader?.path
+        case .system: nil
+        }
     }
 
     var memoryBytes: UInt64 { members.reduce(0) { $0 + $1.memoryBytes } }

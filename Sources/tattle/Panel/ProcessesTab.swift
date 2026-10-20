@@ -37,9 +37,19 @@ private struct ProcessesList: View {
                     NavigationLink(value: group) { GroupRow(group: group) }
                 }
             } header: {
-                GroupHeader(
-                    title: "\(snapshot.groups.count) apps and programs, \(snapshot.items.count) processes",
-                    description: "Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
+                // The sort control sits in the header: a bottom strip would cover the
+                // rows scrolling under it.
+                HStack(alignment: .top) {
+                    GroupHeader(
+                        title: "\(snapshot.groups.count) apps and programs, \(snapshot.items.count) processes",
+                        description: "Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
+                    Picker("Sort by", selection: $sort) {
+                        ForEach(ProcessSnapshot.Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 130)
+                }
             }
         }
         .navigationDestination(for: ProcessGroup.self) { group in
@@ -51,22 +61,6 @@ private struct ProcessesList: View {
         }
         .navigationDestination(for: ProcessItem.self) { item in
             ProcessDetail(item: item, state: state)
-        }
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Picker("Sort by", selection: $sort) {
-                    ForEach(ProcessSnapshot.Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 140)
-                Spacer()
-                Text("Refreshed every 3 s")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
         }
     }
 }
