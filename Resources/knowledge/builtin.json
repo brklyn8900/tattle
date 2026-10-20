@@ -91,6 +91,196 @@
       "category": "system",
       "risk": "low",
       "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "launchd",
+      "owner": "Apple",
+      "purpose": "The first process, started by the kernel at boot. It starts and manages every other process and service, for the system and for each user, including the XPC services bundled inside apps.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "kernel_task",
+      "owner": "Apple",
+      "purpose": "The kernel itself. Apple says it also helps manage CPU temperature by making the CPU less available to processes using it intensely, so a high kernel_task figure is usually a symptom of heat or of another process, not the cause.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "WindowServer",
+      "owner": "Apple",
+      "purpose": "Draws every window on screen: window management, compositing and routing of keyboard and mouse events.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "logd",
+      "owner": "Apple",
+      "purpose": "The unified logging daemon. Every process that logs through os_log shares memory pages with it; logd reads, compresses and keeps the entries in a ring buffer or on disk.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "cfprefsd",
+      "owner": "Apple",
+      "purpose": "The preferences daemon behind CFPreferences and NSUserDefaults: apps read and write their settings through it.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "distnoted",
+      "owner": "Apple",
+      "purpose": "Distributed notification services: passes notifications between processes, such as an app announcing a change for others to pick up.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "coreaudiod",
+      "owner": "Apple",
+      "purpose": "The Core Audio daemon, the sound system every app plays and records through.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "trustd",
+      "owner": "Apple",
+      "purpose": "Evaluates trust in certificates for every process on the system. When an app or macOS checks whether a TLS certificate is valid, trustd does the check.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "nsurlsessiond",
+      "owner": "Apple",
+      "purpose": "A per-user daemon that carries out background network transfers for apps that scheduled them, so a download or upload finishes even while the app is suspended.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "apsd",
+      "owner": "Apple",
+      "purpose": "The Apple Push Notification service daemon. It keeps the connection to Apple's push servers that delivers notifications to the Mac.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "mDNSResponder",
+      "owner": "Apple",
+      "purpose": "The system-wide DNS resolver and the Bonjour daemon (Multicast DNS and DNS Service Discovery). It answers name lookups for every process, listens on UDP 5353, and caches the replies.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "cloudd",
+      "owner": "Apple",
+      "purpose": "The system daemon behind CloudKit, the iCloud database apps store their data in.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "bird",
+      "owner": "Apple",
+      "purpose": "One of the daemons behind the Documents in the Cloud feature: iCloud Drive file syncing.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "rapportd",
+      "owner": "Apple",
+      "purpose": "Enables Phone Call Handoff and other communication features between Apple devices.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "sharingd",
+      "owner": "Apple",
+      "purpose": "Used by the Finder for AirDrop, Handoff between iCloud devices, Instant Hotspot discovery, connecting to shared computers, and Remote Discs.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "mds",
+      "owner": "Apple",
+      "purpose": "The Spotlight metadata server. It serves every client of the metadata APIs, including Spotlight search.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "mds_stores",
+      "owner": "Apple",
+      "purpose": "A helper of the Spotlight metadata server (mds) that lives beside it in the Metadata framework and holds the index stores. Apple documents mds, not this helper.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "medium"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "corespotlightd",
+      "owner": "Apple",
+      "purpose": "The daemon behind the Core Spotlight framework, through which apps index their own content so it appears in Spotlight and Safari. Apple documents the framework, not the daemon.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "medium"
+    },
+    {
+      "kind": "process",
+      "match": "exact",
+      "pattern": "spotlightknowledged",
+      "owner": "Apple",
+      "purpose": "Part of the Core Spotlight framework; its binary lives inside it. Apple does not document what it does.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "low"
     }
   ]
 }

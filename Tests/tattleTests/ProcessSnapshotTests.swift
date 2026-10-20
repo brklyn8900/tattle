@@ -138,6 +138,24 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(facts["CPU"])
     }
 
+    func testBuiltinGlossaryResolves() throws {
+        let database = try AppDatabase.inMemory()
+        let rules = RuleStore(database: database)
+        let repoSeeds = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Resources/knowledge")
+        SeedLoader(rules: rules, settings: SettingsStore(database: database)).load(from: repoSeeds)
+        for name in ["launchd", "kernel_task", "WindowServer", "logd", "cfprefsd", "distnoted", "coreaudiod", "trustd", "nsurlsessiond",
+                     "apsd", "mDNSResponder", "cloudd", "bird", "rapportd", "sharingd", "mds", "mds_stores", "corespotlightd", "spotlightknowledged"] {
+            let rule = try XCTUnwrap(try rules.lookup(kind: .process, key: name), name)
+            XCTAssertEqual(rule.category, "system", name)
+            XCTAssertEqual(rule.owner, "Apple", name)
+        }
+        XCTAssertEqual(try rules.lookup(kind: .process, key: "spotlightknowledged")?.confidence, .low, "undocumented by Apple, and the rule says so")
+        XCTAssertNil(try rules.lookup(kind: .process, key: "Slack Helper (GPU)"))
+        XCTAssertNil(try rules.lookup(kind: .process, key: "mdnsresponder"), "process names are case-sensitive")
+    }
+
     func testThisMachine() throws {
         let start = Date()
         let cache = SignatureCache()
