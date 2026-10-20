@@ -72,7 +72,7 @@ struct PortItem: Equatable, Sendable, Identifiable {
             facts.append(Fact(name: "Signed by", value: signature.summary))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
-        facts.append(Fact(name: "Runs as", value: uid == 0 ? "root" : "user \(uid)"))
+        facts.append(Fact(name: "Runs as", value: UserName.describe(uid)))
         if let serviceName { facts.append(Fact(name: "IANA name", value: serviceName)) }
         return facts
     }

@@ -83,7 +83,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
         if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
         if pid > 0 { facts.append(Fact(name: "Parent", value: "\(parentName ?? "pid \(parentPid)") (pid \(parentPid))")) }
         if let directory = workingDirectoryText { facts.append(Fact(name: "Working in", value: directory)) }
-        facts.append(Fact(name: "Runs as", value: uid == 0 ? "root" : "user \(uid)"))
+        facts.append(Fact(name: "Runs as", value: UserName.describe(uid)))
         facts.append(Fact(name: "Started", value: started.formatted(.relative(presentation: .named))))
         if let usage {
             facts.append(Fact(name: "Memory", value: Self.memoryText(usage.memoryBytes) + (usage.memoryIsFootprint ? " footprint" : " resident")))

@@ -84,7 +84,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
             facts.append(Fact(name: "Signed by", value: signature.summary))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
-        facts.append(Fact(name: "Runs as", value: connection.uid == 0 ? "root" : "user \(connection.uid)"))
+        facts.append(Fact(name: "Runs as", value: UserName.describe(connection.uid)))
         if connection.preExisting {
             facts.append(Fact(name: "Since", value: "before Tattle started looking"))
         } else {
