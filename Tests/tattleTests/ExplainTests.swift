@@ -167,6 +167,18 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 
+    func testFailureMessageFromEnvelopeWhenStderrIsEmpty() async {
+        do {
+            _ = try await ShellProvider(command: #"echo '{"type":"result","is_error":true,"result":"Not logged in"}'; exit 1"#).explain("")
+            XCTFail("expected failure")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .failed(status: 1, stderr: "Not logged in"))
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+        XCTAssertEqual(ShellProvider.failureMessage(in: "plain text\n"), "plain text")
+    }
+
     func testTimeout() async {
         do {
             _ = try await ShellProvider(command: "sleep 5", timeout: 0.3).explain("")

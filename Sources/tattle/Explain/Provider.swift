@@ -27,7 +27,11 @@ struct ShellProvider: ExplainProvider {
 
     static let presets = [
         Preset(id: "claude", name: "Claude Code",
-               command: "claude -p --bare --tools \"\" --permission-prompts none --output-format json --json-schema {schema}"),
+               // Not --bare: that mode reads no OAuth credentials, only an API key. User
+               // settings are skipped so the user's hooks and plugins do not run for an
+               // explain call; measured, that is a fifteenth of the cost and a third of
+               // the time.
+               command: "claude -p --setting-sources project,local --tools \"\" --permission-prompts none --output-format json --json-schema {schema}"),
         Preset(id: "codex", name: "Codex",
                command: "codex exec --skip-git-repo-check -"),
         Preset(id: "ollama", name: "Ollama",
@@ -92,11 +96,25 @@ struct ShellProvider: ExplainProvider {
 
         if timedOut.value { throw ProviderError.timedOut }
         guard process.terminationStatus == 0 else {
-            let message = String(decoding: errorBuffer.value, as: UTF8.self)
+            var message = String(decoding: errorBuffer.value, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            if message.isEmpty {
+                message = failureMessage(in: String(decoding: output, as: UTF8.self))
+            }
             throw ProviderError.failed(status: process.terminationStatus, stderr: message)
         }
         return String(decoding: output, as: UTF8.self)
+    }
+
+    /// Agent CLIs report errors on stdout inside their JSON envelope ("Not logged in").
+    static func failureMessage(in stdout: String) -> String {
+        let trimmed = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = trimmed.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let result = object["result"] as? String, !result.isEmpty {
+            return result
+        }
+        return String(trimmed.suffix(300))
     }
 
     static func shellQuote(_ text: String) -> String {
