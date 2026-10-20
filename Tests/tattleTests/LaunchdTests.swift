@@ -1,0 +1,107 @@
+import XCTest
+@testable import tattle
+
+final class LaunchdTests: XCTestCase {
+    private func plist(_ body: String) -> Data {
+        Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0"><dict>\(body)</dict></plist>
+            """.utf8)
+    }
+
+    private func parse(_ body: String, scope: LaunchdItem.Scope = .userAgent) throws -> LaunchdItem {
+        try LaunchdItem.parse(plist(body), url: URL(fileURLWithPath: "/tmp/x.plist"), scope: scope)
+    }
+
+    func testProgramAndArguments() throws {
+        let a = try parse("<key>Label</key><string>a</string><key>ProgramArguments</key><array><string>/usr/bin/foo</string><string>--x</string></array>")
+        XCTAssertEqual(a.program, "/usr/bin/foo")
+        XCTAssertEqual(a.arguments, ["--x"])
+        let b = try parse("<key>Label</key><string>b</string><key>Program</key><string>/bin/bar</string><key>ProgramArguments</key><array><string>bar</string><string>-v</string></array>")
+        XCTAssertEqual(b.program, "/bin/bar")
+        XCTAssertEqual(b.arguments, ["bar", "-v"], "with Program set, ProgramArguments is argv as given")
+        XCTAssertFalse(b.disabled)
+    }
+
+    func testRejectsMissingLabelAndNonDictionary() {
+        XCTAssertThrowsError(try parse("<key>Program</key><string>/bin/x</string>")) {
+            XCTAssertEqual($0 as? LaunchdItem.ParseError, .noLabel)
+        }
+        XCTAssertThrowsError(try LaunchdItem.parse(Data("<plist version=\"1.0\"><array/></plist>".utf8), url: URL(fileURLWithPath: "/x"), scope: .daemon)) {
+            XCTAssertEqual($0 as? LaunchdItem.ParseError, .notADictionary)
+        }
+    }
+
+    func testEmptyPlistIsAPlaceholder() throws {
+        let item = try LaunchdItem.parse(plist(""), url: URL(fileURLWithPath: "/Users/x/Library/LaunchAgents/com.google.keystone.agent.plist"), scope: .userAgent)
+        XCTAssertTrue(item.isPlaceholder)
+        XCTAssertEqual(item.label, "com.google.keystone.agent")
+        XCTAssertNil(item.program)
+        XCTAssertEqual(item.triggers, [])
+    }
+
+    func testTriggers() throws {
+        let item = try parse("""
+            <key>Label</key><string>t</string>
+            <key>RunAtLoad</key><true/>
+            <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+            <key>StartInterval</key><integer>3600</integer>
+            <key>StartCalendarInterval</key><dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>30</integer></dict>
+            <key>WatchPaths</key><array><string>/etc/hosts</string></array>
+            <key>MachServices</key><dict><key>com.x.y</key><true/></dict>
+            <key>Disabled</key><true/>
+            <key>AssociatedBundleIdentifiers</key><string>com.x</string>
+            """)
+        XCTAssertEqual(item.triggers, [
+            .atLoad, .keepAlive, .interval(seconds: 3600),
+            .calendar([.init(minute: 30, hour: 10, day: nil, weekday: nil, month: nil)]),
+            .watchPaths(["/etc/hosts"]), .onDemand,
+        ])
+        XCTAssertTrue(item.disabled)
+        XCTAssertEqual(item.associatedBundleIdentifiers, ["com.x"])
+        XCTAssertEqual(try parse("<key>Label</key><string>n</string><key>KeepAlive</key><false/>").triggers, [.onDemand], "nothing else means on demand")
+        XCTAssertEqual(try parse("<key>Label</key><string>k</string><key>KeepAlive</key><true/>").triggers, [.keepAlive])
+    }
+
+    func testTriggerDescriptions() {
+        XCTAssertEqual(Trigger.atLoad.description(scope: .userAgent), "at login")
+        XCTAssertEqual(Trigger.atLoad.description(scope: .daemon), "at boot")
+        XCTAssertEqual(Trigger.interval(seconds: 30).description(scope: .daemon), "every 30 s")
+        XCTAssertEqual(Trigger.interval(seconds: 300).description(scope: .daemon), "every 5 min")
+        XCTAssertEqual(Trigger.interval(seconds: 3600).description(scope: .daemon), "every hour")
+        XCTAssertEqual(Trigger.interval(seconds: 7200).description(scope: .daemon), "every 2 h")
+        XCTAssertEqual(Trigger.interval(seconds: 86_400).description(scope: .daemon), "every day")
+        XCTAssertEqual(Trigger.calendar([.init(minute: 30, hour: 10, day: nil, weekday: nil, month: nil)]).description(scope: .daemon), "daily at 10:30")
+        XCTAssertEqual(Trigger.calendar([.init(minute: 0, hour: 3, day: nil, weekday: 1, month: nil)]).description(scope: .daemon), "every Monday at 03:00")
+        XCTAssertEqual(Trigger.calendar([.init(minute: 15, hour: nil, day: nil, weekday: nil, month: nil)]).description(scope: .daemon), "every hour at :15")
+        XCTAssertEqual(Trigger.calendar([.init(minute: nil, hour: 1, day: 1, weekday: nil, month: nil)]).description(scope: .daemon), "monthly on day 1 at 01:00")
+        XCTAssertEqual(Trigger.watchPaths(["/a", "/b"]).description(scope: .daemon), "when /a, /b change")
+        XCTAssertEqual(Trigger.keepAlive.description(scope: .daemon), "kept running")
+    }
+
+    func testReaderReadsFoldersSkipsBadFilesAndCountsApple() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let user = root.appending(path: "user"), daemons = root.appending(path: "daemons"), apple = root.appending(path: "apple")
+        for dir in [user, daemons, apple] { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+        try plist("<key>Label</key><string>com.a</string><key>Program</key><string>/a</string>").write(to: user.appending(path: "com.a.plist"))
+        try Data("junk".utf8).write(to: user.appending(path: "broken.plist"))
+        try Data("ignored".utf8).write(to: user.appending(path: "README"))
+        try plist("<key>Label</key><string>com.d</string><key>Program</key><string>/d</string>").write(to: daemons.appending(path: "com.d.plist"))
+        for i in 0..<3 { try plist("<key>Label</key><string>apple\(i)</string>").write(to: apple.appending(path: "apple\(i).plist")) }
+
+        let reader = LaunchdReader(folders: [.userAgent: user, .daemon: daemons, .globalAgent: root.appending(path: "missing")], appleFolders: [apple])
+        let result = reader.read()
+        XCTAssertEqual(result.items.map(\.label), ["com.a", "com.d"])
+        XCTAssertEqual(result.items.map(\.scope), [.userAgent, .daemon])
+        XCTAssertEqual(result.appleCount, 3)
+        XCTAssertEqual(result.skipped.keys.map { URL(fileURLWithPath: $0).lastPathComponent }, ["broken.plist"])
+    }
+
+    func testThisMachineParsesCleanly() {
+        let result = LaunchdReader().read()
+        XCTAssertTrue(result.skipped.isEmpty, "\(result.skipped)")
+        XCTAssertGreaterThan(result.appleCount, 100)
+    }
+}
