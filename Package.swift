@@ -12,11 +12,16 @@ let package = Package(
             name: "CSocketTable",
             path: "Sources/CSocketTable"
         ),
+        .target(
+            name: "CPacketCapture",
+            path: "Sources/CPacketCapture"
+        ),
         .executableTarget(
             name: "tattle",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 "CSocketTable",
+                "CPacketCapture",
             ],
             path: "Sources/tattle"
         ),

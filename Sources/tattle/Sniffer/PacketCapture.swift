@@ -1,0 +1,110 @@
+import CPacketCapture
+import Foundation
+import SystemConfiguration
+
+enum CaptureError: Error, Equatable {
+    /// `/dev/bpf*` could not be opened: root-only until the broker (ADR-0003) exists.
+    case open(errno: Int32)
+    case prepare(errno: Int32)
+    /// The kernel refused the filter program.
+    case filterRejected(errno: Int32)
+    case read(errno: Int32)
+    case noInterface
+
+    var text: String {
+        switch self {
+        case .open(let code): "cannot open the packet capture device: \(Self.describe(code))"
+        case .prepare(let code): "cannot set up the packet capture device: \(Self.describe(code))"
+        case .filterRejected(let code): "the kernel rejected the packet filter: \(Self.describe(code))"
+        case .read(let code): "packet capture read failed: \(Self.describe(code))"
+        case .noInterface: "no network interface carries the default route"
+        }
+    }
+
+    private static func describe(_ code: Int32) -> String { String(cString: strerror(code)) }
+}
+
+/// One BPF descriptor, bound to an interface and read in a loop. Takes the descriptor as
+/// input so the broker can supply it; opening the device directly is for readable
+/// devices only.
+final class PacketCapture {
+    let fd: Int32
+    let bufferLength: Int
+    let dataLinkType: UInt32
+    private let buffer: UnsafeMutableRawPointer
+
+    /// Link types this capture understands (net/bpf.h).
+    static let linkEthernet: UInt32 = 1
+    static let linkNull: UInt32 = 0
+    static let linkRaw: UInt32 = 12
+
+    /// Prepares a bound descriptor for reading and takes ownership of it: it is closed
+    /// when the capture goes away. `timeout` bounds each read so the loop can stop.
+    init(descriptor: Int32, timeout: Duration = .seconds(1)) throws {
+        var length: UInt32 = 0
+        var dlt: UInt32 = 0
+        let milliseconds = Int32(clamping: timeout.components.seconds * 1000 + timeout.components.attoseconds / 1_000_000_000_000_000)
+        guard tattle_capture_prepare(descriptor, milliseconds, &length, &dlt) == 0 else {
+            let code = errno
+            close(descriptor)
+            throw CaptureError.prepare(errno: code)
+        }
+        fd = descriptor
+        bufferLength = Int(length)
+        dataLinkType = dlt
+        buffer = UnsafeMutableRawPointer.allocate(byteCount: Int(length), alignment: 16)
+    }
+
+    /// Opens a device on `interface` directly. Needs the devices readable.
+    static func open(interface: String, timeout: Duration = .seconds(1)) throws -> PacketCapture {
+        let fd = tattle_capture_open(interface)
+        guard fd >= 0 else { throw CaptureError.open(errno: errno) }
+        return try PacketCapture(descriptor: fd, timeout: timeout)
+    }
+
+    deinit {
+        close(fd)
+        buffer.deallocate()
+    }
+
+    func install(_ filter: CaptureFilter) throws {
+        let insns = filter.instructions.map { tattle_filter_insn(code: $0.code, jt: $0.jt, jf: $0.jf, k: $0.k) }
+        let status = insns.withUnsafeBufferPointer { tattle_capture_set_filter(fd, $0.baseAddress, UInt32($0.count)) }
+        guard status == 0 else { throw CaptureError.filterRejected(errno: errno) }
+    }
+
+    /// One read(2); `handle` gets each packet's capture timestamp and bytes. Returns
+    /// without calling it on timeout.
+    func readPackets(_ handle: (Double, [UInt8]) -> Void) throws {
+        let n = read(fd, buffer, bufferLength)
+        if n < 0 {
+            if errno == EINTR { return }
+            throw CaptureError.read(errno: errno)
+        }
+        var offset = 0
+        var timestamp = 0.0
+        var dataOffset = 0
+        var caplen: UInt32 = 0
+        var next = 0
+        while tattle_capture_next(buffer, n, offset, &timestamp, &dataOffset, &caplen, &next) == 1 {
+            let bytes = Array(UnsafeRawBufferPointer(start: buffer + dataOffset, count: Int(caplen)))
+            handle(timestamp, bytes)
+            offset = next
+        }
+    }
+
+    /// The hardware address of an interface; nil for one without (a tunnel).
+    static func hardwareAddress(of interface: String) -> [UInt8]? {
+        var mac = [UInt8](repeating: 0, count: 6)
+        guard tattle_interface_mac(interface, &mac) == 0 else { return nil }
+        return mac
+    }
+
+    /// The interface carrying the default IPv4 route, from the system configuration
+    /// store: what `route get default` reports.
+    static func primaryInterface() -> String? {
+        guard let value = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
+              let name = value["PrimaryInterface"] as? String, !name.isEmpty else { return nil }
+        return name
+    }
+}
