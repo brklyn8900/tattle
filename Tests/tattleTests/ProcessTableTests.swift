@@ -49,8 +49,10 @@ final class ProcessTableTests: XCTestCase {
         let me = try XCTUnwrap(entries.first { $0.pid == getpid() })
         XCTAssertNil(me.interpreter)
         XCTAssertEqual(me.arguments?.isEmpty, false)
+        XCTAssertEqual(me.workingDirectory, FileManager.default.currentDirectoryPath)
         let launchd = try XCTUnwrap(entries.first { $0.pid == 1 })
         XCTAssertNil(launchd.arguments, "other users' command lines are not readable")
+        XCTAssertNil(launchd.workingDirectory)
         XCTAssertEqual(launchd.name, "launchd")
     }
 
@@ -68,6 +70,9 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(ProcessEntry.name(path: "/opt/node/bin/node", arguments: ["npm exec chrome-devtools-mcp@1.11.0", ""], command: "node").name,
                        "npm exec chrome-devtools-mcp@1.11.0", "a title node set for itself")
         XCTAssertEqual(ProcessEntry.name(path: "/usr/libexec/trustd", arguments: nil, command: "trustd").name, "trustd")
+        XCTAssertEqual(ProcessEntry.name(path: "/Users/u/Library/Application Support/iTerm2/iTermServer-3.6.11",
+                                         arguments: ["/Users/u/Library/Application Support/iTerm2/iTermServer-3.6.11"], command: "iTermServer-3.6.").name,
+                       "iTermServer-3.6.11", "a path with a space is still a path")
         XCTAssertEqual(ProcessEntry.name(path: nil, arguments: nil, command: "kernel_task").name, "kernel_task")
 
         XCTAssertEqual(ProcessEntry.scriptName("/Users/u/.npm/_npx/0a/node_modules/chrome-devtools-mcp/build/src/main.js"), "chrome-devtools-mcp")

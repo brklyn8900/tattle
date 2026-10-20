@@ -109,16 +109,28 @@ private struct GroupRow: View {
 
 private struct ProcessRow: View {
     let item: ProcessItem
+    var depth = 0
+    var showsDirectory = true
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
+                    .lineLimit(1)
                 Text("pid \(String(item.pid))" + (item.signerText.map { " \u{00B7} \($0)" } ?? ""))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if showsDirectory, let directory = item.workingDirectoryText {
+                    // The end of the path is the part that tells copies apart.
+                    Text(directory)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
             }
+            .padding(.leading, CGFloat(min(depth, 6)) * 14)
             Spacer()
             UsageColumns(memoryBytes: item.memoryBytes, cpu: item.cpu)
         }
@@ -167,8 +179,10 @@ private struct GroupDetail: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(group.members) { item in
-                        NavigationLink(value: item) { ProcessRow(item: item).padding(.vertical, 4) }
+                    ForEach(group.tree, id: \.item.pid) { entry in
+                        NavigationLink(value: entry.item) {
+                            ProcessRow(item: entry.item, depth: entry.depth, showsDirectory: entry.showsDirectory).padding(.vertical, 4)
+                        }
                             .buttonStyle(.plain)
                         Divider()
                     }

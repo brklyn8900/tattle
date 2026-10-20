@@ -5,10 +5,10 @@ final class ProcessSnapshotTests: XCTestCase {
     private let epoch = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func entry(_ pid: Int32, _ ppid: Int32, _ path: String?, uid: UInt32 = 501, memory: UInt64 = 0, cpu: Double = 0,
-                       started: Date? = nil, name: String? = nil, interpreter: String? = nil) -> ProcessEntry {
+                       started: Date? = nil, name: String? = nil, interpreter: String? = nil, cwd: String? = nil) -> ProcessEntry {
         ProcessEntry(pid: pid, parentPid: ppid, uid: uid,
                      name: name ?? path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "pid \(pid)",
-                     path: path, interpreter: interpreter, started: started ?? epoch,
+                     path: path, interpreter: interpreter, workingDirectory: cwd, started: started ?? epoch,
                      usage: ProcessUsage(memoryBytes: memory, cpuSeconds: cpu, memoryIsFootprint: uid == 501))
     }
 
@@ -32,9 +32,10 @@ final class ProcessSnapshotTests: XCTestCase {
             entry(70, 1, "/System/Applications/Mail.app/Contents/MacOS/Mail", memory: 300),
             entry(100, 1, "/Applications/Slack.app/Contents/MacOS/Slack", memory: 100, cpu: 10),
             entry(101, 100, "/Applications/Slack.app/Contents/Frameworks/Slack Helper (GPU).app/Contents/MacOS/Slack Helper (GPU)", memory: 400, cpu: 5),
-            entry(200, 1, "/Applications/iTerm.app/Contents/MacOS/iTerm2", memory: 150),
-            entry(201, 200, "/bin/zsh", memory: 5),
-            entry(202, 201, "/usr/local/bin/claude", memory: 250),
+            entry(200, 1, "/Applications/iTerm.app/Contents/MacOS/iTerm2", memory: 150, cwd: "/"),
+            entry(201, 200, "/bin/zsh", memory: 5, cwd: NSHomeDirectory()),
+            entry(202, 201, "/usr/local/bin/claude", memory: 250, cwd: NSHomeDirectory() + "/dev/tattle"),
+            entry(203, 201, nil, memory: 20, name: "claude", cwd: NSHomeDirectory()),
             entry(300, 1, "/usr/local/bin/ollama", memory: 50),
             entry(301, 300, "/usr/local/bin/ollama", memory: 1000, name: "ollama runner"),
             entry(400, 1, "/bin/sh", uid: 0, memory: 1),
@@ -61,7 +62,7 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items.count, machine.count)
         let names = snapshot.groups(sortedBy: .memory).map { "\($0.name):\($0.members.count):\($0.memoryBytes)" }
         XCTAssertEqual(names, [
-            "ollama:2:1050", "Comet:2:670", "Slack:2:500", "iTerm:3:405", "macOS:7:349", "Mail:1:300", "node:1:80", "backup.sh:1:3",
+            "ollama:2:1050", "Comet:2:670", "Slack:2:500", "iTerm:4:425", "macOS:7:349", "Mail:1:300", "node:1:80", "backup.sh:1:3",
         ])
         let script = snapshot.group(id: "pid:600")!
         XCTAssertEqual(script.kind, .process, "a script run by Apple's shell is the user's, not macOS")
@@ -84,6 +85,17 @@ final class ProcessSnapshotTests: XCTestCase {
         let iterm = snapshot.group(id: "/Applications/iTerm.app")!
         XCTAssertEqual(Set(iterm.members.map(\.name)), ["iTerm2", "zsh", "claude"], "a shell and what it runs belong to the terminal")
         XCTAssertEqual(iterm.members.first { $0.name == "claude" }?.parentName, "zsh")
+        XCTAssertEqual(iterm.tree.map { "\($0.item.pid)@\($0.depth)" }, ["200@0", "201@1", "202@2", "203@2"],
+                       "children follow their parent, largest first")
+        XCTAssertEqual(iterm.tree.map(\.showsDirectory), [false, false, true, false],
+                       "the directory shows where it first differs from the parent's")
+        XCTAssertEqual(iterm.members.map(\.pid), [202, 200, 203, 201], "members themselves stay by memory")
+        let session = snapshot.item(pid: 202)!
+        XCTAssertEqual(session.workingDirectoryText, "~/dev/tattle")
+        XCTAssertEqual(session.facts.first { $0.name == "Working in" }?.value, "~/dev/tattle")
+        XCTAssertNil(snapshot.item(pid: 201)?.workingDirectoryText, "the home folder says nothing")
+        XCTAssertNil(snapshot.item(pid: 200)?.workingDirectoryText, "nor does the root")
+        XCTAssertEqual(snapshot.item(pid: 203)?.signerText, "executable no longer on disk")
         XCTAssertNil(snapshot.group(id: "/usr/local/bin/claude"), "a bare executable Launch Services reports is not an app")
 
         let ollama = snapshot.group(id: "pid:300")!
@@ -110,10 +122,11 @@ final class ProcessSnapshotTests: XCTestCase {
     func testCPUComesFromTheDifferenceAgainstThePreviousSnapshot() {
         let first = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
         var later = machine
-        later[6].usage!.cpuSeconds = 11       // Slack: +1 s over 2 s
-        later[7].usage!.cpuSeconds = 9        // helper: +4 s
-        later[11].usage!.cpuSeconds = 3       // ollama restarted: new start time, so no share
-        later[11].started = epoch.addingTimeInterval(1.5)
+        let index = { (pid: Int32) in later.firstIndex { $0.pid == pid }! }
+        later[index(100)].usage!.cpuSeconds = 11       // Slack: +1 s over 2 s
+        later[index(101)].usage!.cpuSeconds = 9        // helper: +4 s
+        later[index(300)].usage!.cpuSeconds = 3        // ollama restarted: new start time, so no share
+        later[index(300)].started = epoch.addingTimeInterval(1.5)
         let second = ProcessSnapshot.build(entries: later, previous: first, signature: sign, takenAt: epoch.addingTimeInterval(2))
 
         XCTAssertEqual(second.item(pid: 100)?.cpu, 0.5)

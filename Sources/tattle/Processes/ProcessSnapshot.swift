@@ -30,6 +30,9 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var path: String?
     /// Set when an interpreter runs a script: the signature is then the interpreter's.
     var interpreter: String?
+    /// Known for the user's own processes. Tells two copies of one program apart: two
+    /// shells, two servers, two agent sessions.
+    var workingDirectory: String?
     var started: Date
     var usage: ProcessUsage?
     /// Cores busy since the previous snapshot: 1.0 is one core fully used, as in
@@ -45,8 +48,22 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// script is not, whoever signed its interpreter.
     var isApple: Bool { pid == 0 || (interpreter == nil && signature?.signer == .apple) }
 
-    /// What the row says after the name: "node script", or the signer.
-    var signerText: String? { interpreter.map { "\($0) script" } ?? signature?.summary }
+    /// What the row says after the name: "node script", the signer, or that the
+    /// executable has been deleted since the process started (an upgraded tool).
+    var signerText: String? {
+        if let interpreter { return "\(interpreter) script" }
+        if path == nil, pid > 0 { return "executable no longer on disk" }
+        return signature?.summary
+    }
+
+    /// The working directory with the home folder as "~", when it says something: the
+    /// root and the home folder themselves do not.
+    var workingDirectoryText: String? {
+        guard let workingDirectory, workingDirectory != "/" else { return nil }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if workingDirectory == home { return nil }
+        return workingDirectory.hasPrefix(home + "/") ? "~" + workingDirectory.dropFirst(home.count) : workingDirectory
+    }
 
     /// Knowledge-base key: the name, so a rule reads "nsurlsessiond" and a glob like
     /// "Slack Helper*" covers the helpers. The path is a fact.
@@ -65,6 +82,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
         }
         if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
         if pid > 0 { facts.append(Fact(name: "Parent", value: "\(parentName ?? "pid \(parentPid)") (pid \(parentPid))")) }
+        if let directory = workingDirectoryText { facts.append(Fact(name: "Working in", value: directory)) }
         facts.append(Fact(name: "Runs as", value: uid == 0 ? "root" : "user \(uid)"))
         facts.append(Fact(name: "Started", value: started.formatted(.relative(presentation: .named))))
         if let usage {
@@ -123,6 +141,33 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
 
     /// The group explains as its one process, or as the app; macOS is not one thing.
     var explainKey: String? { kind == .system ? nil : name }
+
+    /// Members as a tree: each process followed by its children, largest first at every
+    /// level, with the depth for indenting. A member whose parent is outside the group
+    /// is a root. `showsDirectory` is set where the working directory differs from the
+    /// parent's, since children inherit it and repeating it says nothing.
+    var tree: [(item: ProcessItem, depth: Int, showsDirectory: Bool)] {
+        let pids = Set(members.map(\.pid))
+        var children: [Int32: [ProcessItem]] = [:]
+        var roots: [ProcessItem] = []
+        for member in members {
+            if pids.contains(member.parentPid), member.parentPid != member.pid {
+                children[member.parentPid, default: []].append(member)
+            } else {
+                roots.append(member)
+            }
+        }
+        var result: [(item: ProcessItem, depth: Int, showsDirectory: Bool)] = []
+        var seen = Set<Int32>()
+        func visit(_ item: ProcessItem, _ depth: Int, parentDirectory: String?) {
+            guard seen.insert(item.pid).inserted else { return }
+            let directory = item.workingDirectoryText
+            result.append((item, depth, directory != nil && directory != parentDirectory))
+            for child in children[item.pid] ?? [] { visit(child, depth + 1, parentDirectory: directory ?? parentDirectory) }
+        }
+        for root in roots { visit(root, 0, parentDirectory: nil) }
+        return result
+    }
 
     /// The process to quit for the whole group: the one launchd started, else the
     /// oldest. Nil for macOS.
@@ -190,7 +235,8 @@ struct ProcessSnapshot: Equatable, Sendable {
             }
             items.append(ProcessItem(
                 pid: entry.pid, parentPid: entry.parentPid, parentName: byPid[entry.parentPid]?.name,
-                uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter, started: entry.started,
+                uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter,
+                workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
                 signature: entry.path.flatMap(signature),
                 app: app(of: entry.pid, in: byPid, runningApp: runningApp, memo: &apps)))

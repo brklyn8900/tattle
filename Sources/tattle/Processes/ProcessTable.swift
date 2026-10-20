@@ -18,6 +18,8 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var interpreter: String?
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
+    /// Working directory, readable for the user's own processes only.
+    var workingDirectory: String?
     var started: Date
     var usage: ProcessUsage?
 
@@ -36,8 +38,10 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             }
         }
         if let first = arguments?.first {
-            // A title with spaces ("npm exec @scope/pkg") is not a path.
-            let started = (first.contains(" ") ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
+            // A title with spaces ("npm exec @scope/pkg") is not a path, unless it starts
+            // like one ("/Users/u/Library/Application Support/x/server").
+            let isTitle = first.contains(" ") && !first.hasPrefix("/")
+            let started = (isTitle ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
             if !started.isEmpty { return (String(started), nil) }
         }
         return (executable ?? command, nil)
@@ -139,13 +143,25 @@ enum ProcessTable {
         let command = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
         let path = pidPath(pid)
         // KERN_PROCARGS2 refuses other users' processes, so only ask for our own.
-        let arguments = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid() ? self.arguments(pid: pid, scratch: &scratch) : nil
+        let own = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid()
+        let arguments = own ? self.arguments(pid: pid, scratch: &scratch) : nil
         let named = ProcessEntry.name(path: path, arguments: arguments, command: command)
         let started = info.kp_proc.p_starttime
         return ProcessEntry(
             pid: pid, parentPid: info.kp_eproc.e_ppid, uid: info.kp_eproc.e_ucred.cr_uid,
             name: named.name, path: path, interpreter: named.interpreter, arguments: arguments,
+            workingDirectory: own ? workingDirectory(pid: pid) : nil,
             started: Date(timeIntervalSince1970: Double(started.tv_sec) + Double(started.tv_usec) / 1_000_000))
+    }
+
+    /// The current directory, through PROC_PIDVNODEPATHINFO, which answers only for the
+    /// user's own processes.
+    static func workingDirectory(pid: Int32) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+        let path = withUnsafeBytes(of: info.pvi_cdir.vip_path) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        return path.isEmpty ? nil : path
     }
 
     private static let argumentsMaximum: Int = {
