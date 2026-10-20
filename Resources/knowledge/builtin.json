@@ -255,36 +255,6 @@
     {
       "kind": "process",
       "match": "exact",
-      "pattern": "mds_stores",
-      "owner": "Apple",
-      "purpose": "A helper of the Spotlight metadata server (mds) that lives beside it in the Metadata framework and holds the index stores. Apple documents mds, not this helper.",
-      "category": "system",
-      "risk": "low",
-      "confidence": "medium"
-    },
-    {
-      "kind": "process",
-      "match": "exact",
-      "pattern": "corespotlightd",
-      "owner": "Apple",
-      "purpose": "The daemon behind the Core Spotlight framework, through which apps index their own content so it appears in Spotlight and Safari. Apple documents the framework, not the daemon.",
-      "category": "system",
-      "risk": "low",
-      "confidence": "medium"
-    },
-    {
-      "kind": "process",
-      "match": "exact",
-      "pattern": "spotlightknowledged",
-      "owner": "Apple",
-      "purpose": "Part of the Core Spotlight framework; its binary lives inside it. Apple does not document what it does.",
-      "category": "system",
-      "risk": "low",
-      "confidence": "low"
-    },
-    {
-      "kind": "process",
-      "match": "exact",
       "pattern": "claude",
       "owner": "Anthropic",
       "purpose": "Claude Code, Anthropic's coding agent for the terminal. One process per session, usually under a shell in a terminal tab; the npm and MCP processes beneath it, if any, are tool servers it starts for the session and stops when the session ends.",

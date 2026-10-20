@@ -171,12 +171,14 @@ final class ProcessSnapshotTests: XCTestCase {
             .appending(path: "Resources/knowledge")
         SeedLoader(rules: rules, settings: SettingsStore(database: database)).load(from: repoSeeds)
         for name in ["launchd", "kernel_task", "WindowServer", "logd", "cfprefsd", "distnoted", "coreaudiod", "trustd", "nsurlsessiond",
-                     "apsd", "mDNSResponder", "cloudd", "bird", "rapportd", "sharingd", "mds", "mds_stores", "corespotlightd", "spotlightknowledged"] {
+                     "apsd", "mDNSResponder", "cloudd", "bird", "rapportd", "sharingd", "mds"] {
             let rule = try XCTUnwrap(try rules.lookup(kind: .process, key: name), name)
             XCTAssertEqual(rule.category, "system", name)
             XCTAssertEqual(rule.owner, "Apple", name)
         }
-        XCTAssertEqual(try rules.lookup(kind: .process, key: "spotlightknowledged")?.confidence, .low, "undocumented by Apple, and the rule says so")
+        for name in ["mds_stores", "corespotlightd", "spotlightknowledged"] {
+            XCTAssertNil(try rules.lookup(kind: .process, key: name), "\(name): Apple does not document it, so the glossary does not guess")
+        }
         XCTAssertEqual(try rules.lookup(kind: .process, key: "claude")?.owner, "Anthropic")
         XCTAssertNil(try rules.lookup(kind: .process, key: "Slack Helper (GPU)"))
         XCTAssertNil(try rules.lookup(kind: .process, key: "mdnsresponder"), "process names are case-sensitive")
