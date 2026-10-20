@@ -58,7 +58,12 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 720)
-        .onAppear { NSApplication.shared.activate() }
+        .onAppear {
+            NSApplication.shared.activate()
+            // AppKit hands focus to the first text field; nobody opens Settings to type
+            // into the command straight away.
+            DispatchQueue.main.async { NSApplication.shared.keyWindow?.makeFirstResponder(nil) }
+        }
     }
 
     /// The preset whose command is in the field, or Custom once it is edited.

@@ -13,6 +13,7 @@ struct PanelView: View {
 
     let state: AppState
     @State private var tab = Tab.network
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -26,7 +27,12 @@ struct PanelView: View {
                 .frame(maxWidth: .infinity, minHeight: 240, alignment: .center)
             Divider()
             HStack {
-                SettingsLink { Text("Settings...") }
+                Button("Settings...") {
+                    // The panel is the key window while open; it must go before the
+                    // settings window takes focus, or both stay on screen.
+                    NSApplication.shared.keyWindow?.close()
+                    openSettings()
+                }
                 Spacer()
                 Button("Quit Tattle") { NSApplication.shared.terminate(nil) }
                     .keyboardShortcut("q")
