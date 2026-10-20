@@ -2,19 +2,43 @@ import SwiftUI
 
 @main
 struct TattleApp: App {
-    private let sampler = ResourceSampler()
+    private let state: AppState?
+    private let startupError: String?
 
     init() {
-        sampler.start()
+        do {
+            let state = try AppState(database: try AppDatabase.openDefault())
+            state.sampler.start()
+            self.state = state
+            startupError = nil
+        } catch {
+            Log.app.error("startup failed: \(error, privacy: .public)")
+            state = nil
+            startupError = String(describing: error)
+        }
     }
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(sampler: sampler)
+            if let state {
+                PanelView(state: state)
+            } else {
+                StartupFailureView(message: startupError ?? "Unknown error.")
+            }
         } label: {
-            MenuBarLabel(sampler: sampler)
+            if let state {
+                MenuBarLabel(sampler: state.sampler)
+            } else {
+                Image(systemName: "eye.slash")
+            }
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            if let state {
+                SettingsView(settings: state.settings, explainer: state.explainer)
+            }
+        }
     }
 }
 

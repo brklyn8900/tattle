@@ -11,12 +11,12 @@ struct PanelView: View {
         var id: String { rawValue }
     }
 
-    let sampler: ResourceSampler
+    let state: AppState
     @State private var tab = Tab.network
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ResourcesLine(sample: sampler.sample)
+            ResourcesLine(sample: state.sampler.sample)
             Picker("Tab", selection: $tab) {
                 ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -26,6 +26,7 @@ struct PanelView: View {
                 .frame(maxWidth: .infinity, minHeight: 240, alignment: .center)
             Divider()
             HStack {
+                SettingsLink { Text("Settings...") }
                 Spacer()
                 Button("Quit Tattle") { NSApplication.shared.terminate(nil) }
                     .keyboardShortcut("q")
@@ -39,5 +40,24 @@ struct PanelView: View {
     private var content: some View {
         Text("\(tab.rawValue): nothing to show yet.")
             .foregroundStyle(.secondary)
+    }
+}
+
+/// Shown instead of the panel when the database could not be opened.
+struct StartupFailureView: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Tattle could not start.").font(.headline)
+            Text(message).font(.callout).textSelection(.enabled)
+            HStack {
+                Spacer()
+                Button("Quit Tattle") { NSApplication.shared.terminate(nil) }
+                    .keyboardShortcut("q")
+            }
+        }
+        .padding(12)
+        .frame(width: 480)
     }
 }

@@ -80,15 +80,27 @@ struct FakeProvider: ExplainProvider {
 @MainActor
 final class ExplainerTests: XCTestCase {
     private var store: RuleStore!
+    private var settings: AppSettings!
     private let redactor = Redactor(home: "/Users/username", username: "username", machineNames: ["Users-Computer"])
 
     override func setUpWithError() throws {
-        store = RuleStore(database: try AppDatabase.inMemory())
+        let database = try AppDatabase.inMemory()
+        store = RuleStore(database: database)
+        settings = try AppSettings(store: SettingsStore(database: database))
+        settings.providerCommand = "fake"
+    }
+
+    private func explainer(_ provider: FakeProvider) -> Explainer {
+        Explainer(store: store, settings: settings, redactor: redactor, makeProvider: { command in
+            XCTAssertEqual(command, "fake")
+            return provider
+        })
     }
 
     func testAskStoresExactUnconfirmedLLMRuleAndRedactsPrompt() async throws {
         let provider = FakeProvider(output: #"{"owner":"Acme","purpose":"Update check.","category":"update","risk":"low","confidence":"medium","suggestedPattern":"*.acme.com"}"#)
-        let explainer = Explainer(store: store, provider: provider, instructions: "Go.", redactor: redactor)
+        settings.promptInstructions = "Go."
+        let explainer = explainer(provider)
         let request = ExplainRequest(kind: .process, key: "/Users/username/Applications/Acme.app/Contents/MacOS/Acme",
                                      facts: [Fact(name: "Host", value: "Users-Computer")])
         let rule = try await explainer.ask(request)
@@ -108,19 +120,20 @@ final class ExplainerTests: XCTestCase {
         XCTAssertTrue(sent.contains("<home>/Applications/Acme.app"))
         XCTAssertTrue(sent.contains("- Host: <machine>"))
         XCTAssertEqual(explainer.lastPrompt, sent)
+        XCTAssertTrue(sent.hasPrefix("Go.\n"))
     }
 
     func testLookupNeverCallsProvider() throws {
         try store.save(Rule(kind: .host, pattern: "a.example", purpose: "known", source: .builtin))
         let provider = FakeProvider(output: "")
-        let explainer = Explainer(store: store, provider: provider, redactor: redactor)
+        let explainer = explainer(provider)
         XCTAssertEqual(try explainer.lookup(ExplainRequest(kind: .host, key: "a.example"))?.purpose, "known")
         XCTAssertNil(try explainer.lookup(ExplainRequest(kind: .host, key: "b.example")))
         XCTAssertTrue(provider.seen.prompts.isEmpty)
     }
 
     func testBadAnswerStoresNothing() async throws {
-        let explainer = Explainer(store: store, provider: FakeProvider(output: "I cannot help."), redactor: redactor)
+        let explainer = explainer(FakeProvider(output: "I cannot help."))
         do {
             _ = try await explainer.ask(ExplainRequest(kind: .host, key: "a.example"))
             XCTFail("expected a parse error")

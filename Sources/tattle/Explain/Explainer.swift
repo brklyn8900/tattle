@@ -6,20 +6,21 @@ import Observation
 @MainActor @Observable
 final class Explainer {
     let store: RuleStore
-    var provider: any ExplainProvider
-    var instructions: String
+    let settings: AppSettings
     var redactor: Redactor
+    /// Builds the provider for the configured command. Tests substitute a fake.
+    var makeProvider: @MainActor (String) -> any ExplainProvider
     /// The last prompt sent, after redaction, verbatim. Shown in Settings.
     private(set) var lastPrompt: String?
 
     init(
-        store: RuleStore, provider: any ExplainProvider,
-        instructions: String = Prompt.defaultInstructions, redactor: Redactor = .current
+        store: RuleStore, settings: AppSettings, redactor: Redactor = .current,
+        makeProvider: @escaping @MainActor (String) -> any ExplainProvider = { ShellProvider(command: $0) }
     ) {
         self.store = store
-        self.provider = provider
-        self.instructions = instructions
+        self.settings = settings
         self.redactor = redactor
+        self.makeProvider = makeProvider
     }
 
     /// What the knowledge base already says, if anything. Never reaches the model.
@@ -29,7 +30,8 @@ final class Explainer {
 
     /// Asks the model and stores its answer. Called only from the explain button.
     func ask(_ request: ExplainRequest) async throws -> Rule {
-        let prompt = redactor.redact(Prompt.build(instructions: instructions, request: request))
+        let provider = makeProvider(settings.providerCommand)
+        let prompt = redactor.redact(Prompt.build(instructions: settings.promptInstructions, request: request))
         lastPrompt = prompt
         let output = try await provider.explain(prompt)
         let answer = try LLMAnswer.parse(output)

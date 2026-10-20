@@ -1,0 +1,81 @@
+import SwiftUI
+
+struct SettingsView: View {
+    @Bindable var settings: AppSettings
+    let explainer: Explainer
+
+    var body: some View {
+        Form {
+            Section("Explain with") {
+                Picker("Preset", selection: presetSelection) {
+                    ForEach(ShellProvider.presets) { Text($0.name).tag($0.id) }
+                    Text("Custom").tag("custom")
+                }
+                TextField("Command", text: $settings.providerCommand, axis: .vertical)
+                    .font(.body.monospaced())
+                    .lineLimit(1...4)
+                Text("The prompt goes to the command's standard input; the answer is read from its standard output. {schema} is replaced with the output contract. Nothing is sent until you click Explain on an item.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                TextEditor(text: $settings.promptInstructions)
+                    .font(.body)
+                    .frame(minHeight: 120)
+                HStack {
+                    Spacer()
+                    Button("Reset to Default") { settings.resetPromptInstructions() }
+                        .disabled(settings.promptInstructionsAreDefault)
+                }
+            } header: {
+                Text("Prompt instructions")
+            } footer: {
+                Text("Sent before the item and its facts.")
+            }
+            Section {
+                readOnly(OutputContract.schema)
+            } header: {
+                Text("Output contract")
+            } footer: {
+                Text("Appended to every request. Fixed, because the knowledge base depends on this shape.")
+            }
+            Section("Last prompt sent") {
+                if let prompt = explainer.lastPrompt {
+                    readOnly(prompt)
+                } else {
+                    Text("Nothing has been sent.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section("History") {
+                Stepper(value: $settings.retentionDays, in: 1...365) {
+                    Text("Keep connection history for \(settings.retentionDays) days")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 560, height: 720)
+        .onAppear { NSApplication.shared.activate() }
+    }
+
+    /// The preset whose command is in the field, or Custom once it is edited.
+    private var presetSelection: Binding<String> {
+        Binding(
+            get: { ShellProvider.presets.first { $0.command == settings.providerCommand }?.id ?? "custom" },
+            set: { id in
+                if let preset = ShellProvider.presets.first(where: { $0.id == id }) {
+                    settings.providerCommand = preset.command
+                }
+            })
+    }
+
+    private func readOnly(_ text: String) -> some View {
+        ScrollView {
+            Text(text)
+                .font(.callout.monospaced())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 140)
+    }
+}

@@ -1,0 +1,21 @@
+import Foundation
+import Observation
+
+/// Everything that lives for the whole run: the database and what is built on it.
+@MainActor @Observable
+final class AppState {
+    let sampler = ResourceSampler()
+    let settings: AppSettings
+    let rules: RuleStore
+    let explainer: Explainer
+
+    init(database: AppDatabase) throws {
+        rules = RuleStore(database: database)
+        settings = try AppSettings(store: SettingsStore(database: database))
+        explainer = Explainer(store: rules, settings: settings)
+        let pruned = try rules.pruneExpired()
+        if pruned > 0 {
+            Log.app.info("pruned \(pruned) expired unconfirmed LLM rules")
+        }
+    }
+}

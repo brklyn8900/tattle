@@ -61,6 +61,12 @@ struct AppDatabase: Sendable {
                 t.uniqueKey(["kind", "match", "pattern", "source"])
             }
         }
+        migrator.registerMigration("v2-settings") { db in
+            try db.create(table: "setting") { t in
+                t.primaryKey("key", .text)
+                t.column("value", .text).notNull()
+            }
+        }
         return migrator
     }
 }
