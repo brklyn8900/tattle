@@ -50,6 +50,8 @@ struct PanelView: View {
         switch tab {
         case .startup:
             StartupTab(state: state)
+        case .ports:
+            PortsTab(state: state)
         default:
             Text("\(tab.rawValue): nothing to show yet.")
                 .foregroundStyle(.secondary)

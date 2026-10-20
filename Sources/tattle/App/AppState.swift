@@ -6,6 +6,7 @@ import Observation
 final class AppState {
     let sampler = ResourceSampler()
     let startup = StartupObserver()
+    let ports = PortsObserver()
     let settings: AppSettings
     let rules: RuleStore
     let explainer: Explainer

@@ -46,17 +46,7 @@ private struct StartupList: View {
                             NavigationLink(value: item) { StartupRow(item: item) }
                         }
                     } header: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.title)
-                            Text(group.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .textCase(nil)
-                                .lineLimit(nil)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.bottom, 8)
+                        GroupHeader(title: group.title, description: group.description)
                     }
                 }
             }
@@ -130,15 +120,7 @@ private struct StartupDetail: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text(item.name).font(.headline)
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
-                    ForEach(item.facts, id: \.name) { fact in
-                        GridRow {
-                            Text(fact.name).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
-                            Text(fact.value).textSelection(.enabled)
-                        }
-                    }
-                }
-                .font(.callout)
+                FactsGrid(facts: item.facts)
                 Divider()
                 ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts), state: state)
                 Divider()

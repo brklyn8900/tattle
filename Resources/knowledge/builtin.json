@@ -41,6 +41,56 @@
       "category": "ech-cover",
       "risk": "low",
       "confidence": "high"
+    },
+    {
+      "kind": "port",
+      "match": "glob",
+      "pattern": "ControlCenter:*",
+      "owner": "Apple",
+      "purpose": "AirPlay Receiver: this Mac can be an AirPlay target for other devices. Switched off under System Settings, General, AirDrop & Handoff.",
+      "category": "sharing",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "port",
+      "match": "glob",
+      "pattern": "rapportd:*",
+      "owner": "Apple",
+      "purpose": "Continuity: Handoff, Universal Clipboard, Sidecar and unlocking with Apple Watch talk to this between your devices.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "port",
+      "match": "glob",
+      "pattern": "sharingd:*",
+      "owner": "Apple",
+      "purpose": "AirDrop and the sharing features of macOS.",
+      "category": "sharing",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "port",
+      "match": "glob",
+      "pattern": "*:udp/5353",
+      "owner": "Apple",
+      "purpose": "Bonjour (multicast DNS): the process advertises or browses services on the local network. mDNSResponder does this for all of macOS; a browser or app binding it too is discovering devices itself.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "port",
+      "match": "glob",
+      "pattern": "mDNSResponder:*",
+      "owner": "Apple",
+      "purpose": "The macOS name resolver: DNS and Bonjour for every app.",
+      "category": "system",
+      "risk": "low",
+      "confidence": "high"
     }
   ]
 }
