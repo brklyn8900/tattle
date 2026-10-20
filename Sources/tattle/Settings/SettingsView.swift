@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var settings: AppSettings
     let explainer: Explainer
+    @State private var contractShown = false
 
     var body: some View {
         Form {
@@ -35,12 +36,13 @@ struct SettingsView: View {
             } footer: {
                 Text("Sent before the item and its facts.")
             }
-            Section {
-                readOnly(OutputContract.schema)
-            } header: {
-                Text("Output contract")
-            } footer: {
-                Text("Appended to every request. Fixed, because the knowledge base depends on this shape.")
+            Section("Output contract") {
+                DisclosureGroup(isExpanded: $contractShown) {
+                    readOnly(OutputContract.schema)
+                } label: {
+                    Text("Fixed JSON schema the answer must match. Appended to every request; the knowledge base depends on this shape.")
+                        .foregroundStyle(.secondary)
+                }
             }
             Section("Last prompt sent") {
                 if let prompt = explainer.lastPrompt {
