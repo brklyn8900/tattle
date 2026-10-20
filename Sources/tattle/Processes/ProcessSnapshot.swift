@@ -268,8 +268,9 @@ struct ProcessSnapshot: Equatable, Sendable {
 
     /// The app a process belongs to: the bundle on its own path, else the one Launch
     /// Services opened it from, else the nearest ancestor's. Memoized, since whole trees
-    /// share an answer.
-    private static func app(
+    /// share an answer. The Network tab uses it too, to put a helper's connection under
+    /// its app.
+    static func app(
         of pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?, memo: inout [Int32: AppBundle?]
     ) -> AppBundle? {
         if let known = memo[pid] { return known }

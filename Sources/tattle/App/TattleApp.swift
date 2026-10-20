@@ -9,6 +9,7 @@ struct TattleApp: App {
         do {
             let state = try AppState(database: try AppDatabase.openDefault())
             state.sampler.start()
+            state.network.start()
             self.state = state
             startupError = nil
         } catch {
