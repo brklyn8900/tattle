@@ -1,0 +1,235 @@
+import Foundation
+
+/// An app bundle a process lives in or descends from.
+struct AppBundle: Hashable, Sendable {
+    var path: String
+
+    var name: String { URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent }
+
+    /// System UI such as the Dock, Control Center and the Finder lives under
+    /// /System/Library; apps the user opens live in /Applications or /System/Applications.
+    var isSystem: Bool { path.hasPrefix("/System/Library/") }
+
+    /// The outermost .app on a path: a helper app nested inside Slack.app belongs to Slack.
+    static func containing(_ path: String) -> AppBundle? {
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard let index = components.firstIndex(where: { $0.hasSuffix(".app") && $0.count > 4 }),
+              index < components.count - 1 else { return nil }
+        return AppBundle(path: components[...index].joined(separator: "/"))
+    }
+}
+
+/// One process as the Processes tab shows it.
+struct ProcessItem: Equatable, Sendable, Identifiable {
+    var pid: Int32
+    var parentPid: Int32
+    var parentName: String?
+    var uid: UInt32
+    var name: String
+    var path: String?
+    var started: Date
+    var usage: ProcessUsage?
+    /// Cores busy since the previous snapshot: 1.0 is one core fully used, as in
+    /// Activity Monitor. Nil until there is a previous reading of this process.
+    var cpu: Double?
+    var signature: CodeSignature?
+    /// The app the process belongs to, by its own path or by an ancestor's.
+    var app: AppBundle?
+
+    var id: Int32 { pid }
+    var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
+    /// Part of macOS: signed by Apple's software signing certificate, or the kernel.
+    var isApple: Bool { pid == 0 || signature?.signer == .apple }
+
+    /// Knowledge-base key: the name, so a rule reads "nsurlsessiond" and a glob like
+    /// "Slack Helper*" covers the helpers. The path is a fact.
+    var explainKey: String { name }
+
+    var facts: [Fact] {
+        var facts = [Fact(name: "Process", value: "\(name) (pid \(pid))")]
+        if let path { facts.append(Fact(name: "Path", value: path)) }
+        if let signature {
+            facts.append(Fact(name: "Signed by", value: signature.summary))
+            if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
+        }
+        if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
+        if pid > 0 { facts.append(Fact(name: "Parent", value: "\(parentName ?? "pid \(parentPid)") (pid \(parentPid))")) }
+        facts.append(Fact(name: "Runs as", value: uid == 0 ? "root" : "user \(uid)"))
+        facts.append(Fact(name: "Started", value: started.formatted(.relative(presentation: .named))))
+        if let usage {
+            facts.append(Fact(name: "Memory", value: Self.memoryText(usage.memoryBytes) + (usage.memoryIsFootprint ? " footprint" : " resident")))
+        }
+        if let cpu { facts.append(Fact(name: "CPU", value: Self.cpuText(cpu))) }
+        return facts
+    }
+
+    static func memoryText(_ bytes: UInt64) -> String {
+        Int64(bytes).formatted(.byteCount(style: .memory))
+    }
+
+    /// Percent of one core, so a process using two cores reads 200%.
+    static func cpuText(_ cores: Double) -> String {
+        cores.formatted(.percent.precision(.fractionLength(cores < 0.1 ? 1 : 0)))
+    }
+}
+
+/// A row of the tab: an app with its helpers, a top-level process with its children, or
+/// everything that is part of macOS.
+struct ProcessGroup: Equatable, Sendable, Identifiable {
+    enum Kind: Equatable, Sendable {
+        case app(AppBundle)
+        /// A process outside any app, rolled up with its descendants.
+        case process
+        /// Apple's daemons and system UI, in one row.
+        case system
+    }
+
+    static let systemID = "macos"
+
+    var id: String
+    var kind: Kind
+    var name: String
+    /// Members by memory, largest first.
+    var members: [ProcessItem]
+    var signature: CodeSignature?
+
+    var path: String? {
+        if case .app(let bundle) = kind { return bundle.path }
+        return members.first?.path
+    }
+
+    var memoryBytes: UInt64 { members.reduce(0) { $0 + $1.memoryBytes } }
+
+    /// Nil until any member has a reading.
+    var cpu: Double? {
+        let readings = members.compactMap(\.cpu)
+        return readings.isEmpty ? nil : readings.reduce(0, +)
+    }
+
+    /// The group explains as its one process, or as the app; macOS is not one thing.
+    var explainKey: String? { kind == .system ? nil : name }
+
+    var facts: [Fact] {
+        var facts = [Fact(name: "Processes", value: String(members.count))]
+        if let path { facts.append(Fact(name: "Path", value: path)) }
+        if let signature {
+            facts.append(Fact(name: "Signed by", value: signature.summary))
+            if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
+        }
+        facts.append(Fact(name: "Memory", value: ProcessItem.memoryText(memoryBytes)))
+        if let cpu { facts.append(Fact(name: "CPU", value: ProcessItem.cpuText(cpu))) }
+        return facts
+    }
+}
+
+struct ProcessSnapshot: Equatable, Sendable {
+    enum Sort: String, CaseIterable, Sendable {
+        case memory = "Memory"
+        case cpu = "CPU"
+    }
+
+    var items: [ProcessItem]
+    var groups: [ProcessGroup]
+    var takenAt: Date
+
+    func groups(sortedBy sort: Sort) -> [ProcessGroup] {
+        switch sort {
+        case .memory: groups.sorted { ($0.memoryBytes, $1.name) > ($1.memoryBytes, $0.name) }
+        case .cpu: groups.sorted { ($0.cpu ?? -1, $0.memoryBytes) > ($1.cpu ?? -1, $1.memoryBytes) }
+        }
+    }
+
+    func item(pid: Int32) -> ProcessItem? { items.first { $0.pid == pid } }
+    func group(id: String) -> ProcessGroup? { groups.first { $0.id == id } }
+
+    /// Attributes and rolls up. `signature` is called per executable and app bundle path;
+    /// the observer passes a cached reader, tests pass a table. CPU shares come from the
+    /// difference against `previous`.
+    static func build(
+        entries: [ProcessEntry], previous: ProcessSnapshot?,
+        signature: (String) -> CodeSignature?, takenAt: Date = Date()
+    ) -> ProcessSnapshot {
+        let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        let elapsed = previous.map { takenAt.timeIntervalSince($0.takenAt) } ?? 0
+        let earlier = Dictionary((previous?.items ?? []).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+
+        var items: [ProcessItem] = []
+        items.reserveCapacity(entries.count)
+        var apps: [Int32: AppBundle?] = [:]
+        for entry in entries {
+            var cpu: Double?
+            if elapsed > 0.5, let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
+               let now = entry.usage?.cpuSeconds, let then = before.usage?.cpuSeconds {
+                cpu = max(now - then, 0) / elapsed
+            }
+            items.append(ProcessItem(
+                pid: entry.pid, parentPid: entry.parentPid, parentName: byPid[entry.parentPid]?.name,
+                uid: entry.uid, name: entry.name, path: entry.path, started: entry.started,
+                usage: entry.usage, cpu: cpu,
+                signature: entry.path.flatMap(signature),
+                app: app(of: entry.pid, in: byPid, memo: &apps)))
+        }
+
+        let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        var groupsByID: [String: ProcessGroup] = [:]
+        var order: [String] = []
+        for item in items {
+            let key = groupKey(for: item, in: itemsByPid)
+            if groupsByID[key.id] == nil {
+                let groupSignature: CodeSignature?
+                switch key.kind {
+                case .app(let bundle): groupSignature = signature(bundle.path)
+                case .process: groupSignature = key.root?.signature
+                case .system: groupSignature = CodeSignature(signer: .apple)
+                }
+                groupsByID[key.id] = ProcessGroup(id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature)
+                order.append(key.id)
+            }
+            groupsByID[key.id]!.members.append(item)
+        }
+        var groups = order.compactMap { groupsByID[$0] }
+        for index in groups.indices {
+            groups[index].members.sort { ($0.memoryBytes, $1.pid) > ($1.memoryBytes, $0.pid) }
+        }
+        return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
+    }
+
+    /// The app a process belongs to: the bundle on its own path, else the nearest
+    /// ancestor's. Memoized, since whole trees share an answer.
+    private static func app(of pid: Int32, in byPid: [Int32: ProcessEntry], memo: inout [Int32: AppBundle?]) -> AppBundle? {
+        if let known = memo[pid] { return known }
+        memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
+        guard let entry = byPid[pid] else { return nil }
+        var result = entry.path.flatMap(AppBundle.containing)
+        if result == nil, entry.parentPid > 1, entry.parentPid != pid {
+            result = app(of: entry.parentPid, in: byPid, memo: &memo)
+        }
+        memo[pid] = result
+        return result
+    }
+
+    /// Where a process rolls up. An app that is not system UI gets its own row; otherwise
+    /// the topmost non-Apple ancestor is the row, so a server's workers sit under the
+    /// server; otherwise it is part of macOS.
+    private struct GroupKey {
+        var id: String
+        var kind: ProcessGroup.Kind
+        var name: String
+        var root: ProcessItem?
+    }
+
+    private static func groupKey(for item: ProcessItem, in byPid: [Int32: ProcessItem]) -> GroupKey {
+        if let app = item.app, !app.isSystem {
+            return GroupKey(id: app.path, kind: .app(app), name: app.name)
+        }
+        var root: ProcessItem?
+        var cursor: ProcessItem? = item.pid > 0 ? item : nil
+        var seen = Set<Int32>()
+        while let current = cursor, seen.insert(current.pid).inserted {
+            if !current.isApple { root = current }
+            cursor = current.parentPid > 1 ? byPid[current.parentPid] : nil
+        }
+        if let root { return GroupKey(id: "pid:\(root.pid)", kind: .process, name: root.name, root: root) }
+        return GroupKey(id: ProcessGroup.systemID, kind: .system, name: "macOS")
+    }
+}
