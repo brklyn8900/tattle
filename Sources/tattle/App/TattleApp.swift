@@ -27,7 +27,7 @@ struct TattleApp: App {
             }
         } label: {
             if let state {
-                MenuBarLabel(sampler: state.sampler)
+                MenuBarLabel(sampler: state.sampler, settings: state.settings)
             } else {
                 Image(systemName: "eye.slash")
             }
@@ -42,15 +42,18 @@ struct TattleApp: App {
     }
 }
 
-/// The menu bar item: the eye plus live throughput in and out.
+/// The menu bar item: the eye, with live throughput in and out when the setting is on.
 struct MenuBarLabel: View {
     let sampler: ResourceSampler
+    let settings: AppSettings
 
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: "eye")
-            Text(label)
-                .font(.system(size: 11).monospacedDigit())
+            if settings.showThroughputInMenuBar {
+                Text(label)
+                    .font(.system(size: 11).monospacedDigit())
+            }
         }
     }
 

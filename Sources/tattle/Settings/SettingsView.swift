@@ -6,6 +6,9 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Menu bar") {
+                Toggle("Show network in and out next to the icon", isOn: $settings.showThroughputInMenuBar)
+            }
             Section("Explain with") {
                 Picker("Preset", selection: presetSelection) {
                     ForEach(ShellProvider.presets) { Text($0.name).tag($0.id) }

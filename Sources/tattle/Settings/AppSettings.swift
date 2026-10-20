@@ -37,6 +37,8 @@ final class AppSettings {
     var promptInstructions: String { didSet { write(Key.promptInstructions, promptInstructions) } }
     /// How long connection history is kept before pruning.
     var retentionDays: Int { didSet { write(Key.retentionDays, String(retentionDays)) } }
+    /// Live in/out next to the menu bar icon, or the icon alone with the numbers in the panel.
+    var showThroughputInMenuBar: Bool { didSet { write(Key.menuBarThroughput, String(showThroughputInMenuBar)) } }
 
     private let store: SettingsStore
 
@@ -44,6 +46,7 @@ final class AppSettings {
         static let providerCommand = "provider.command"
         static let promptInstructions = "prompt.instructions"
         static let retentionDays = "history.retentionDays"
+        static let menuBarThroughput = "menubar.throughput"
     }
 
     init(store: SettingsStore) throws {
@@ -51,6 +54,7 @@ final class AppSettings {
         providerCommand = try store.string(Key.providerCommand) ?? ""
         promptInstructions = try store.string(Key.promptInstructions) ?? Prompt.defaultInstructions
         retentionDays = try store.string(Key.retentionDays).flatMap(Int.init) ?? Self.defaultRetentionDays
+        showThroughputInMenuBar = try store.string(Key.menuBarThroughput).flatMap(Bool.init) ?? true
     }
 
     var promptInstructionsAreDefault: Bool { promptInstructions == Prompt.defaultInstructions }
