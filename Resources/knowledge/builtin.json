@@ -1,0 +1,46 @@
+{
+  "source": "builtin",
+  "about": "Tattle's own rules. Patterns are SQLite GLOBs; hosts are matched lowercase. Contributions are pull requests against this file.",
+  "rules": [
+    {
+      "kind": "host",
+      "match": "glob",
+      "pattern": "mask*.icloud.com",
+      "owner": "Apple",
+      "purpose": "iCloud Private Relay ingress. The connection goes to Apple's relay; the real destination is hidden inside it.",
+      "category": "relay",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "host",
+      "match": "glob",
+      "pattern": "apple-relay.*",
+      "owner": "Apple",
+      "purpose": "Apple relay ingress (Private Relay and Oblivious HTTP). The real destination is hidden inside it.",
+      "category": "relay",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "host",
+      "match": "glob",
+      "pattern": "ohttp-relay*",
+      "owner": "Apple",
+      "purpose": "Oblivious HTTP relay used by Apple services. The real destination is hidden inside it.",
+      "category": "relay",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "host",
+      "match": "exact",
+      "pattern": "cloudflare-ech.com",
+      "owner": "Cloudflare",
+      "purpose": "Encrypted Client Hello cover name. The real site is behind Cloudflare and its name is encrypted.",
+      "category": "ech-cover",
+      "risk": "low",
+      "confidence": "high"
+    }
+  ]
+}

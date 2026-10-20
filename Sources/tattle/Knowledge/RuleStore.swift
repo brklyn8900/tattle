@@ -47,6 +47,33 @@ struct RuleStore: Sendable {
             }
     }
 
+    /// Replaces every rule of `source` with `rules`, in one transaction. A rule that the
+    /// user had confirmed keeps its confirmation and creation date if it is still present.
+    func replaceAll(source: Rule.Source, with rules: [Rule]) throws {
+        try database.writer.write { db in
+            let existing = try Rule.filter(Column("source") == source.rawValue).fetchAll(db)
+            let kept = Dictionary(
+                existing.map { (Key(kind: $0.kind, match: $0.match, pattern: $0.pattern), $0) },
+                uniquingKeysWith: { first, _ in first })
+            try Rule.filter(Column("source") == source.rawValue).deleteAll(db)
+            for var rule in rules {
+                rule.id = nil
+                rule.source = source
+                if let old = kept[Key(kind: rule.kind, match: rule.match, pattern: rule.pattern)] {
+                    rule.confirmed = old.confirmed
+                    rule.created = old.created
+                }
+                try rule.upsert(db)
+            }
+        }
+    }
+
+    private struct Key: Hashable {
+        var kind: Rule.Kind
+        var match: Rule.Match
+        var pattern: String
+    }
+
     /// Marks a rule confirmed. The source is kept so provenance is never lost; the rule
     /// ranks with user rules from now on. `pattern` promotes it to a glob rule: only the
     /// user can do that, and only here.

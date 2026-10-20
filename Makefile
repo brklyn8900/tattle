@@ -21,6 +21,7 @@ app: build
 	mkdir -p $(APPDIR)/Contents/MacOS $(APPDIR)/Contents/Resources
 	cp $(BIN) $(APPDIR)/Contents/MacOS/$(APP)
 	cp Resources/Info.plist $(APPDIR)/Contents/Info.plist
+	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
 	  codesign --force --options runtime --sign "$(SIGN_IDENTITY)" $(APPDIR); \
 	else \

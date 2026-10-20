@@ -13,6 +13,10 @@ final class AppState {
         rules = RuleStore(database: database)
         settings = try AppSettings(store: SettingsStore(database: database))
         explainer = Explainer(store: rules, settings: settings)
+        if let resources = Bundle.main.resourceURL {
+            SeedLoader(rules: rules, settings: SettingsStore(database: database))
+                .load(from: resources.appending(path: "knowledge"))
+        }
         let pruned = try rules.pruneExpired()
         if pruned > 0 {
             Log.app.info("pruned \(pruned) expired unconfirmed LLM rules")

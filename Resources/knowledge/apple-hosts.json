@@ -1,0 +1,10 @@
+{
+  "source": "apple-list",
+  "about": "Hosts Apple documents for its services, transcribed as patterns. Partial and enterprise-oriented; re-checked each macOS release. Not fetched at runtime.",
+  "reference": {
+    "url": "https://support.apple.com/101555",
+    "title": "Use Apple products on enterprise networks",
+    "transcribed": null
+  },
+  "rules": []
+}

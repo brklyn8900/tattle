@@ -1,0 +1,9 @@
+{
+  "source": "tracker-radar",
+  "about": "Domain owner and category from DuckDuckGo Tracker Radar. Licensed CC BY-NC-SA 4.0, separately from the rest of Tattle; the app runs without this file.",
+  "reference": {
+    "url": "https://github.com/duckduckgo/tracker-radar",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "rules": []
+}
