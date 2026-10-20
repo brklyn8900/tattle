@@ -110,6 +110,13 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// The group explains as its one process, or as the app; macOS is not one thing.
     var explainKey: String? { kind == .system ? nil : name }
 
+    /// The process to quit for the whole group: the one launchd started, else the
+    /// oldest. Nil for macOS.
+    var leader: ProcessItem? {
+        guard kind != .system else { return nil }
+        return members.filter { $0.parentPid <= 1 }.min { $0.pid < $1.pid } ?? members.min { $0.pid < $1.pid }
+    }
+
     var facts: [Fact] {
         var facts = [Fact(name: "Processes", value: String(members.count))]
         if let path { facts.append(Fact(name: "Path", value: path)) }

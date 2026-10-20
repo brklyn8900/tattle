@@ -65,6 +65,9 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(slack.members.map(\.pid), [101, 100], "members by memory")
         XCTAssertEqual(slack.signature?.summary, "Slack")
         XCTAssertEqual(slack.explainKey, "Slack")
+        XCTAssertEqual(slack.leader?.pid, 100, "quitting the app means its main process, not the biggest helper")
+        XCTAssertEqual(snapshot.group(id: "pid:300")?.leader?.pid, 300)
+        XCTAssertNil(snapshot.group(id: ProcessGroup.systemID)?.leader)
         XCTAssertEqual(slack.members[0].facts.first { $0.name == "Part of" }?.value, "Slack")
         XCTAssertNil(slack.members[1].facts.first { $0.name == "Part of" }, "the app's own process is not part of itself")
 

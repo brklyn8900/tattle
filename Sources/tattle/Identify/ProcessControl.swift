@@ -20,4 +20,10 @@ enum ProcessControl {
         }
         guard kill(pid, SIGTERM) == 0 else { throw ControlError.failed(errno: errno) }
     }
+
+    /// SIGKILL: the process gets no chance to save or clean up.
+    static func forceQuit(pid: Int32, uid: UInt32) throws {
+        guard canQuit(uid: uid) else { throw ControlError.notYours }
+        guard kill(pid, SIGKILL) == 0 else { throw ControlError.failed(errno: errno) }
+    }
 }

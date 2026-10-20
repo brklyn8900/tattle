@@ -7,6 +7,7 @@ final class AppState {
     let sampler = ResourceSampler()
     let startup = StartupObserver()
     let ports = PortsObserver()
+    let processes = ProcessesObserver()
     let settings: AppSettings
     let rules: RuleStore
     let explainer: Explainer
