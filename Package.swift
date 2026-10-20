@@ -8,10 +8,15 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
     ],
     targets: [
+        .target(
+            name: "CSocketTable",
+            path: "Sources/CSocketTable"
+        ),
         .executableTarget(
             name: "tattle",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
+                "CSocketTable",
             ],
             path: "Sources/tattle"
         ),
