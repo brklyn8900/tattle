@@ -112,6 +112,27 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertEqual(LaunchctlState.parseOverrides(output), ["com.apple.Siri.agent": true, "com.spotify.client.startuphelper": false])
     }
 
+    func testLoadAndUnloadInUserDomain() throws {
+        let label = "io.github.eladefrati.tattle.test." + UUID().uuidString
+        let plist = FileManager.default.temporaryDirectory.appending(path: label + ".plist")
+        try Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <plist version="1.0"><dict><key>Label</key><string>\(label)</string>
+            <key>ProgramArguments</key><array><string>/usr/bin/true</string></array></dict></plist>
+            """.utf8).write(to: plist)
+        defer { try? FileManager.default.removeItem(at: plist) }
+
+        try Launchctl.load(plist: plist)
+        XCTAssertNotNil(LaunchctlState.read().services[label])
+        try Launchctl.unload(label: label)
+        XCTAssertNil(LaunchctlState.read().services[label])
+        XCTAssertThrowsError(try Launchctl.unload(label: label)) { error in
+            guard case Launchctl.ControlError.failed = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertFalse(Launchctl.canControl(.daemon))
+        XCTAssertTrue(Launchctl.canControl(.globalAgent))
+    }
+
     func testThisMachine() {
         let state = LaunchctlState.read()
         XCTAssertGreaterThan(state.services.count, 50)

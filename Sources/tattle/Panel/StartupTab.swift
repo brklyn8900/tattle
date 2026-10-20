@@ -102,8 +102,15 @@ private struct StartupRow: View {
 private struct StartupDetail: View {
     let item: StartupItem
     let state: AppState
+    @State private var actionError: String?
+
+    /// The row as it is after a refresh, so an action's effect shows without going back.
+    private var current: StartupItem {
+        state.startup.snapshot?.items.first { $0.id == item.id } ?? item
+    }
 
     var body: some View {
+        let item = current
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text(item.name).font(.headline)
@@ -130,12 +137,52 @@ private struct StartupDetail: View {
                             }
                         }
                     }
+                    Spacer()
+                    controls(item)
                 }
                 .controlSize(.small)
+                if let actionError {
+                    Text(actionError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
             }
             .padding(12)
         }
         .navigationTitle(item.name)
+    }
+
+    @ViewBuilder
+    private func controls(_ item: StartupItem) -> some View {
+        if let scope = item.launchdScope, let plist = item.plistURL {
+            if !Launchctl.canControl(scope) {
+                Text("Managed by the system").font(.caption).foregroundStyle(.secondary)
+            } else {
+                switch item.state {
+                case .notLoaded:
+                    Button("Load") { perform { try Launchctl.load(plist: plist) } }
+                case .running, .idle:
+                    Button("Unload") { perform { try Launchctl.unload(label: item.id) } }
+                case .disabled, .placeholder, .enabled, .off:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    private func perform(_ action: @escaping () throws -> Void) {
+        actionError = nil
+        Task {
+            do {
+                try action()
+                await state.startup.refresh()
+            } catch Launchctl.ControlError.failed(_, let message) {
+                actionError = message
+            } catch {
+                actionError = String(describing: error)
+            }
+        }
     }
 }
 

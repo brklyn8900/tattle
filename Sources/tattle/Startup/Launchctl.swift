@@ -55,15 +55,49 @@ struct LaunchctlState: Equatable, Sendable {
     }
 
     private static func run(_ arguments: [String]) -> String {
+        (try? Launchctl.run(arguments))?.stdout ?? ""
+    }
+}
+
+/// Loading and unloading jobs in the user's domain. Agents in both agents folders load
+/// there; daemons live in the system domain, which needs root, so they are not offered.
+enum Launchctl {
+    enum ControlError: Error, Equatable {
+        case failed(status: Int32, message: String)
+    }
+
+    static var userDomain: String { "gui/\(getuid())" }
+
+    static func load(plist: URL) throws {
+        try check(run(["bootstrap", userDomain, plist.path]))
+    }
+
+    static func unload(label: String) throws {
+        try check(run(["bootout", userDomain + "/" + label]))
+    }
+
+    static func canControl(_ scope: LaunchdItem.Scope) -> Bool {
+        scope != .daemon
+    }
+
+    private static func check(_ result: (status: Int32, stdout: String, stderr: String)) throws {
+        guard result.status == 0 else {
+            let message = (result.stderr.isEmpty ? result.stdout : result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw ControlError.failed(status: result.status, message: message)
+        }
+    }
+
+    static func run(_ arguments: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return "" }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        try process.run()
+        let stdout = out.fileHandleForReading.readDataToEndOfFile()
+        let stderr = err.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+        return (process.terminationStatus, String(decoding: stdout, as: UTF8.self), String(decoding: stderr, as: UTF8.self))
     }
 }
