@@ -54,9 +54,8 @@ struct PanelView: View {
             PortsTab(state: state)
         case .processes:
             ProcessesTab(state: state)
-        default:
-            Text("\(tab.rawValue): nothing to show yet.")
-                .foregroundStyle(.secondary)
+        case .network:
+            NetworkTab(state: state)
         }
     }
 }
