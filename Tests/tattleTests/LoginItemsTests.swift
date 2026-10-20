@@ -61,7 +61,7 @@ final class LoginItemsTests: XCTestCase {
     }
 
     func testThisMachineDatabaseParses() throws {
-        guard LoginItemsDatabase.currentFile() != nil else { throw XCTSkip("no login-items database here") }
+        guard try LoginItemsDatabase.currentFile() != nil else { throw XCTSkip("no login-items database here") }
         let db = try LoginItemsDatabase.readCurrent()
         XCTAssertGreaterThanOrEqual(db.version, 13)
         XCTAssertFalse(db.items.isEmpty)

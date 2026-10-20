@@ -58,13 +58,21 @@ struct LoginItemsDatabase: Sendable {
     var items: [LoginItem]
 
     enum ReadError: Error, Equatable {
+        /// The folder could not be listed. It is readable by anyone on disk, but macOS
+        /// gates it behind Full Disk Access.
+        case cannotList(String)
         case noDatabase
         case notAStorage
     }
 
     /// The newest BackgroundItems-v*.btm in the system folder.
-    static func currentFile() -> URL? {
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+    static func currentFile() throws -> URL? {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+        } catch {
+            throw ReadError.cannotList(error.localizedDescription)
+        }
         return files
             .filter { $0.lastPathComponent.hasPrefix("BackgroundItems-v") && $0.pathExtension == "btm" }
             .max { version(of: $0) < version(of: $1) }
@@ -75,7 +83,7 @@ struct LoginItemsDatabase: Sendable {
     }
 
     static func readCurrent() throws -> LoginItemsDatabase {
-        guard let file = currentFile() else { throw ReadError.noDatabase }
+        guard let file = try currentFile() else { throw ReadError.noDatabase }
         return try parse(Data(contentsOf: file))
     }
 

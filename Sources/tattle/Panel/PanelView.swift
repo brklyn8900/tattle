@@ -23,8 +23,11 @@ struct PanelView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            content
-                .frame(maxWidth: .infinity, minHeight: 240, alignment: .center)
+            NavigationStack {
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(height: 440)
             Divider()
             HStack {
                 Button("Settings...") {
@@ -44,8 +47,13 @@ struct PanelView: View {
 
     @ViewBuilder
     private var content: some View {
-        Text("\(tab.rawValue): nothing to show yet.")
-            .foregroundStyle(.secondary)
+        switch tab {
+        case .startup:
+            StartupTab(state: state)
+        default:
+            Text("\(tab.rawValue): nothing to show yet.")
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

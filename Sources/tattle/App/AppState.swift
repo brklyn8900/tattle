@@ -5,6 +5,7 @@ import Observation
 @MainActor @Observable
 final class AppState {
     let sampler = ResourceSampler()
+    let startup = StartupObserver()
     let settings: AppSettings
     let rules: RuleStore
     let explainer: Explainer

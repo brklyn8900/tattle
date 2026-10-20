@@ -1,0 +1,144 @@
+import SwiftUI
+
+struct StartupTab: View {
+    let state: AppState
+
+    var body: some View {
+        Group {
+            if let snapshot = state.startup.snapshot {
+                StartupList(snapshot: snapshot, state: state)
+            } else {
+                ProgressView("Reading startup items")
+            }
+        }
+        .task {
+            if state.startup.snapshot == nil { await state.startup.refresh() }
+        }
+    }
+}
+
+private struct StartupList: View {
+    let snapshot: StartupSnapshot
+    let state: AppState
+
+    var body: some View {
+        List {
+            if let error = snapshot.loginItemsError {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(error)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open Full Disk Access Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            ForEach(StartupItem.Group.allCases, id: \.self) { group in
+                let items = snapshot.items(in: group)
+                if !items.isEmpty {
+                    Section(group.title) {
+                        ForEach(items) { item in
+                            NavigationLink(value: item) { StartupRow(item: item) }
+                        }
+                    }
+                }
+            }
+            Section {
+                HStack {
+                    Text("Apple")
+                    Spacer()
+                    Text("\(snapshot.appleCount) system jobs")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationDestination(for: StartupItem.self) { item in
+            StartupDetail(item: item, state: state)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                Task { await state.startup.refresh() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .padding(8)
+            .disabled(state.startup.isLoading)
+        }
+    }
+}
+
+private struct StartupRow: View {
+    let item: StartupItem
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(item.state.isActive ? Color.green : Color.secondary.opacity(0.3))
+                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var subtitle: String {
+        var parts = [item.trigger, item.state.text]
+        if let signature = item.signature { parts.append(signature.summary) }
+        else if let developer = item.developer { parts.append(developer) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+private struct StartupDetail: View {
+    let item: StartupItem
+    let state: AppState
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(item.name).font(.headline)
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                    ForEach(item.facts, id: \.name) { fact in
+                        GridRow {
+                            Text(fact.name).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                            Text(fact.value).textSelection(.enabled)
+                        }
+                    }
+                }
+                .font(.callout)
+                Divider()
+                ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts), state: state)
+                Divider()
+                HStack {
+                    if let plist = item.plistURL {
+                        Button("Reveal Plist") { NSWorkspace.shared.activateFileViewerSelecting([plist]) }
+                    }
+                    if item.isLoginItem {
+                        Button("Login Items Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    }
+                }
+                .controlSize(.small)
+            }
+            .padding(12)
+        }
+        .navigationTitle(item.name)
+    }
+}
+
+extension StartupItem: Hashable {
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
