@@ -29,7 +29,9 @@ struct Redactor: Sendable {
                 of: NSRegularExpression.escapedPattern(for: name),
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
-        if !username.isEmpty {
+        // A one- or two-letter username would match ordinary text ("-e"); the home path
+        // replacement above already covers where such a name appears.
+        if username.count >= 3 {
             let pattern = "\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b"
             out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
         }

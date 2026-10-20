@@ -10,6 +10,11 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("usernamex.example.com"), "usernamex.example.com", "username only at word boundaries")
     }
 
+    func testShortUsernameOnlyInHomePath() {
+        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
+        XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1"), "<home>/x run by e with osascript -e 1")
+    }
+
     func testMachineNames() {
         XCTAssertEqual(redactor.redact("host USERS-COMPUTER.local and Users-Computer"), "host <machine> and <machine>")
     }
