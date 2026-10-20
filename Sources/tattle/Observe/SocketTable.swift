@@ -105,7 +105,7 @@ enum SocketTable {
 
     /// Loads a record into a struct that may be longer than the record; the tail is zero.
     private static func load<T>(_ type: T.Type, from pointer: UnsafeRawPointer, length: Int) -> T {
-        var value = UnsafeMutablePointer<T>.allocate(capacity: 1)
+        let value = UnsafeMutablePointer<T>.allocate(capacity: 1)
         defer { value.deallocate() }
         let raw = UnsafeMutableRawPointer(value)
         raw.initializeMemory(as: UInt8.self, repeating: 0, count: MemoryLayout<T>.size)
@@ -134,13 +134,13 @@ enum SocketTable {
         var address = address
         var text = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
         inet_ntop(AF_INET, &address, &text, socklen_t(text.count))
-        return String(cString: text)
+        return String(cBuffer: text)
     }
 
     private static func ipv6(_ address: in6_addr) -> String {
         var address = address
         var text = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
         inet_ntop(AF_INET6, &address, &text, socklen_t(text.count))
-        return String(cString: text)
+        return String(cBuffer: text)
     }
 }

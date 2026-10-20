@@ -11,9 +11,9 @@ struct ProcessIdentity: Equatable, Sendable {
     static func read(pid: Int32) -> ProcessIdentity? {
         guard pid > 0 else { return nil }
         var pathBuffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        let path = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count)) > 0 ? String(cString: pathBuffer) : nil
+        let path = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count)) > 0 ? String(cBuffer: pathBuffer) : nil
         var nameBuffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        let name = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)) > 0 ? String(cString: nameBuffer) : nil
+        let name = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)) > 0 ? String(cBuffer: nameBuffer) : nil
         guard name != nil || path != nil else { return nil }
         return ProcessIdentity(
             pid: pid,
