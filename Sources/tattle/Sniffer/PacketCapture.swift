@@ -10,6 +10,8 @@ enum CaptureError: Error, Equatable {
     case filterRejected(errno: Int32)
     case read(errno: Int32)
     case noInterface
+    /// The broker is installed but did not hand over a descriptor.
+    case broker(CaptureBroker.RequestError)
 
     var text: String {
         switch self {
@@ -18,6 +20,7 @@ enum CaptureError: Error, Equatable {
         case .filterRejected(let code): "the kernel rejected the packet filter: \(Self.describe(code))"
         case .read(let code): "packet capture read failed: \(Self.describe(code))"
         case .noInterface: "no network interface carries the default route"
+        case .broker(let error): error.text
         }
     }
 
@@ -60,6 +63,17 @@ final class PacketCapture {
         let fd = tattle_capture_open(interface)
         guard fd >= 0 else { throw CaptureError.open(errno: errno) }
         return try PacketCapture(descriptor: fd, timeout: timeout)
+    }
+
+    /// A capture on `interface` from the broker when it is installed, else from the
+    /// device itself, which works only while the devices are readable.
+    static func obtain(interface: String, timeout: Duration = .seconds(1)) throws -> PacketCapture {
+        guard CaptureBroker.isReachable else { return try open(interface: interface, timeout: timeout) }
+        do {
+            return try PacketCapture(descriptor: try CaptureBroker.request(interface: interface), timeout: timeout)
+        } catch let error as CaptureBroker.RequestError {
+            throw CaptureError.broker(error)
+        }
     }
 
     deinit {

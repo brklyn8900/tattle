@@ -28,8 +28,17 @@ private struct ConnectionsList: View {
                     NavigationLink(value: group) { ConnectionGroupRow(group: group) }
                 }
             } header: {
-                GroupHeader(title: title, description: description)
+                VStack(alignment: .leading, spacing: 4) {
+                    GroupHeader(title: title, description: description)
+                    NavigationLink(CaptureBroker.isInstalled ? "Packet access" : "Allow packet access", value: PacketAccessView.Destination())
+                        .font(.caption)
+                        .textCase(nil)
+                        .padding(.bottom, 8)
+                }
             }
+        }
+        .navigationDestination(for: PacketAccessView.Destination.self) { _ in
+            PacketAccessView(state: state)
         }
         .navigationDestination(for: ConnectionGroup.self) { group in
             ConnectionGroupDetail(group: group, state: state)
@@ -55,6 +64,7 @@ private struct ConnectionsList: View {
             if snapshot.relayedCount > 0 { named.append("\(snapshot.relayedCount) relayed") }
             if snapshot.hiddenCount > 0 { named.append("\(snapshot.hiddenCount) with the name hidden") }
             parts.append(named.isEmpty ? "Names appear as connections open" : named.joined(separator: ", "))
+            if let error = state.network.accessError { parts.append(error) }
         case .unavailable, .stopped:
             parts.append("Destinations are addresses: names need packet access, which Tattle does not have yet")
         }
@@ -236,3 +246,4 @@ extension ConnectionGroup: Hashable {
 extension LiveConnection: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
+

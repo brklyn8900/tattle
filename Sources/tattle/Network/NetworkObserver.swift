@@ -9,6 +9,10 @@ final class NetworkObserver {
     private(set) var snapshot: NetworkSnapshot?
     private(set) var error: String?
     private(set) var captureStatus: Sniffer.Status = .stopped
+    /// Installing or removing the broker is under way: the administrator dialog is up.
+    private(set) var accessBusy = false
+    /// Why the last install or removal failed, until the next attempt.
+    private(set) var accessError: String?
 
     private let store: ConnectionStore
     private let rules: RuleStore
@@ -66,6 +70,40 @@ final class NetworkObserver {
         task = nil
         sniffer?.stop()
         sniffer = nil
+    }
+
+    /// Opens the capture again now, after the broker was installed or removed, instead
+    /// of at the next retry.
+    func restartCapture() {
+        sniffer?.stop()
+        sniffer?.start()
+    }
+
+    /// Installs the broker through the administrator dialog. Held here rather than in
+    /// a view because the dialog takes focus, which closes the panel and its views.
+    func installBroker() async -> Bool {
+        await access { try CaptureBroker.install() }
+    }
+
+    func removeBroker() async -> Bool {
+        await access { try CaptureBroker.remove() }
+    }
+
+    private func access(_ action: @escaping @Sendable () throws -> Void) async -> Bool {
+        guard !accessBusy else { return false }
+        accessBusy = true
+        accessError = nil
+        defer { accessBusy = false }
+        do {
+            try await Task.detached { try action() }.value
+            restartCapture()
+            return true
+        } catch CaptureBroker.InstallError.failed(let message) {
+            accessError = message.isEmpty ? "The administrator dialog was cancelled." : message
+        } catch {
+            accessError = String(describing: error)
+        }
+        return false
     }
 
     // MARK: Sniffer events

@@ -154,7 +154,18 @@ private struct StartupDetail: View {
     @ViewBuilder
     private func controls(_ item: StartupItem) -> some View {
         if let scope = item.launchdScope, let plist = item.plistURL {
-            if !Launchctl.canControl(scope) {
+            if item.id == CaptureBroker.label {
+                // Tattle's own daemon: the one system job Tattle removes, through the
+                // administrator dialog (ADR-0003).
+                Button("Remove") {
+                    actionError = nil
+                    Task {
+                        if await !state.network.removeBroker() { actionError = state.network.accessError }
+                        await state.startup.refresh()
+                    }
+                }
+                .disabled(state.network.accessBusy)
+            } else if !Launchctl.canControl(scope) {
                 Text("Managed by the system").font(.caption).foregroundStyle(.secondary)
             } else {
                 switch item.state {
@@ -169,11 +180,12 @@ private struct StartupDetail: View {
         }
     }
 
-    private func perform(_ action: @escaping () throws -> Void) {
+    /// Off the main thread: removing the broker waits on the administrator dialog.
+    private func perform(_ action: @escaping @Sendable () throws -> Void) {
         actionError = nil
         Task {
             do {
-                try action()
+                try await Task.detached { try action() }.value
                 await state.startup.refresh()
             } catch Launchctl.ControlError.failed(_, let message) {
                 actionError = message

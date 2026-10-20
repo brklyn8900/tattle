@@ -26,7 +26,7 @@ final class Sniffer: @unchecked Sendable {
     private static let addressRefreshEvery: TimeInterval = 60
     private static let readTimeout: Duration = .milliseconds(500)
 
-    init(open: @escaping Opener = { try PacketCapture.open(interface: $0, timeout: Sniffer.readTimeout) },
+    init(open: @escaping Opener = { try PacketCapture.obtain(interface: $0, timeout: Sniffer.readTimeout) },
          onEvents: @escaping @Sendable ([FlowEvent]) -> Void,
          onStatus: @escaping @Sendable (Status) -> Void) {
         self.open = open
@@ -75,7 +75,7 @@ final class Sniffer: @unchecked Sendable {
             lastFailure = nil
             installFilter(on: capture, interface: interface)
             onStatus(.capturing(interface: interface))
-            Log.sniffer.info("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType)")
+            Log.sniffer.info("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(CaptureBroker.isReachable ? "through the broker" : "from the device", privacy: .public)")
             captureLoop(capture, interface: interface)
         }
         onStatus(.stopped)

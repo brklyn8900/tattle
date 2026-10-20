@@ -150,12 +150,25 @@ enum CaptureBroker {
         let staging = FileManager.default.temporaryDirectory.appending(path: "\(label).plist")
         try text.write(to: staging, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: staging) }
-        try runPrivileged(installScript(helper: helper.path, plistSource: staging.path))
+        Log.sniffer.notice("installing the packet-access broker from \(helper.path, privacy: .public)")
+        do {
+            try runPrivileged(installScript(helper: helper.path, plistSource: staging.path))
+        } catch {
+            Log.sniffer.error("broker install failed: \(String(describing: error), privacy: .public)")
+            throw error
+        }
+        Log.sniffer.notice("packet-access broker installed")
         return text
     }
 
     static func remove(runPrivileged: (String) throws -> Void = runPrivileged) throws {
-        try runPrivileged(removeScript)
+        Log.sniffer.notice("removing the packet-access broker")
+        do {
+            try runPrivileged(removeScript)
+        } catch {
+            Log.sniffer.error("broker removal failed: \(String(describing: error), privacy: .public)")
+            throw error
+        }
     }
 
     /// Runs a shell script as root after the administrator password dialog.
