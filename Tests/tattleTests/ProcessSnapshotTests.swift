@@ -14,7 +14,7 @@ final class ProcessSnapshotTests: XCTestCase {
 
     /// Apple signs everything on the system volume and in /bin, /usr; the rest is Developer ID.
     private func sign(_ path: String) -> CodeSignature? {
-        for prefix in ["/System/", "/usr/libexec/", "/usr/bin/", "/bin/", "/sbin/"] where path.hasPrefix(prefix) {
+        for prefix in ["/System/", "/Library/Apple/", "/usr/libexec/", "/usr/bin/", "/bin/", "/sbin/"] where path.hasPrefix(prefix) {
             return CodeSignature(signer: .apple)
         }
         let vendor = path.split(separator: "/").first { $0.hasSuffix(".app") }.map { String($0.dropLast(4)) }
@@ -39,16 +39,26 @@ final class ProcessSnapshotTests: XCTestCase {
             entry(301, 300, "/usr/local/bin/ollama", memory: 1000, name: "ollama runner"),
             entry(400, 1, "/bin/sh", uid: 0, memory: 1),
             entry(401, 400, "/opt/homebrew/bin/node", uid: 0, memory: 80),
+            entry(500, 1, "/private/var/folders/x/T/X/ai.comet.code_sign_clone/code_sign_clone.1U/Comet.app.bundle/Contents/MacOS/Comet", memory: 600),
+            entry(501, 500, "/Applications/Comet.app/Contents/Frameworks/Comet Framework.framework/Helpers/Comet Helper (GPU).app/Contents/MacOS/Comet Helper (GPU)", memory: 70),
+            entry(510, 1, "/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect", uid: 0, memory: 8),
         ]
     }
 
+    /// What Launch Services knows: the browser's main process came from /Applications.
+    private func running(_ pid: Int32) -> String? {
+        pid == 500 ? "/Applications/Comet.app" : nil
+    }
+
     func testAttributionAndRollup() {
-        let snapshot = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
+        let snapshot = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, runningApp: running, takenAt: epoch)
         XCTAssertEqual(snapshot.items.count, machine.count)
         let names = snapshot.groups(sortedBy: .memory).map { "\($0.name):\($0.members.count):\($0.memoryBytes)" }
         XCTAssertEqual(names, [
-            "ollama:2:1050", "Slack:2:500", "iTerm:3:405", "macOS:6:341", "Mail:1:300", "node:1:80",
+            "ollama:2:1050", "Comet:2:670", "Slack:2:500", "iTerm:3:405", "macOS:7:349", "Mail:1:300", "node:1:80",
         ])
+        XCTAssertEqual(snapshot.group(id: "/Applications/Comet.app")?.members.map(\.pid), [500, 501],
+                       "the code-sign clone main process joins the helpers under the installed bundle")
 
         let slack = snapshot.group(id: "/Applications/Slack.app")!
         XCTAssertEqual(slack.kind, .app(AppBundle(path: "/Applications/Slack.app")))
@@ -72,10 +82,10 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(node.members.count, 1, "an Apple shell above a third-party process stays with macOS")
 
         let system = snapshot.group(id: ProcessGroup.systemID)!
-        XCTAssertEqual(Set(system.members.map(\.name)), ["kernel_task", "launchd", "trustd", "Dock", "Finder", "sh"])
+        XCTAssertEqual(Set(system.members.map(\.name)), ["kernel_task", "launchd", "trustd", "Dock", "Finder", "sh", "XProtect"])
         XCTAssertNil(system.explainKey)
         XCTAssertEqual(system.signature?.signer, .apple)
-        XCTAssertEqual(system.facts.first?.value, "6")
+        XCTAssertEqual(system.facts.first?.value, "7")
 
         XCTAssertEqual(snapshot.group(id: "/System/Applications/Mail.app")?.name, "Mail", "Apple apps the user opens are their own row")
         XCTAssertTrue(snapshot.groups.allSatisfy { $0.cpu == nil }, "no previous reading, no CPU")
@@ -108,6 +118,8 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(AppBundle.containing("/usr/bin/zsh"))
         XCTAssertNil(AppBundle.containing("/Applications/Slack.app"), "a bundle path is not an executable inside one")
         XCTAssertTrue(AppBundle(path: "/System/Library/CoreServices/Finder.app").isSystem)
+        XCTAssertTrue(AppBundle(path: "/Library/Apple/System/Library/CoreServices/XProtect.app").isSystem)
+        XCTAssertNil(AppBundle.containing("/private/var/x/Comet.app.bundle/Contents/MacOS/Comet"), "a clone is not the bundle")
         XCTAssertFalse(AppBundle(path: "/System/Applications/Mail.app").isSystem)
     }
 

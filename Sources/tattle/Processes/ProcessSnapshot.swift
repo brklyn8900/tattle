@@ -7,8 +7,9 @@ struct AppBundle: Hashable, Sendable {
     var name: String { URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent }
 
     /// System UI such as the Dock, Control Center and the Finder lives under
-    /// /System/Library; apps the user opens live in /Applications or /System/Applications.
-    var isSystem: Bool { path.hasPrefix("/System/Library/") }
+    /// /System/Library, and Apple's updatable system pieces (XProtect) under
+    /// /Library/Apple; apps the user opens live in /Applications or /System/Applications.
+    var isSystem: Bool { path.hasPrefix("/System/Library/") || path.hasPrefix("/Library/Apple/") }
 
     /// The outermost .app on a path: a helper app nested inside Slack.app belongs to Slack.
     static func containing(_ path: String) -> AppBundle? {
@@ -143,11 +144,15 @@ struct ProcessSnapshot: Equatable, Sendable {
     func group(id: String) -> ProcessGroup? { groups.first { $0.id == id } }
 
     /// Attributes and rolls up. `signature` is called per executable and app bundle path;
-    /// the observer passes a cached reader, tests pass a table. CPU shares come from the
-    /// difference against `previous`.
+    /// the observer passes a cached reader, tests pass a table. `runningApp` gives the
+    /// bundle Launch Services opened a pid from, for the processes whose path does not
+    /// say: Chromium browsers run their main process from a code-sign clone of the
+    /// bundle under a .app.bundle name. CPU shares come from the difference against
+    /// `previous`.
     static func build(
         entries: [ProcessEntry], previous: ProcessSnapshot?,
-        signature: (String) -> CodeSignature?, takenAt: Date = Date()
+        signature: (String) -> CodeSignature?, runningApp: (Int32) -> String? = { _ in nil },
+        takenAt: Date = Date()
     ) -> ProcessSnapshot {
         let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         let elapsed = previous.map { takenAt.timeIntervalSince($0.takenAt) } ?? 0
@@ -167,7 +172,7 @@ struct ProcessSnapshot: Equatable, Sendable {
                 uid: entry.uid, name: entry.name, path: entry.path, started: entry.started,
                 usage: entry.usage, cpu: cpu,
                 signature: entry.path.flatMap(signature),
-                app: app(of: entry.pid, in: byPid, memo: &apps)))
+                app: app(of: entry.pid, in: byPid, runningApp: runningApp, memo: &apps)))
         }
 
         let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -194,15 +199,18 @@ struct ProcessSnapshot: Equatable, Sendable {
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
     }
 
-    /// The app a process belongs to: the bundle on its own path, else the nearest
-    /// ancestor's. Memoized, since whole trees share an answer.
-    private static func app(of pid: Int32, in byPid: [Int32: ProcessEntry], memo: inout [Int32: AppBundle?]) -> AppBundle? {
+    /// The app a process belongs to: the bundle on its own path, else the one Launch
+    /// Services opened it from, else the nearest ancestor's. Memoized, since whole trees
+    /// share an answer.
+    private static func app(
+        of pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?, memo: inout [Int32: AppBundle?]
+    ) -> AppBundle? {
         if let known = memo[pid] { return known }
         memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
         guard let entry = byPid[pid] else { return nil }
-        var result = entry.path.flatMap(AppBundle.containing)
+        var result = entry.path.flatMap(AppBundle.containing) ?? runningApp(pid).map { AppBundle(path: $0) }
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {
-            result = app(of: entry.parentPid, in: byPid, memo: &memo)
+            result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, memo: &memo)
         }
         memo[pid] = result
         return result
