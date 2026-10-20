@@ -177,6 +177,7 @@ final class ProcessSnapshotTests: XCTestCase {
             XCTAssertEqual(rule.owner, "Apple", name)
         }
         XCTAssertEqual(try rules.lookup(kind: .process, key: "spotlightknowledged")?.confidence, .low, "undocumented by Apple, and the rule says so")
+        XCTAssertEqual(try rules.lookup(kind: .process, key: "claude")?.owner, "Anthropic")
         XCTAssertNil(try rules.lookup(kind: .process, key: "Slack Helper (GPU)"))
         XCTAssertNil(try rules.lookup(kind: .process, key: "mdnsresponder"), "process names are case-sensitive")
     }
