@@ -8,7 +8,11 @@ struct AppDatabase: Sendable {
 
     /// Opens (or creates) the database at `url`, running pending migrations.
     init(at url: URL) throws {
-        let queue = try DatabaseQueue(path: url.path)
+        // A previous instance may still be exiting with the file open; wait rather than
+        // fail the write at once.
+        var configuration = Configuration()
+        configuration.busyMode = .timeout(5)
+        let queue = try DatabaseQueue(path: url.path, configuration: configuration)
         try Self.migrator.migrate(queue)
         writer = queue
     }
