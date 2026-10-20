@@ -8,14 +8,61 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var parentPid: Int32
     /// Effective user id, which is what `ps` shows as UID.
     var uid: UInt32
-    /// The executable's file name when its path is readable, otherwise the kernel's
+    /// What the process is: the script's name when an interpreter runs a script, else
+    /// the executable's file name, else the name it was started under, else the kernel's
     /// command name, which is cut at 16 characters.
     var name: String
     var path: String?
+    /// The interpreter's file name when the process is a script, so a row can say
+    /// "node script" and the signature is understood to be the interpreter's.
+    var interpreter: String?
+    /// Command-line arguments, readable for the user's own processes only.
+    var arguments: [String]?
     var started: Date
     var usage: ProcessUsage?
 
     var id: Int32 { pid }
+
+    /// The name and interpreter for an executable and its arguments. An interpreter
+    /// running a file is named after the file, or after the npm package the file belongs
+    /// to. Otherwise the name the process was started under wins over the executable's
+    /// file name: a multi-call binary at a version-numbered path is "claude" or "ugrep",
+    /// a login shell "-zsh" is zsh, and a node process that set its title keeps it.
+    static func name(path: String?, arguments: [String]?, command: String) -> (name: String, interpreter: String?) {
+        let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
+        if let executable, isInterpreter(executable), let arguments {
+            for argument in arguments.dropFirst() where argument.hasPrefix("/") && FileManager.default.fileExists(atPath: argument) {
+                return (scriptName(argument), executable)
+            }
+        }
+        if let first = arguments?.first {
+            // A title with spaces ("npm exec @scope/pkg") is not a path.
+            let started = (first.contains(" ") ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
+            if !started.isEmpty { return (String(started), nil) }
+        }
+        return (executable ?? command, nil)
+    }
+
+    /// "python3.14" and "node25" are interpreters too.
+    static func isInterpreter(_ executable: String) -> Bool {
+        CodeSignature.interpreters.contains(executable)
+            || CodeSignature.interpreters.contains(String(executable.reversed().drop { $0.isNumber || $0 == "." }.reversed()))
+    }
+
+    /// A file inside an npm package is known by the package: "chrome-devtools-mcp"
+    /// rather than "main.js". Scoped packages keep their scope; a launcher in .bin is
+    /// already named for its command.
+    static func scriptName(_ path: String) -> String {
+        let components = path.split(separator: "/")
+        if let index = components.lastIndex(of: "node_modules"), index + 1 < components.count - 1, components[index + 1] != ".bin" {
+            let package = components[index + 1]
+            if package.hasPrefix("@"), index + 2 < components.count - 1 {
+                return "\(package)/\(components[index + 2])"
+            }
+            return String(package)
+        }
+        return String(components.last ?? Substring(path))
+    }
 }
 
 /// Memory and CPU of one process. The two sources measure memory differently, so the
@@ -78,22 +125,66 @@ enum ProcessTable {
                 if errno == ENOMEM { continue }
                 throw ReadError.sysctl(errno: errno)
             }
-            return buffer.prefix(length / stride).compactMap(entry)
+            // One argmax-sized scratch buffer for the command lines: allocating a
+            // megabyte per process made a sweep of 1,600 take over a second.
+            var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
+            return buffer.prefix(length / stride).compactMap { entry($0, scratch: &scratch) }
         }
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
-    private static func entry(_ info: kinfo_proc) -> ProcessEntry? {
+    private static func entry(_ info: kinfo_proc, scratch: inout [UInt8]) -> ProcessEntry? {
         guard Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         let pid = info.kp_proc.p_pid
         let command = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
         let path = pidPath(pid)
+        // KERN_PROCARGS2 refuses other users' processes, so only ask for our own.
+        let arguments = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid() ? self.arguments(pid: pid, scratch: &scratch) : nil
+        let named = ProcessEntry.name(path: path, arguments: arguments, command: command)
         let started = info.kp_proc.p_starttime
         return ProcessEntry(
             pid: pid, parentPid: info.kp_eproc.e_ppid, uid: info.kp_eproc.e_ucred.cr_uid,
-            name: path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? command,
-            path: path,
+            name: named.name, path: path, interpreter: named.interpreter, arguments: arguments,
             started: Date(timeIntervalSince1970: Double(started.tv_sec) + Double(started.tv_usec) / 1_000_000))
+    }
+
+    private static let argumentsMaximum: Int = {
+        var value: Int32 = 0
+        var length = MemoryLayout<Int32>.size
+        sysctlbyname("kern.argmax", &value, &length, nil, 0)
+        return Int(max(value, 4096))
+    }()
+
+    /// The command line, through KERN_PROCARGS2, which answers only for the user's own
+    /// processes. The buffer holds argc, the executable path, padding, then the
+    /// arguments and the environment, all NUL-separated.
+    static func arguments(pid: Int32) -> [String]? {
+        var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
+        return arguments(pid: pid, scratch: &scratch)
+    }
+
+    static func arguments(pid: Int32, scratch: inout [UInt8]) -> [String]? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var length = scratch.count
+        guard sysctl(&mib, 3, &scratch, &length, nil, 0) == 0, length > MemoryLayout<Int32>.size else { return nil }
+        return parseArguments(scratch.prefix(length))
+    }
+
+    static func parseArguments(_ bytes: ArraySlice<UInt8>) -> [String]? {
+        guard bytes.count > 4 else { return nil }
+        let argc = Int(bytes[bytes.startIndex..<bytes.startIndex + 4].withUnsafeBytes { $0.loadUnaligned(as: Int32.self) })
+        var cursor = bytes.startIndex + 4
+        // Skip the executable path and the NULs padding it.
+        while cursor < bytes.endIndex, bytes[cursor] != 0 { cursor += 1 }
+        while cursor < bytes.endIndex, bytes[cursor] == 0 { cursor += 1 }
+        var arguments: [String] = []
+        while arguments.count < argc, cursor < bytes.endIndex {
+            let start = cursor
+            while cursor < bytes.endIndex, bytes[cursor] != 0 { cursor += 1 }
+            arguments.append(String(decoding: bytes[start..<cursor], as: UTF8.self))
+            cursor += 1
+        }
+        return arguments
     }
 
     private static func pidPath(_ pid: Int32) -> String? {

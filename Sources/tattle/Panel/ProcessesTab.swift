@@ -101,7 +101,8 @@ private struct GroupRow: View {
 
     private var subtitle: String {
         var parts = [group.members.count == 1 ? "1 process" : "\(group.members.count) processes"]
-        if let signature = group.signature { parts.append(signature.summary) }
+        if group.kind == .process, let leader = group.leader, let text = leader.signerText { parts.append(text) }
+        else if let signature = group.signature { parts.append(signature.summary) }
         return parts.joined(separator: " \u{00B7} ")
     }
 }
@@ -113,7 +114,7 @@ private struct ProcessRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                Text("pid \(String(item.pid))" + (item.signature.map { " \u{00B7} \($0.summary)" } ?? ""))
+                Text("pid \(String(item.pid))" + (item.signerText.map { " \u{00B7} \($0)" } ?? ""))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

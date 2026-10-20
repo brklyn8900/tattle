@@ -5,10 +5,10 @@ final class ProcessSnapshotTests: XCTestCase {
     private let epoch = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func entry(_ pid: Int32, _ ppid: Int32, _ path: String?, uid: UInt32 = 501, memory: UInt64 = 0, cpu: Double = 0,
-                       started: Date? = nil, name: String? = nil) -> ProcessEntry {
+                       started: Date? = nil, name: String? = nil, interpreter: String? = nil) -> ProcessEntry {
         ProcessEntry(pid: pid, parentPid: ppid, uid: uid,
                      name: name ?? path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "pid \(pid)",
-                     path: path, started: started ?? epoch,
+                     path: path, interpreter: interpreter, started: started ?? epoch,
                      usage: ProcessUsage(memoryBytes: memory, cpuSeconds: cpu, memoryIsFootprint: uid == 501))
     }
 
@@ -42,6 +42,7 @@ final class ProcessSnapshotTests: XCTestCase {
             entry(500, 1, "/private/var/folders/x/T/X/ai.comet.code_sign_clone/code_sign_clone.1U/Comet.app.bundle/Contents/MacOS/Comet", memory: 600),
             entry(501, 500, "/Applications/Comet.app/Contents/Frameworks/Comet Framework.framework/Helpers/Comet Helper (GPU).app/Contents/MacOS/Comet Helper (GPU)", memory: 70),
             entry(510, 1, "/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect", uid: 0, memory: 8),
+            entry(600, 1, "/bin/sh", memory: 3, name: "backup.sh", interpreter: "sh"),
         ]
     }
 
@@ -60,8 +61,12 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items.count, machine.count)
         let names = snapshot.groups(sortedBy: .memory).map { "\($0.name):\($0.members.count):\($0.memoryBytes)" }
         XCTAssertEqual(names, [
-            "ollama:2:1050", "Comet:2:670", "Slack:2:500", "iTerm:3:405", "macOS:7:349", "Mail:1:300", "node:1:80",
+            "ollama:2:1050", "Comet:2:670", "Slack:2:500", "iTerm:3:405", "macOS:7:349", "Mail:1:300", "node:1:80", "backup.sh:1:3",
         ])
+        let script = snapshot.group(id: "pid:600")!
+        XCTAssertEqual(script.kind, .process, "a script run by Apple's shell is the user's, not macOS")
+        XCTAssertEqual(script.leader?.signerText, "sh script")
+        XCTAssertEqual(script.leader?.facts.prefix(3).map(\.name), ["Process", "Runs with", "Interpreter signed by"])
         XCTAssertEqual(snapshot.group(id: "/Applications/Comet.app")?.members.map(\.pid), [500, 501],
                        "the code-sign clone main process joins the helpers under the installed bundle")
 

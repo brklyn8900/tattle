@@ -28,6 +28,8 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var uid: UInt32
     var name: String
     var path: String?
+    /// Set when an interpreter runs a script: the signature is then the interpreter's.
+    var interpreter: String?
     var started: Date
     var usage: ProcessUsage?
     /// Cores busy since the previous snapshot: 1.0 is one core fully used, as in
@@ -39,8 +41,12 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
-    /// Part of macOS: signed by Apple's software signing certificate, or the kernel.
-    var isApple: Bool { pid == 0 || signature?.signer == .apple }
+    /// Part of macOS: signed by Apple's software signing certificate, or the kernel. A
+    /// script is not, whoever signed its interpreter.
+    var isApple: Bool { pid == 0 || (interpreter == nil && signature?.signer == .apple) }
+
+    /// What the row says after the name: "node script", or the signer.
+    var signerText: String? { interpreter.map { "\($0) script" } ?? signature?.summary }
 
     /// Knowledge-base key: the name, so a rule reads "nsurlsessiond" and a glob like
     /// "Slack Helper*" covers the helpers. The path is a fact.
@@ -48,9 +54,13 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
 
     var facts: [Fact] {
         var facts = [Fact(name: "Process", value: "\(name) (pid \(pid))")]
-        if let path { facts.append(Fact(name: "Path", value: path)) }
+        if let interpreter, let path {
+            facts.append(Fact(name: "Runs with", value: "\(interpreter) (\(path))"))
+        } else if let path {
+            facts.append(Fact(name: "Path", value: path))
+        }
         if let signature {
-            facts.append(Fact(name: "Signed by", value: signature.summary))
+            facts.append(Fact(name: interpreter == nil ? "Signed by" : "Interpreter signed by", value: signature.summary))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
         if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
@@ -180,7 +190,7 @@ struct ProcessSnapshot: Equatable, Sendable {
             }
             items.append(ProcessItem(
                 pid: entry.pid, parentPid: entry.parentPid, parentName: byPid[entry.parentPid]?.name,
-                uid: entry.uid, name: entry.name, path: entry.path, started: entry.started,
+                uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter, started: entry.started,
                 usage: entry.usage, cpu: cpu,
                 signature: entry.path.flatMap(signature),
                 app: app(of: entry.pid, in: byPid, runningApp: runningApp, memo: &apps)))
