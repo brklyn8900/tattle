@@ -46,8 +46,9 @@ final class LoginItemsTests: XCTestCase {
 
         XCTAssertEqual(byId["4.com.example.magnetLauncher"]?.kind, .loginItemHelper)
         XCTAssertEqual(byId["4.com.example.magnetLauncher"]?.url, "Contents/Library/LoginItems/magnetLauncher.app")
-        XCTAssertEqual(byId["64.com.example.foo"]?.kind, .other(type: 0x40))
+        XCTAssertEqual(byId["64.com.example.foo"]?.kind, .spotlightImporter)
         XCTAssertFalse(byId["64.com.example.foo"]!.isStartupItem)
+        XCTAssertTrue(byId["64.com.example.foo"]!.isExtension)
         XCTAssertEqual(byId["Acme Inc"]?.kind, .other(type: 0x20))
         XCTAssertEqual(byId["Unknown Developer"]?.name, "Unknown Developer", "falls back to the identifier")
     }

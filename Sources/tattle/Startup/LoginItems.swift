@@ -14,7 +14,13 @@ struct LoginItem: Equatable, Sendable, Identifiable {
         case daemon
         /// Background App Refresh for an app.
         case backgroundRefresh
-        /// Spotlight importers, dock tiles, app extensions: not startup items.
+        /// Runs when Spotlight indexes the app's file types.
+        case spotlightImporter
+        /// Runs while the app is in the Dock.
+        case dockTilePlugin
+        /// Quick Look, thumbnails, sharing and the like: runs when macOS needs it.
+        case appExtension
+        /// Developer groups and anything unrecognised.
         case other(type: Int)
     }
 
@@ -29,8 +35,9 @@ struct LoginItem: Equatable, Sendable, Identifiable {
     var url: String?
     /// The parent record: the app for a helper, the developer for a plist item.
     var container: String?
-    /// The System Settings toggle.
+    /// Set to run: an app added to Open at Login, or a helper its app registered.
     var enabled: Bool
+    /// The System Settings toggle: the user permits it.
     var allowed: Bool
     var hidden: Bool
     var notified: Bool
@@ -40,8 +47,17 @@ struct LoginItem: Equatable, Sendable, Identifiable {
     var id: String { identifier }
 
     var isStartupItem: Bool {
-        if case .other = kind { return false }
-        return true
+        switch kind {
+        case .app, .loginItemHelper, .agent, .daemon, .backgroundRefresh: true
+        case .spotlightImporter, .dockTilePlugin, .appExtension, .other: false
+        }
+    }
+
+    var isExtension: Bool {
+        switch kind {
+        case .spotlightImporter, .dockTilePlugin, .appExtension: true
+        default: false
+        }
     }
 }
 
@@ -163,6 +179,9 @@ final class BTMRecord: NSObject, NSSecureCoding {
         static let agent = 0x8
         static let daemon = 0x10
         static let developer = 0x20
+        static let spotlightImporter = 0x40
+        static let dockTilePlugin = 0x80
+        static let appExtension = 0x800
         static let backgroundRefresh = 0x1000
         static let legacy = 0x10000
     }
@@ -181,6 +200,9 @@ final class BTMRecord: NSObject, NSSecureCoding {
         case TypeBit.agent: kind = .agent
         case TypeBit.daemon: kind = .daemon
         case TypeBit.backgroundRefresh: kind = .backgroundRefresh
+        case TypeBit.spotlightImporter: kind = .spotlightImporter
+        case TypeBit.dockTilePlugin: kind = .dockTilePlugin
+        case TypeBit.appExtension: kind = .appExtension
         default: kind = .other(type: type)
         }
         let identifier = strings["identifier"] ?? ""

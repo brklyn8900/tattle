@@ -10,10 +10,10 @@ final class StartupSnapshotTests: XCTestCase {
 
     private func login(_ identifier: String, name: String, kind: LoginItem.Kind, url: String? = nil, executable: String? = nil,
                        container: String? = nil, developer: String? = nil, team: String? = nil, bundle: String? = nil,
-                       enabled: Bool = true, legacy: Bool = false) -> LoginItem {
+                       enabled: Bool = true, allowed: Bool = true, legacy: Bool = false) -> LoginItem {
         LoginItem(identifier: identifier, name: name, kind: kind, developerName: developer, teamIdentifier: team,
                   bundleIdentifier: bundle, executablePath: executable, url: url, container: container,
-                  enabled: enabled, allowed: true, hidden: false, notified: false, legacy: legacy)
+                  enabled: enabled, allowed: allowed, hidden: false, notified: false, legacy: legacy)
     }
 
     func testJoinsRegisteredPlistAndGroupsTheRest() {
@@ -29,8 +29,10 @@ final class StartupSnapshotTests: XCTestCase {
             login("Acme Inc", name: "Acme Inc", kind: .other(type: 0x20)),
             login("2.com.example.magnet", name: "Magnet", kind: .app, url: "file:///Applications/Magnet.app/", bundle: "com.example.magnet"),
             login("4.com.example.magnetLauncher", name: "magnetLauncher", kind: .loginItemHelper, url: "Contents/Library/LoginItems/magnetLauncher.app",
-                  container: "2.com.example.magnet", bundle: "com.example.magnetLauncher", enabled: false),
-            login("64.com.example.importer", name: "importer", kind: .other(type: 0x40)),
+                  container: "2.com.example.magnet", bundle: "com.example.magnetLauncher", enabled: false, allowed: true),
+            login("64.com.example.importer", name: "importer", kind: .spotlightImporter, url: "Contents/Library/Spotlight/Foo.mdimporter", container: "2.com.example.magnet", allowed: false),
+            login("2.com.example.logic", name: "Logic", kind: .app, url: "file:///Applications/Logic.app/", bundle: "com.example.logic", enabled: false, allowed: true),
+            login("4096.com.example.podcasts", name: "Podcasts refresh", kind: .backgroundRefresh, container: "2.com.example.logic", enabled: true, allowed: false),
         ]
         let state = LaunchctlState(
             services: ["com.acme.updater": .init(pid: 42, lastExitStatus: nil), "com.other.daemon": .init(pid: nil, lastExitStatus: 1),
@@ -41,7 +43,12 @@ final class StartupSnapshotTests: XCTestCase {
         })
 
         XCTAssertEqual(snapshot.appleCount, 880)
-        XCTAssertEqual(snapshot.items.count, 6, "extensions and developer groups are not rows")
+        XCTAssertEqual(snapshot.items.count, 8, "developer groups and container-only apps are not rows")
+        let extensions = snapshot.items(in: .extensions)
+        XCTAssertEqual(extensions.map(\.name), ["importer"])
+        XCTAssertEqual(extensions[0].trigger, "when Spotlight indexes its files")
+        XCTAssertEqual(extensions[0].state, .off)
+        XCTAssertEqual(extensions[0].parent, "Magnet")
 
         let updater = snapshot.items(in: .userAgents).first { $0.id == "com.acme.updater" }!
         XCTAssertEqual(updater.name, "Acme Updater", "the login-items name wins over the label")
@@ -59,13 +66,16 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items(in: .userAgents).first { $0.id == "com.off" }?.state, .disabled)
 
         let apps = snapshot.items(in: .loginItems)
-        XCTAssertEqual(apps.map(\.name), ["Magnet", "magnetLauncher"])
+        XCTAssertEqual(apps.map(\.name), ["Magnet"], "only apps, as in System Settings' Open at Login")
         XCTAssertEqual(apps[0].id, "com.example.magnet")
         XCTAssertEqual(apps[0].state, .running(pid: 7))
         XCTAssertEqual(apps[0].runs, "/Applications/Magnet.app")
-        XCTAssertEqual(apps[1].state, .off)
-        XCTAssertEqual(apps[1].parent, "Magnet")
-        XCTAssertEqual(apps[1].runs, "/Applications/Magnet.app/Contents/Library/LoginItems/magnetLauncher.app")
+        let background = snapshot.items(in: .background)
+        XCTAssertEqual(background.map(\.name), ["magnetLauncher", "Podcasts refresh"])
+        XCTAssertEqual(background[0].state, .enabled, "the allowed bit is the System Settings toggle")
+        XCTAssertEqual(background[0].parent, "Magnet")
+        XCTAssertEqual(background[0].runs, "/Applications/Magnet.app/Contents/Library/LoginItems/magnetLauncher.app")
+        XCTAssertEqual(background[1].state, .off, "set by the app but switched off by the user")
     }
 
     func testLaunchctlOverrideAndNotLoaded() {

@@ -3,14 +3,27 @@ import Foundation
 /// One row of the Startup tab: a launchd job, a login item, or both joined.
 struct StartupItem: Equatable, Sendable, Identifiable {
     enum Group: Int, CaseIterable, Sendable {
-        case loginItems, userAgents, globalAgents, daemons
+        case loginItems, background, userAgents, globalAgents, daemons, extensions
 
         var title: String {
             switch self {
             case .loginItems: "Open at login"
+            case .background: "Allowed in the background"
             case .userAgents: LaunchdItem.Scope.userAgent.title
             case .globalAgents: LaunchdItem.Scope.globalAgent.title
             case .daemons: LaunchdItem.Scope.daemon.title
+            case .extensions: "App extensions"
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .loginItems: "Apps you or they added to System Settings' Open at Login list."
+            case .background: "Helpers, agents and background refresh that apps registered; System Settings lists them under Allow in the Background by app."
+            case .userAgents: "Jobs in your Library/LaunchAgents: run as you when you log in, usually installed by apps you use."
+            case .globalAgents: "Jobs in /Library/LaunchAgents: run for whoever logs in, installed with an administrator password."
+            case .daemons: "Jobs in /Library/LaunchDaemons: run as root from boot, logged in or not."
+            case .extensions: "Spotlight importers, Quick Look and other extensions, Dock tile plug-ins: run when macOS needs them, not at startup."
             }
         }
     }
@@ -134,13 +147,16 @@ struct StartupSnapshot: Equatable, Sendable {
                 launchdScope: job.scope))
         }
 
-        for item in loginItems where item.isStartupItem && !joined.contains(item.identifier) {
+        for item in loginItems where (item.isStartupItem || item.isExtension) && !joined.contains(item.identifier) {
+            // An app record without the enabled bit is only the container for its helpers
+            // and extensions; System Settings does not list it under Open at Login.
+            if item.kind == .app && !item.enabled { continue }
             let container = item.container.flatMap { byIdentifier[$0] }
             let path = executablePath(of: item, container: container)
             let plist = item.url.flatMap(URL.init(string:)).flatMap { $0.isFileURL && $0.pathExtension == "plist" ? $0 : nil }
             items.append(StartupItem(
                 id: item.bundleIdentifier ?? item.identifier,
-                group: .loginItems,
+                group: item.isExtension ? .extensions : item.kind == .app ? .loginItems : .background,
                 name: item.name,
                 runs: path,
                 trigger: trigger(for: item),
@@ -177,7 +193,7 @@ struct StartupSnapshot: Equatable, Sendable {
         if let label = item.bundleIdentifier, let service = state.services[label], let pid = service.pid {
             return .running(pid: pid)
         }
-        return item.enabled ? .enabled : .off
+        return item.allowed ? .enabled : .off
     }
 
     private static func trigger(for item: LoginItem) -> String {
@@ -186,6 +202,9 @@ struct StartupSnapshot: Equatable, Sendable {
         case .agent: "at login, by its app"
         case .daemon: "at boot, by its app"
         case .backgroundRefresh: "in the background"
+        case .spotlightImporter: "when Spotlight indexes its files"
+        case .dockTilePlugin: "while its app is in the Dock"
+        case .appExtension: "when macOS needs it"
         case .other: "unknown"
         }
     }

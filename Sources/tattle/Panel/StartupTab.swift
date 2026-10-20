@@ -41,9 +41,20 @@ private struct StartupList: View {
             ForEach(StartupItem.Group.allCases, id: \.self) { group in
                 let items = snapshot.items(in: group)
                 if !items.isEmpty {
-                    Section(group.title) {
+                    Section {
                         ForEach(items) { item in
                             NavigationLink(value: item) { StartupRow(item: item) }
+                        }
+                    } header: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(group.title)
+                            Text(group.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textCase(nil)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
