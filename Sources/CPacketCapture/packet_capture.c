@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 int tattle_capture_open(const char *ifname) {
@@ -84,4 +85,52 @@ int tattle_interface_mac(const char *ifname, uint8_t mac[6]) {
     }
     freeifaddrs(list);
     return found;
+}
+
+int tattle_broker_request(const char *socket_path, const char *ifname, int *status, int *err) {
+    *status = -1;
+    *err = 0;
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) { *err = errno; return -1; }
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof addr);
+    addr.sun_family = AF_UNIX;
+    if (strlen(socket_path) >= sizeof addr.sun_path) { close(fd); *err = ENAMETOOLONG; return -1; }
+    strlcpy(addr.sun_path, socket_path, sizeof addr.sun_path);
+    if (connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0) { *err = errno; close(fd); return -1; }
+
+    struct timeval tv = { 5, 0 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+
+    size_t length = strlen(ifname);
+    if (write(fd, ifname, length) != (ssize_t)length || write(fd, "\n", 1) != 1) { *err = errno; close(fd); return -1; }
+
+    unsigned char reply = 0;
+    struct iovec iov = { .iov_base = &reply, .iov_len = 1 };
+    char control[CMSG_SPACE(sizeof(int))];
+    memset(control, 0, sizeof control);
+    struct msghdr msg;
+    memset(&msg, 0, sizeof msg);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof control;
+    ssize_t n = recvmsg(fd, &msg, 0);
+    if (n != 1) { *err = n < 0 ? errno : ECONNRESET; close(fd); return -1; }
+    *status = reply;
+    int result = -1;
+    if (reply == 0) {
+        for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+            if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS && cmsg->cmsg_len == CMSG_LEN(sizeof(int))) {
+                memcpy(&result, CMSG_DATA(cmsg), sizeof(int));
+            }
+        }
+        if (result < 0) { *status = -1; *err = EPROTO; }
+    } else if (reply == 3) {
+        int code = 0;
+        if (read(fd, &code, sizeof code) == (ssize_t)sizeof code) *err = code;
+    }
+    close(fd);
+    return result;
 }

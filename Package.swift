@@ -25,6 +25,11 @@ let package = Package(
             ],
             path: "Sources/tattle"
         ),
+        .executableTarget(
+            name: "tattle-capture-broker",
+            path: "Sources/tattle-capture-broker",
+            linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation")]
+        ),
         .testTarget(
             name: "tattleTests",
             dependencies: ["tattle"],
