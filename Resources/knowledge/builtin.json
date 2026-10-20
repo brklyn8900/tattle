@@ -287,7 +287,7 @@
       "match": "exact",
       "pattern": "claude",
       "owner": "Anthropic",
-      "purpose": "Claude Code, Anthropic's coding agent for the terminal. One process per session, usually under a shell in a terminal tab; the npm and MCP processes beneath it are tool servers it starts for the session and stops when the session ends.",
+      "purpose": "Claude Code, Anthropic's coding agent for the terminal. One process per session, usually under a shell in a terminal tab; the npm and MCP processes beneath it, if any, are tool servers it starts for the session and stops when the session ends.",
       "category": "developer-tool",
       "risk": "low",
       "confidence": "high"
