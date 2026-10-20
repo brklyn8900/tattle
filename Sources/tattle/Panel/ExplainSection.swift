@@ -85,15 +85,20 @@ struct ExplainSection: View {
         }
     }
 
+    /// Where the answer came from, and how much the source trusted it.
     private func provenance(_ rule: Rule) -> String {
+        var parts: [String]
         switch rule.source {
-        case .llm: rule.confirmed == nil ? "Model answer, unconfirmed" : "Model answer, confirmed by you"
-        case .user: "Your rule"
-        case .builtin: "Tattle's rules"
-        case .iap: "Declared by the app"
-        case .appleList: "Apple's host list"
-        case .trackerRadar: "Tracker Radar"
+        case .llm: parts = [rule.confirmed == nil ? "Model answer, unconfirmed" : "Model answer, confirmed by you"]
+        case .user: parts = ["Your rule"]
+        case .builtin: parts = ["Tattle's rules"]
+        case .iap: parts = ["Declared by the app"]
+        case .appleList: parts = ["Apple's host list"]
+        case .trackerRadar: parts = ["Tracker Radar"]
         }
+        if let risk = rule.risk { parts.append("risk \(risk.rawValue)") }
+        if let confidence = rule.confidence { parts.append("confidence \(confidence.rawValue)") }
+        return parts.joined(separator: " · ")
     }
 
     private func describe(_ error: Error) -> String {
