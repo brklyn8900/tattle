@@ -15,6 +15,8 @@ struct CodeSignature: Equatable, Sendable {
         /// Signed without any certificate.
         case adHoc
         case unsigned
+        /// A script run by an interpreter: the interpreter is Apple's, the code is not signed.
+        case script
         /// Signed, but the signature does not match the binary.
         case invalid(String)
         /// Some other certificate.
@@ -33,8 +35,25 @@ struct CodeSignature: Equatable, Sendable {
         case .developerID(let name), .development(let name), .other(let name): name
         case .adHoc: "ad hoc signed"
         case .unsigned: "unsigned"
+        case .script: "script, not signed"
         case .invalid: "invalid signature"
         }
+    }
+
+    /// Interpreters whose signature says nothing about what they run.
+    static let interpreters: Set<String> = [
+        "sh", "bash", "zsh", "ksh", "csh", "tcsh", "dash", "osascript", "python", "python3",
+        "perl", "ruby", "php", "node", "env", "open",
+    ]
+
+    /// The signature that matters for a command line: the script's when an interpreter
+    /// runs a file, "script" when it runs inline code, otherwise the program's.
+    static func read(program: String, arguments: [String], reading: (String) -> CodeSignature? = { read(path: $0) }) -> CodeSignature? {
+        guard interpreters.contains(URL(fileURLWithPath: program).lastPathComponent) else { return reading(program) }
+        for argument in arguments where argument.hasPrefix("/") && FileManager.default.fileExists(atPath: argument) {
+            return reading(argument)
+        }
+        return CodeSignature(signer: .script)
     }
 
     /// Reads and validates the signature at `path`. Resources are not validated: that

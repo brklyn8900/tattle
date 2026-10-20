@@ -125,7 +125,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 runs: runs,
                 trigger: job.isPlaceholder ? "never" : job.triggers.map { $0.description(scope: job.scope) }.joined(separator: ", "),
                 state: launchdState(job, state: state),
-                signature: job.program.flatMap(signature),
+                signature: job.program.flatMap { CodeSignature.read(program: $0, arguments: job.arguments, reading: signature) },
                 developer: registered?.developerName,
                 teamIdentifier: registered?.teamIdentifier,
                 parent: nil,
