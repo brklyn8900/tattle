@@ -8,8 +8,9 @@ struct AppDatabase: Sendable {
 
     /// Opens (or creates) the database at `url`, running pending migrations.
     init(at url: URL) throws {
-        try Self.migrator.migrate(DatabaseQueue(path: url.path))
-        writer = try DatabaseQueue(path: url.path)
+        let queue = try DatabaseQueue(path: url.path)
+        try Self.migrator.migrate(queue)
+        writer = queue
     }
 
     /// An in-memory database for tests.
