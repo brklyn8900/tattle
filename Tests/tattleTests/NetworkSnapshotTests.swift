@@ -20,6 +20,9 @@ final class NetworkSnapshotTests: XCTestCase {
             ProcessEntry(pid: 100, parentPid: 1, uid: 501, name: "Slack", path: "/Applications/Slack.app/Contents/MacOS/Slack", started: .distantPast),
             ProcessEntry(pid: 101, parentPid: 100, uid: 501, name: "Slack Helper", path: "/Applications/Slack.app/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper", started: .distantPast),
             ProcessEntry(pid: 300, parentPid: 1, uid: 0, name: "trustd", path: "/usr/libexec/trustd", started: .distantPast),
+            ProcessEntry(pid: 400, parentPid: 1, uid: 501, name: "com.apple.WebKit.Networking",
+                         path: "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.Networking.xpc/Contents/MacOS/com.apple.WebKit.Networking", started: .distantPast),
+            ProcessEntry(pid: 500, parentPid: 1, uid: 501, name: "Safari", path: "/Applications/Safari.app/Contents/MacOS/Safari", started: .distantPast),
         ]
         return Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
     }()
@@ -39,6 +42,18 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(daemon.displayName, "trustd")
         XCTAssertEqual(daemon.groupID, "process:trustd")
         XCTAssertEqual(ConnectionOwner.resolve(pid: 999, in: processes, runningApp: { _ in nil }, signature: { _ in nil }).processName, "pid 999")
+
+        // Safari's networking runs in a service launchd starts for it: not a child, but
+        // macOS knows whose it is.
+        let service = ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil },
+                                              responsible: { $0 == 400 ? 500 : nil }, signature: { _ in nil })
+        XCTAssertEqual(service.displayName, "Safari")
+        XCTAssertEqual(service.processName, "com.apple.WebKit.Networking")
+        XCTAssertEqual(service.groupID, "/Applications/Safari.app")
+        let orphan = ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { _ in nil })
+        XCTAssertEqual(orphan.displayName, "com.apple.WebKit.Networking", "no responsible process: the service stands alone")
+        XCTAssertEqual(ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil }, responsible: { _ in 400 }, signature: { _ in nil }).displayName,
+                       "com.apple.WebKit.Networking", "responsible for itself")
     }
 
     func testGroupsAndCounts() {

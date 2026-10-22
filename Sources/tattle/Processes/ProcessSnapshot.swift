@@ -218,7 +218,7 @@ struct ProcessSnapshot: Equatable, Sendable {
     static func build(
         entries: [ProcessEntry], previous: ProcessSnapshot?,
         signature: (String) -> CodeSignature?, runningApp: (Int32) -> String? = { _ in nil },
-        takenAt: Date = Date()
+        responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
     ) -> ProcessSnapshot {
         let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         let elapsed = previous.map { takenAt.timeIntervalSince($0.takenAt) } ?? 0
@@ -239,7 +239,7 @@ struct ProcessSnapshot: Equatable, Sendable {
                 workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
                 signature: entry.path.flatMap(signature),
-                app: app(of: entry.pid, in: byPid, runningApp: runningApp, memo: &apps)))
+                app: app(of: entry.pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &apps)))
         }
 
         let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -267,11 +267,13 @@ struct ProcessSnapshot: Equatable, Sendable {
     }
 
     /// The app a process belongs to: the bundle on its own path, else the one Launch
-    /// Services opened it from, else the nearest ancestor's. Memoized, since whole trees
-    /// share an answer. The Network tab uses it too, to put a helper's connection under
-    /// its app.
+    /// Services opened it from, else the nearest ancestor's, else, for a service that
+    /// launchd started on an app's behalf (Safari's networking service, say), the app
+    /// macOS holds responsible for it. Memoized, since whole trees share an answer. The
+    /// Network tab uses it too, to put a helper's connection under its app.
     static func app(
-        of pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?, memo: inout [Int32: AppBundle?]
+        of pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
+        responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), memo: inout [Int32: AppBundle?]
     ) -> AppBundle? {
         if let known = memo[pid] { return known }
         memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
@@ -282,7 +284,10 @@ struct ProcessSnapshot: Equatable, Sendable {
         var result = entry.path.flatMap(AppBundle.containing)
             ?? runningApp(pid).flatMap { $0.hasSuffix(".app") ? AppBundle(path: $0) : nil }
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {
-            result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, memo: &memo)
+            result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
+        }
+        if result == nil, entry.parentPid <= 1, let owner = responsible(pid), byPid[owner] != nil {
+            result = app(of: owner, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
         }
         memo[pid] = result
         return result

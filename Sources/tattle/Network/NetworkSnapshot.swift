@@ -17,11 +17,12 @@ struct ConnectionOwner: Equatable, Sendable {
     /// way the Processes tab does. `signature` reads the app bundle, or the executable
     /// when there is no app.
     static func resolve(
-        pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?, signature: (String) -> CodeSignature?
+        pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
+        responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), signature: (String) -> CodeSignature?
     ) -> ConnectionOwner {
         guard let entry = byPid[pid] else { return ConnectionOwner(processName: "pid \(pid)") }
         var memo: [Int32: AppBundle?] = [:]
-        let app = ProcessSnapshot.app(of: pid, in: byPid, runningApp: runningApp, memo: &memo)
+        let app = ProcessSnapshot.app(of: pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
         let signed = (app?.path ?? entry.path).flatMap(signature)
         return ConnectionOwner(processName: entry.name, path: entry.path, app: app, signature: signed)
     }
