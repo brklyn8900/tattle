@@ -36,7 +36,7 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertNil(facts["Name from"])
 
         let named = LiveConnection(connection: connection("17.253.144.10"), owner: owner, isNew: false,
-                                   name: ConnectionName(name: "www.apple.com", source: .sni, kind: .destination))
+                                   outcome: .named(ConnectionName(name: "www.apple.com", source: .sni, kind: .destination)))
         XCTAssertEqual(named.title, "www.apple.com")
         XCTAssertEqual(named.explainKey, "www.apple.com")
         facts = Dictionary(named.facts(now: t0).map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
@@ -45,7 +45,7 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(facts["Name from"], "the connection's TLS handshake")
 
         let relayed = LiveConnection(connection: connection("17.253.144.10"), owner: owner, isNew: false,
-                                     name: ConnectionName(name: "mask.icloud.com", source: .quic, kind: .relay))
+                                     outcome: .named(ConnectionName(name: "mask.icloud.com", source: .quic, kind: .relay)))
         XCTAssertEqual(relayed.title, "relayed", "a relay's name is never shown as the destination")
         XCTAssertEqual(relayed.explainKey, "mask.icloud.com", "but the knowledge base explains the relay")
         facts = Dictionary(relayed.facts(now: t0).map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
@@ -53,13 +53,13 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(facts["Relay"], "mask.icloud.com")
 
         let hidden = LiveConnection(connection: connection("104.16.0.1"), owner: owner, isNew: false,
-                                    name: ConnectionName(name: "cloudflare-ech.com", source: .sni, kind: .hidden))
+                                    outcome: .named(ConnectionName(name: "cloudflare-ech.com", source: .sni, kind: .hidden)))
         XCTAssertEqual(hidden.title, "name hidden")
         facts = Dictionary(hidden.facts(now: t0).map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
         XCTAssertEqual(facts["Cover name"], "cloudflare-ech.com")
 
         let dns = LiveConnection(connection: connection("17.253.144.10"), owner: owner, isNew: false,
-                                 name: ConnectionName(name: "cdn.example.net", source: .dns, kind: .destination))
+                                 outcome: .named(ConnectionName(name: "cdn.example.net", source: .dns, kind: .destination)))
         XCTAssertEqual(dns.facts(now: t0).first { $0.name == "Name from" }?.value, "a DNS reply for the address", "marked, because the DNS map is ambiguous")
 
         let snapshot = NetworkSnapshot(connections: [unnamed, named, relayed, hidden, dns], takenAt: t0)
@@ -70,11 +70,12 @@ final class ConnectionNameTests: XCTestCase {
 
     func testPendingNamesKeepsNamesForOpenFlowsAndForgetsTheRest() {
         var table = PendingNames()
-        let apple = ConnectionName(name: "www.apple.com", source: .sni, kind: .destination)
+        let apple = NameOutcome.named(ConnectionName(name: "www.apple.com", source: .sni, kind: .destination))
         table.set(apple, for: "tcp/50000>17.1.1.1:443", at: t0)
-        table.set(ConnectionName(name: "example.com", source: .quic, kind: .destination), for: "udp/50001>1.1.1.1:443", at: t0 + 100)
-        XCTAssertEqual(table.name(for: "tcp/50000>17.1.1.1:443"), apple)
-        XCTAssertNil(table.name(for: "tcp/50000>17.1.1.1:80"))
+        table.set(.unnamed(.timeout), for: "udp/50001>1.1.1.1:443", at: t0 + 100)
+        XCTAssertEqual(table.outcome(for: "tcp/50000>17.1.1.1:443"), apple)
+        XCTAssertEqual(table.outcome(for: "udp/50001>1.1.1.1:443"), .unnamed(.timeout), "no name is an answer too")
+        XCTAssertNil(table.outcome(for: "tcp/50000>17.1.1.1:80"))
 
         table.prune(now: t0 + PendingNames.keepFor + 1, keeping: ["tcp/50000>17.1.1.1:443"])
         XCTAssertEqual(table.count, 2, "the open flow's name stays past its age; the other is still young")
@@ -82,7 +83,23 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(table.count, 0)
 
         table.set(apple, for: "k", at: t0)
-        table.set(ConnectionName(name: "later.apple.com", source: .dns, kind: .destination), for: "k", at: t0 + 1)
-        XCTAssertEqual(table.name(for: "k")?.name, "later.apple.com", "the latest name wins")
+        table.set(.named(ConnectionName(name: "later.apple.com", source: .dns, kind: .destination)), for: "k", at: t0 + 1)
+        XCTAssertEqual(table.outcome(for: "k")?.name?.name, "later.apple.com", "the latest outcome wins")
+    }
+
+    func testUnnamedReasonOnTheRowAndInHistoryCodes() {
+        let owner = ConnectionOwner(processName: "RCMservice")
+        let silent = LiveConnection(connection: connection("40.82.255.130", port: 80), owner: owner, isNew: false, outcome: .unnamed(.timeout))
+        XCTAssertNil(silent.name)
+        XCTAssertEqual(silent.title, "40.82.255.130:80")
+        XCTAssertEqual(silent.facts(now: t0).first { $0.name == "No name" }?.value, "the connection sent nothing in its first 20 seconds")
+        XCTAssertNil(LiveConnection(connection: connection("1.1.1.1"), owner: owner, isNew: false).facts(now: t0).first { $0.name == "No name" }, "nothing to say until the sniffer gives up")
+
+        for reason in [FlowEvent.Reason.notHandshake, .gap, .noServerName, .quic(.unsupportedVersion), .quic(.decryptFailed), .timeout] {
+            XCTAssertTrue(reason.code.hasPrefix("none:"), "a reason is never mistaken for a source")
+            XCTAssertEqual(FlowEvent.Reason(code: reason.code), reason)
+        }
+        XCTAssertNil(FlowEvent.Reason(code: "sni"))
+        XCTAssertNil(FlowEvent.Reason(code: "none:quic-nonsense"))
     }
 }

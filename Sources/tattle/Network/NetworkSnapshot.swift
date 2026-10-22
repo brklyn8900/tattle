@@ -36,6 +36,22 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
     var isNew: Bool
     /// From the sniffer, when it saw the handshake; nil until then or without packet access.
     var name: ConnectionName? = nil
+    /// Why the sniffer found no name, once it has given up.
+    var unnamedReason: FlowEvent.Reason? = nil
+
+    var outcome: NameOutcome? {
+        if let name { return .named(name) }
+        if let unnamedReason { return .unnamed(unnamedReason) }
+        return nil
+    }
+
+    init(connection: Connection, owner: ConnectionOwner, isNew: Bool, outcome: NameOutcome? = nil) {
+        self.connection = connection
+        self.owner = owner
+        self.isNew = isNew
+        name = outcome?.name
+        unnamedReason = outcome?.reason
+    }
 
     var id: String { connection.id }
 
@@ -95,6 +111,8 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before"))
         if let name {
             facts.append(Fact(name: "Name from", value: name.source.text))
+        } else if let unnamedReason {
+            facts.append(Fact(name: "No name", value: unnamedReason.text))
         }
         return facts
     }

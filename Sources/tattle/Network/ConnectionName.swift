@@ -25,25 +25,41 @@ struct ConnectionName: Equatable, Sendable {
     }
 }
 
-/// Names by flow key, waiting for or already attached to a connection. A name can arrive
+/// What the sniffer concluded about a flow: a name, or why there is none.
+enum NameOutcome: Equatable, Sendable {
+    case named(ConnectionName)
+    case unnamed(FlowEvent.Reason)
+
+    var name: ConnectionName? {
+        if case .named(let name) = self { return name }
+        return nil
+    }
+
+    var reason: FlowEvent.Reason? {
+        if case .unnamed(let reason) = self { return reason }
+        return nil
+    }
+}
+
+/// Outcomes by flow key, waiting for or already attached to a connection. One can arrive
 /// before the socket table shows the connection or after; either way it is here when the
 /// other side turns up, and forgotten once nothing claimed it for a while.
 struct PendingNames: Equatable, Sendable {
     static let keepFor: TimeInterval = 300
 
-    private var names: [String: (name: ConnectionName, at: Date)] = [:]
+    private var names: [String: (outcome: NameOutcome, at: Date)] = [:]
 
     init() {}
 
     static func == (a: PendingNames, b: PendingNames) -> Bool {
-        a.names.keys == b.names.keys && a.names.allSatisfy { b.names[$0.key]?.name == $0.value.name }
+        a.names.keys == b.names.keys && a.names.allSatisfy { b.names[$0.key]?.outcome == $0.value.outcome }
     }
 
-    mutating func set(_ name: ConnectionName, for flowKey: String, at date: Date) {
-        names[flowKey] = (name, date)
+    mutating func set(_ outcome: NameOutcome, for flowKey: String, at date: Date) {
+        names[flowKey] = (outcome, date)
     }
 
-    func name(for flowKey: String) -> ConnectionName? { names[flowKey]?.name }
+    func outcome(for flowKey: String) -> NameOutcome? { names[flowKey]?.outcome }
 
     /// Forgets names older than `keepFor`, except those of flows still open.
     mutating func prune(now: Date, keeping open: Set<String>) {

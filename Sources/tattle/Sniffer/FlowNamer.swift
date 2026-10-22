@@ -53,6 +53,43 @@ struct FlowEvent: Equatable, Sendable {
         case quic(QUIC.Failure)
         /// No handshake within the window: no payload, or one that never completed.
         case timeout
+
+        /// Stored in history as the name source of an unnamed connection.
+        static let codePrefix = "none:"
+
+        var code: String {
+            switch self {
+            case .notHandshake: Self.codePrefix + "not-handshake"
+            case .gap: Self.codePrefix + "gap"
+            case .noServerName: Self.codePrefix + "no-server-name"
+            case .quic(let failure): Self.codePrefix + "quic-" + failure.rawValue
+            case .timeout: Self.codePrefix + "timeout"
+            }
+        }
+
+        init?(code: String) {
+            switch code {
+            case Self.codePrefix + "not-handshake": self = .notHandshake
+            case Self.codePrefix + "gap": self = .gap
+            case Self.codePrefix + "no-server-name": self = .noServerName
+            case Self.codePrefix + "timeout": self = .timeout
+            default:
+                guard code.hasPrefix(Self.codePrefix + "quic-"),
+                      let failure = QUIC.Failure(rawValue: String(code.dropFirst(Self.codePrefix.count + 5))) else { return nil }
+                self = .quic(failure)
+            }
+        }
+
+        var text: String {
+            switch self {
+            case .notHandshake: "the connection did not start with a TLS or HTTP handshake"
+            case .gap: "part of the handshake was missed"
+            case .noServerName: "the handshake carried no server name"
+            case .quic(.unsupportedVersion): "a QUIC version Tattle cannot read"
+            case .quic: "the QUIC handshake could not be read"
+            case .timeout: "the connection sent nothing in its first \(Int(FlowNamer.finalizeAfter)) seconds"
+            }
+        }
     }
 
     var key: FlowKey

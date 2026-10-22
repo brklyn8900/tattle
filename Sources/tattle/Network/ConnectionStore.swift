@@ -80,10 +80,21 @@ struct ConnectionStore: Sendable {
         }
     }
 
-    /// Names the newest row of the flow, open or not: a short connection may have
-    /// closed by the time its name arrives. An IPv6 socket talking IPv4 recorded a
-    /// mapped address; the flow carries the plain one.
-    func name(flow: FlowKey, name: String, source: NameSource) throws {
+    /// Records the sniffer's outcome on the newest row of the flow, open or not: a short
+    /// connection may have closed by the time its name arrives. An unnamed outcome keeps
+    /// its reason in the name source column, prefixed so it is never read as a source.
+    /// An IPv6 socket talking IPv4 recorded a mapped address; the flow carries the plain one.
+    func record(_ outcome: NameOutcome, flow: FlowKey) throws {
+        let name: String?
+        let source: String
+        switch outcome {
+        case .named(let found):
+            name = found.name
+            source = found.source.rawValue
+        case .unnamed(let reason):
+            name = nil
+            source = reason.code
+        }
         try database.writer.write { db in
             try db.execute(
                 sql: """
@@ -92,7 +103,7 @@ struct ConnectionStore: Sendable {
                                 WHERE proto = ? AND localPort = ? AND remotePort = ?
                                   AND (remoteAddress = ? OR remoteAddress = '::ffff:' || ?))
                     """,
-                arguments: [name, source.rawValue, flow.proto == .tcp ? "tcp" : "udp", flow.localPort, flow.remotePort,
+                arguments: [name, source, flow.proto == .tcp ? "tcp" : "udp", flow.localPort, flow.remotePort,
                             flow.remote.text, flow.remote.text])
         }
     }

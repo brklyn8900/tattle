@@ -45,21 +45,27 @@ final class ConnectionStoreTests: XCTestCase {
         let first = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari"))
         try store.close(key: first.key, lastSeen: t0 + 1, ended: t0 + 2)
         try store.open(ConnectionRecord(connection(200, "17.1.1.1", at: t0 + 20), processName: "curl"))
-        try store.name(flow: flow, name: "www.apple.com", source: .sni)
+        try store.record(.named(ConnectionName(name: "www.apple.com", source: .sni, kind: .destination)), flow: flow)
         let rows = try store.history(remoteAddress: "17.1.1.1")
         XCTAssertEqual(rows.map(\.name), ["www.apple.com", nil], "the reused port names the newest row only, whatever its pid")
         XCTAssertEqual(rows[0].nameSource, "sni")
 
         try store.close(key: rows[0].key, lastSeen: t0 + 21, ended: t0 + 22)
-        try store.name(flow: flow, name: "cdn.apple.com", source: .dns)
+        try store.record(.named(ConnectionName(name: "cdn.apple.com", source: .dns, kind: .destination)), flow: flow)
         XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1")[0].name, "cdn.apple.com", "a DNS fallback can land after the connection closed")
 
         var mapped = connection(300, "::ffff:17.1.1.1", at: t0 + 30)
         mapped.isIPv6 = true
         try store.open(ConnectionRecord(mapped, processName: "node"))
-        try store.name(flow: flow, name: "v6.apple.com", source: .quic)
+        try store.record(.named(ConnectionName(name: "v6.apple.com", source: .quic, kind: .destination)), flow: flow)
         XCTAssertEqual(try store.history(remoteAddress: "::ffff:17.1.1.1")[0].name, "v6.apple.com", "an IPv6 socket talking IPv4")
-        try store.name(flow: FlowKey(proto: .udp, localPort: 1, remote: IPAddress(bytes: [2, 2, 2, 2]), remotePort: 443), name: "nowhere", source: .sni)
+        try store.record(.named(ConnectionName(name: "nowhere", source: .sni, kind: .destination)),
+                         flow: FlowKey(proto: .udp, localPort: 1, remote: IPAddress(bytes: [2, 2, 2, 2]), remotePort: 443))
+
+        try store.record(.unnamed(.timeout), flow: flow)
+        let silent = try store.history(remoteAddress: "::ffff:17.1.1.1")[0]
+        XCTAssertNil(silent.name)
+        XCTAssertEqual(silent.nameSource, "none:timeout", "why there is no name, where a source would be")
     }
 
     func testTouchStaleAndPrune() throws {

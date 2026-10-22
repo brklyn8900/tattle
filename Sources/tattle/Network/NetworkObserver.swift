@@ -116,11 +116,14 @@ final class NetworkObserver {
             case .opened:
                 opened = true
             case .named(let text, let source):
-                let name = ConnectionName(name: text, source: source, kind: kind(of: text))
-                names.set(name, for: event.key.text, at: now)
-                attach(name, to: event.key)
+                let outcome = NameOutcome.named(ConnectionName(name: text, source: source, kind: kind(of: text)))
+                names.set(outcome, for: event.key.text, at: now)
+                attach(outcome, to: event.key)
             case .unnamed(let reason):
                 Log.sniffer.debug("no name for \(event.key.text, privacy: .public): \(String(describing: reason), privacy: .public)")
+                let outcome = NameOutcome.unnamed(reason)
+                names.set(outcome, for: event.key.text, at: now)
+                attach(outcome, to: event.key)
             }
         }
         if opened { schedulePromptPoll() }
@@ -133,17 +136,18 @@ final class NetworkObserver {
         return kind
     }
 
-    /// Puts a name on the live row, if the socket table has shown the connection yet,
-    /// and on its history record, which may already be closed.
-    private func attach(_ name: ConnectionName, to flow: FlowKey) {
+    /// Puts the outcome on the live row, if the socket table has shown the connection
+    /// yet, and on its history record, which may already be closed.
+    private func attach(_ outcome: NameOutcome, to flow: FlowKey) {
         if var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flow.text }) {
-            snapshot.connections[index].name = name
+            snapshot.connections[index].name = outcome.name
+            snapshot.connections[index].unnamedReason = outcome.reason
             self.snapshot = snapshot
         } else {
-            Log.sniffer.debug("name for \(flow.text, privacy: .public) arrived with no live connection")
+            Log.sniffer.debug("outcome for \(flow.text, privacy: .public) arrived with no live connection")
         }
         do {
-            try store.name(flow: flow, name: name.name, source: name.source)
+            try store.record(outcome, flow: flow)
         } catch {
             Log.app.error("connection name write failed: \(error, privacy: .public)")
         }
@@ -223,7 +227,7 @@ final class NetworkObserver {
             let owner = owners[connection.pid] ?? .unknown
             let isNew = !known.contains(connection.remoteAddress)
             known.insert(connection.remoteAddress)
-            opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, name: names.name(for: connection.flowKey)))
+            opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, outcome: names.outcome(for: connection.flowKey)))
         }
         record(opened: opened, closed: changes.closed, now: now)
 
@@ -238,7 +242,7 @@ final class NetworkObserver {
             return LiveConnection(connection: connection,
                                   owner: before?.owner ?? owners[connection.pid] ?? .unknown,
                                   isNew: before?.isNew ?? false,
-                                  name: before?.name ?? names.name(for: connection.flowKey))
+                                  outcome: before?.outcome ?? names.outcome(for: connection.flowKey))
         }
         snapshot = NetworkSnapshot(connections: live, takenAt: now)
     }
@@ -250,7 +254,7 @@ final class NetworkObserver {
                     live.connection, processName: live.owner.processName, appName: live.owner.app?.name,
                     appPath: live.owner.app?.path, signer: live.owner.signature?.summary)
                 record.name = live.name?.name
-                record.nameSource = live.name?.source.rawValue
+                record.nameSource = live.name?.source.rawValue ?? live.unnamedReason?.code
                 try store.open(record)
             }
             for connection in closed {
