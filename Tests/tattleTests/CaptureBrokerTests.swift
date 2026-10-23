@@ -11,7 +11,9 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345")?.callerRequirement,
                        "anchor apple generic and identifier \"io.github.eladefrati.tattle\" and certificate leaf[subject.OU] = \"ABCDE12345\"")
         XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "x", team: nil)?.callerRequirement, "cdhash H\"\(String(repeating: "ab", count: 20))\"")
-        XCTAssertNoThrow(try CaptureBroker.BuildIdentity.running(), "the test process is signed")
+        XCTAssertThrowsError(try CaptureBroker.BuildIdentity.running(), "the test runner has get-task-allow") {
+            XCTAssertEqual($0 as? CaptureBroker.InstallError, .notHardened)
+        }
     }
 
     /// Whether the broker could compile `text`, as it does at startup.
@@ -308,6 +310,49 @@ final class CaptureBrokerTests: XCTestCase {
             process.standardError = FileHandle.nullDevice
             try process.run()
             expectExit(process, status: 2)
+        }
+    }
+
+    /// A probe that stays running long enough to be looked at, and its code as the kernel sees it.
+    private func running(_ caller: Caller) throws -> (Process, SecCode) {
+        let process = Process()
+        process.executableURL = caller.url
+        process.arguments = ["/nonexistent/broker.sock", "en0", "--delay", "30"]
+        process.standardOutput = FileHandle.nullDevice
+        try process.run()
+        addTeardownBlock { process.terminate() }
+        return (process, try guest(process))
+    }
+
+    /// A fresh look at a running process: Security keeps the file it first read inside a SecCode.
+    private func guest(_ process: Process) throws -> SecCode {
+        var code: SecCode?
+        XCTAssertEqual(SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid: process.processIdentifier] as CFDictionary, [], &code), errSecSuccess)
+        return try XCTUnwrap(code)
+    }
+
+    /// The bundle is the user's to rewrite while Tattle runs: what install pins must be the code
+    /// that is running, or a process could rename its own binary over Tattle's and be admitted.
+    func testIdentityIsConfirmedAgainstTheRunningCode() throws {
+        let genuine = try caller(.hardened)
+        let impostor = try caller(.hardened)
+        let (process, code) = try running(genuine)
+        let identity = try CaptureBroker.BuildIdentity.confirmed(code)
+        XCTAssertEqual(identity.buildRequirement, genuine.requirement)
+
+        XCTAssertEqual(rename(impostor.url.path, genuine.url.path), 0)
+        XCTAssertThrowsError(try CaptureBroker.BuildIdentity.confirmed(try guest(process))) {
+            XCTAssertEqual($0 as? CaptureBroker.InstallError, .changedOnDisk)
+        }
+    }
+
+    /// Installing for a build the broker would refuse gives a broker that never answers it.
+    func testIdentityRefusesABuildTheBrokerWouldRefuse() throws {
+        for signing in Signing.allCases where signing != .hardened {
+            let (_, code) = try running(try caller(signing))
+            XCTAssertThrowsError(try CaptureBroker.BuildIdentity.confirmed(code), "\(signing)") {
+                XCTAssertEqual($0 as? CaptureBroker.InstallError, .notHardened)
+            }
         }
     }
 

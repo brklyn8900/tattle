@@ -1,3 +1,4 @@
+import CCodePolicy
 import CPacketCapture
 import Foundation
 import Security
@@ -34,6 +35,11 @@ enum CaptureBroker {
         case noHelperInBundle
         /// The running app has no signature the broker could check callers against.
         case unsigned
+        /// The app's executable on disk is not the code that is running: replaced or rebuilt
+        /// since launch. Install would pin the wrong build, so it does not start.
+        case changedOnDisk
+        /// The broker would refuse this build (code_policy.h), so installing it gains nothing.
+        case notHardened
         /// The administrator dialog was cancelled or the script failed; the message is
         /// osascript's.
         case failed(String)
@@ -83,15 +89,17 @@ enum CaptureBroker {
         /// This exact build, in either signing mode.
         var buildRequirement: String { "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\"" }
 
-        /// The running app, from its signature.
+        /// The running app, confirmed against the code the kernel loaded.
         static func running() throws -> BuildIdentity {
             var selfCode: SecCode?
             guard SecCodeCopySelf([], &selfCode) == errSecSuccess, let code = selfCode else { throw InstallError.unsigned }
-            return try read(code)
+            return try confirmed(code)
         }
 
-        /// Reads `code`'s signature from its file.
-        static func read(_ code: SecCode) throws -> BuildIdentity {
+        /// Reads `code`'s signature from its file, then confirms it describes the code that is
+        /// running and that the broker would answer that code. `running()` passes this app;
+        /// tests pass another process.
+        static func confirmed(_ code: SecCode) throws -> BuildIdentity {
             var staticCode: SecStaticCode?
             var infoRef: CFDictionary?
             guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let fixed = staticCode,
@@ -102,6 +110,15 @@ enum CaptureBroker {
             else { throw InstallError.unsigned }
             let team = (info[kSecCodeInfoTeamIdentifier as String] as? String).flatMap { $0.isEmpty ? nil : $0 }
             guard let identity = BuildIdentity(cdhash: cdhash, identifier: identifier, team: team) else { throw InstallError.unsigned }
+            // Any process of this user may have renamed another binary over the file since
+            // launch, and the file is what was just read. The dynamic check compares against the
+            // code directory the kernel loaded: a changed file fails it (errSecCSStaticCodeChanged),
+            // and a file changed back since the read fails the hash.
+            var requirement: SecRequirement?
+            guard SecRequirementCreateWithString("\(identity.callerRequirement) and \(identity.buildRequirement)" as CFString, [], &requirement) == errSecSuccess,
+                  let requirement, SecCodeCheckValidity(code, [], requirement) == errSecSuccess
+            else { throw InstallError.changedOnDisk }
+            guard tattle_code_hardening(code) == TATTLE_HARDENING_OK else { throw InstallError.notHardened }
             return identity
         }
     }

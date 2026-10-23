@@ -27,6 +27,7 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
                 "CSocketTable",
                 "CPacketCapture",
+                "CCodePolicy",
             ],
             path: "Sources/tattle"
         ),
