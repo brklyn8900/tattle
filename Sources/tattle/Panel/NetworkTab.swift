@@ -30,7 +30,7 @@ private struct ConnectionsList: View {
             } header: {
                 VStack(alignment: .leading, spacing: 4) {
                     GroupHeader(title: title, description: description)
-                    NavigationLink(CaptureBroker.isInstalled ? "Packet access" : "Allow packet access", value: PacketAccessView.Destination())
+                    NavigationLink(PacketAccessView.linkTitle(state.network.broker.installation), value: PacketAccessView.Destination())
                         .font(.caption)
                         .textCase(nil)
                         .padding(.bottom, 8)
@@ -66,7 +66,7 @@ private struct ConnectionsList: View {
             parts.append(named.isEmpty ? "Names appear as connections open" : named.joined(separator: ", "))
             if let error = state.network.accessError { parts.append(error) }
         case .unavailable, .stopped:
-            parts.append("Destinations are addresses: names need packet access, which Tattle does not have yet")
+            parts.append(PacketAccessView.namesOff(state.network.broker.installation))
         }
         return parts.joined(separator: ". ").replacingOccurrences(of: "..", with: ".")
     }

@@ -252,6 +252,57 @@ final class CaptureBrokerScriptTests: XCTestCase {
         XCTAssertNil(contents(layout.plistPath))
     }
 
+    // MARK: Status
+
+    private func status() -> CaptureBroker.Status {
+        CaptureBroker.status(bundle: bundle, identity: { self.identity }, uid: getuid(), layout: layout)
+    }
+
+    /// isInstalled meant "the plist exists", so an install or removal cut short read as installed.
+    func testAPartialInstallIsNotInstalled() throws {
+        XCTAssertEqual(status().installation, .absent)
+        try Data(expectedPlist.utf8).write(to: URL(filePath: layout.plistPath))
+        XCTAssertEqual(status().installation, .stale(.incomplete), "only the plist")
+        try FileManager.default.removeItem(atPath: layout.plistPath)
+        try FileManager.default.copyItem(at: bundledHelper, to: URL(filePath: layout.helperPath))
+        XCTAssertEqual(status().installation, .stale(.incomplete), "only the broker")
+    }
+
+    func testStatusSaysWhenTheInstalledBrokerIsNotThisBuilds() throws {
+        let shown = status()
+        XCTAssertEqual(shown.proposed, .success(expectedPlist), "Packet access shows what install writes")
+        try install()
+        XCTAssertEqual(status().installation, .stale(.notLoaded), "no socket: launchd is not running it")
+        FileManager.default.createFile(atPath: layout.socketPath, contents: nil)
+        XCTAssertEqual(status().installation, .current)
+        XCTAssertNil(status().installed, "nothing different to show")
+
+        let mine = expectedPlist
+        try Data(CaptureBroker.plist(requirement: identity.callerRequirement, uid: getuid() + 1, layout: layout).utf8).write(to: URL(filePath: layout.plistPath))
+        XCTAssertEqual(status().installation, .stale(.otherUser(getuid() + 1)))
+
+        let other = try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: Data(repeating: 1, count: 20), identifier: "x", team: nil))
+        try Data(CaptureBroker.plist(requirement: other.callerRequirement, uid: getuid(), layout: layout).utf8).write(to: URL(filePath: layout.plistPath))
+        XCTAssertEqual(status().installation, .stale(.otherBuild), "another build's requirement")
+        XCTAssertNotNil(status().installed, "the installed plist is shown beside this build's")
+
+        let withoutUser = mine.replacingOccurrences(of: "<string>--uid</string>\n        <string>\(getuid())</string>\n", with: "")
+        XCTAssertNotEqual(withoutUser, mine)
+        try Data(withoutUser.utf8).write(to: URL(filePath: layout.plistPath))
+        XCTAssertEqual(status().installation, .stale(.otherBuild), "a plist from before the installing user was recorded")
+
+        try Data(mine.utf8).write(to: URL(filePath: layout.plistPath))
+        try FileManager.default.removeItem(atPath: layout.helperPath)
+        try FileManager.default.copyItem(at: try signedImpostor(), to: URL(filePath: layout.helperPath))
+        XCTAssertEqual(status().installation, .stale(.otherBuild), "another build's broker")
+    }
+
+    func testStatusSaysWhyThisBuildCannotInstall() {
+        let status = CaptureBroker.status(bundle: bundle, identity: { throw CaptureBroker.InstallError.changedOnDisk }, uid: getuid(), layout: layout)
+        XCTAssertEqual(status.proposed, .failure(.changedOnDisk))
+        XCTAssertEqual(status.installation, .absent)
+    }
+
     // MARK: Remove
 
     func testRemoveLeavesTheBrokerWhenItWillNotStop() throws {

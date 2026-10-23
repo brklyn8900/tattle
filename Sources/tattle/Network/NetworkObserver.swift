@@ -13,6 +13,9 @@ final class NetworkObserver {
     private(set) var accessBusy = false
     /// Why the last install or removal failed, until the next attempt.
     private(set) var accessError: String?
+    /// What is installed against what this build would install; read again when Packet access
+    /// opens and after every install or removal.
+    private(set) var broker = CaptureBroker.status()
 
     private let store: ConnectionStore
     private let rules: RuleStore
@@ -89,11 +92,18 @@ final class NetworkObserver {
         await access { try CaptureBroker.remove() }
     }
 
+    func refreshBroker() {
+        broker = CaptureBroker.status()
+    }
+
     private func access(_ action: @escaping @Sendable () throws -> Void) async -> Bool {
         guard !accessBusy else { return false }
         accessBusy = true
         accessError = nil
-        defer { accessBusy = false }
+        defer {
+            accessBusy = false
+            refreshBroker()
+        }
         do {
             try await Task.detached { try action() }.value
             restartCapture()

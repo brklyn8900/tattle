@@ -29,7 +29,6 @@ enum CaptureBroker {
         }
     }
 
-    static var isInstalled: Bool { FileManager.default.fileExists(atPath: plistPath) }
     static var isReachable: Bool { FileManager.default.fileExists(atPath: socketPath) }
 
     // MARK: Request

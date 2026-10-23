@@ -124,6 +124,85 @@ extension CaptureBroker {
                                    socketPath: CaptureBroker.socketPath, owner: "root:wheel", launchctl: "/bin/launchctl")
     }
 
+    // MARK: What is installed
+
+    /// What is installed, judged against what this build would install for this user.
+    /// `NetworkObserver` owns the current one; views read it, never the disk.
+    struct Status: Equatable, Sendable {
+        let installation: Installation
+        /// The launch daemon this build installs, the same text `install()` puts in the script,
+        /// or why this build cannot install one.
+        let proposed: Result<String, InstallError>
+        /// The installed plist, when there is one and it is not `proposed`.
+        let installed: String?
+    }
+
+    enum Installation: Equatable, Sendable {
+        /// Neither the plist nor the broker is there.
+        case absent
+        /// This build's plist and broker, for this user, and launchd is running it.
+        case current
+        case stale(Staleness)
+    }
+
+    enum Staleness: Equatable, Sendable {
+        /// Only one of the plist and the broker is there: an install or removal was cut short.
+        case incomplete
+        /// This build's, but launchd has no socket for it.
+        case notLoaded
+        /// Installed for another account, which the broker answers instead of this one.
+        case otherUser(uid_t)
+        /// Another build's plist or broker. Ad hoc, the broker refuses this build; with an
+        /// Apple identity it may still serve it.
+        case otherBuild
+    }
+
+    /// Reads the installed plist and broker and judges them against this build.
+    static func status(bundle: URL = Bundle.main.bundleURL, identity: () throws -> BuildIdentity = BuildIdentity.running,
+                       uid: uid_t = getuid(), layout: Layout = .system) -> Status {
+        let bundled = bundle.appending(path: helperInBundle).path
+        let proposed = Result { () throws -> String in
+            guard FileManager.default.fileExists(atPath: bundled) else { throw InstallError.noHelperInBundle }
+            return plist(requirement: try identity().callerRequirement, uid: uid, layout: layout)
+        }.mapError { $0 as? InstallError ?? .unsigned }
+        let text = try? String(contentsOfFile: layout.plistPath, encoding: .utf8)
+        let installed = text == (try? proposed.get()) ? nil : text
+        guard let text else {
+            return Status(installation: FileManager.default.fileExists(atPath: layout.helperPath) ? .stale(.incomplete) : .absent,
+                          proposed: proposed, installed: nil)
+        }
+        let installation: Installation
+        if !FileManager.default.fileExists(atPath: layout.helperPath) {
+            installation = .stale(.incomplete)
+        } else if let other = installedUID(text), other != uid {
+            installation = .stale(.otherUser(other))
+        } else if (installed == nil || (try? proposed.get()) == nil), let hash = cdhash(atPath: layout.helperPath), hash == cdhash(atPath: bundled) {
+            // Code hash, not bytes: re-signing the same code changes the bytes but not the hash.
+            // When this build cannot say what it would install, the broker alone is compared.
+            installation = FileManager.default.fileExists(atPath: layout.socketPath) ? .current : .stale(.notLoaded)
+        } else {
+            installation = .stale(.otherBuild)
+        }
+        return Status(installation: installation, proposed: proposed, installed: installed)
+    }
+
+    /// The `--uid` value in an installed plist's ProgramArguments.
+    private static func installedUID(_ plist: String) -> uid_t? {
+        guard let parsed = try? PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any],
+              let arguments = parsed["ProgramArguments"] as? [String],
+              let flag = arguments.firstIndex(of: "--uid"), flag + 1 < arguments.count else { return nil }
+        return uid_t(arguments[flag + 1])
+    }
+
+    /// The code hash of the signed file at `path`, from its own signature.
+    private static func cdhash(atPath path: String) -> Data? {
+        var code: SecStaticCode?
+        var info: CFDictionary?
+        guard SecStaticCodeCreateWithPath(URL(filePath: path) as CFURL, [], &code) == errSecSuccess, let code,
+              SecCodeCopySigningInformation(code, [], &info) == errSecSuccess else { return nil }
+        return (info as? [String: Any])?[kSecCodeInfoUnique as String] as? Data
+    }
+
     // MARK: Install and remove
 
     /// The launch daemon as installed: the requirement and the installing user travel in the
