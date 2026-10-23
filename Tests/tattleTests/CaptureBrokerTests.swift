@@ -57,8 +57,8 @@ final class CaptureBrokerTests: XCTestCase {
 
         let script = CaptureBroker.installScript(helper: "/Applications/Tat tle.app/Contents/MacOS/it's", plistSource: "/tmp/p.plist")
         XCTAssertTrue(script.contains("cp '/Applications/Tat tle.app/Contents/MacOS/it'\\''s' '\(CaptureBroker.helperPath)'"))
-        XCTAssertTrue(script.contains("launchctl bootstrap system '\(CaptureBroker.plistPath)'"))
-        XCTAssertTrue(CaptureBroker.removeScript.contains("launchctl bootout system/\(CaptureBroker.label)"))
+        XCTAssertTrue(script.contains("'/bin/launchctl' bootstrap system '\(CaptureBroker.plistPath)'"))
+        XCTAssertTrue(CaptureBroker.removeScript().contains("'/bin/launchctl' bootout system/\(CaptureBroker.label)"))
         XCTAssertEqual(CaptureBroker.appleScript("say \"hi\" \\ there"), "\"say \\\"hi\\\" \\\\ there\"")
     }
 
