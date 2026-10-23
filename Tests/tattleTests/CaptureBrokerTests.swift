@@ -2,6 +2,9 @@ import Security
 import XCTest
 @testable import tattle
 
+/// SIGPIPEs this process received, counted by a handler a test installs.
+nonisolated(unsafe) private var brokenPipes = 0
+
 final class CaptureBrokerTests: XCTestCase {
     func testRequirementPrefersTeamOverHash() {
         XCTAssertEqual(CaptureBroker.requirement(identifier: "io.github.eladefrati.tattle", team: "ABCDE12345", cdhash: Data([1, 2])),
@@ -83,14 +86,67 @@ final class CaptureBrokerTests: XCTestCase {
         return FileManager.default.temporaryDirectory.appending(path: "broker-\(getpid())-\(sockets).sock").path
     }
 
-    private func runBroker(requirement: String, socket: String) throws -> Process {
+    private func runBroker(requirement: String, socket: String, once: Bool = true) throws -> Process {
         let process = Process()
         process.executableURL = brokerBinary
-        process.arguments = ["--requirement", requirement, "--socket", socket, "--once"]
+        process.arguments = ["--requirement", requirement, "--socket", socket] + (once ? ["--once"] : [])
         process.standardError = FileHandle.nullDevice
         try process.run()
         for _ in 0..<100 where !FileManager.default.fileExists(atPath: socket) { usleep(20_000) }
         return process
+    }
+
+    /// Connects to `path` and hangs up at once, before the broker can answer. Waits while the
+    /// listen queue (8 deep) is full, which a unix socket reports as a refused connection.
+    private func connectAndHangUp(_ path: String) {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+            path.utf8CString.withUnsafeBytes { buffer.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0.prefix(buffer.count))) }
+        }
+        for _ in 0..<100 {
+            let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+            let connected = withUnsafePointer(to: &address) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+            }
+            let error = errno
+            close(fd)
+            if connected == 0 { return }
+            guard error == ECONNREFUSED else { return XCTFail(String(cString: strerror(error))) }
+            usleep(10_000)
+        }
+        XCTFail("the broker stopped accepting connections")
+    }
+
+    /// A requirement no process satisfies: the broker refuses, which is its quickest answer.
+    private let nobody = "cdhash H\"0000000000000000000000000000000000000000\""
+
+    func testBrokerSurvivesAPeerThatHangsUp() throws {
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
+        let socket = socketPath()
+        let broker = try runBroker(requirement: nobody, socket: socket, once: false)
+        defer { broker.terminate() }
+        // Any local account can do this: the socket is world-writable.
+        for _ in 0..<20 { connectAndHangUp(socket) }
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", socket: socket)) {
+            XCTAssertEqual($0 as? CaptureBroker.RequestError, .refused, "the broker still answers after peers hung up")
+        }
+        XCTAssertTrue(broker.isRunning, broker.isRunning ? "" : "\(broker.terminationReason == .uncaughtSignal ? "killed by signal" : "exited with") \(broker.terminationStatus)")
+    }
+
+    func testRequestSurvivesABrokerThatHangsUp() throws {
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
+        brokenPipes = 0
+        let previous = signal(SIGPIPE) { _ in brokenPipes += 1 }
+        defer { signal(SIGPIPE, previous) }
+        let socket = socketPath()
+        let broker = try runBroker(requirement: nobody, socket: socket)
+        defer { broker.terminate() }
+        // Far longer than any interface name, so the request is still being written when the
+        // broker refuses and hangs up.
+        XCTAssertThrowsError(try CaptureBroker.request(interface: String(repeating: "a", count: 1 << 20), socket: socket))
+        XCTAssertEqual(brokenPipes, 0, "a broker hanging up must cost Tattle an error, not a SIGPIPE")
+        expectExit(broker)
     }
 
     func testBrokerHandsADescriptorToACallerItRecognises() throws {
@@ -113,7 +169,7 @@ final class CaptureBrokerTests: XCTestCase {
     func testBrokerRefusesOtherCallersAndBadInterfaces() throws {
         try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
         let strangerSocket = socketPath()
-        let stranger = try runBroker(requirement: "cdhash H\"0000000000000000000000000000000000000000\"", socket: strangerSocket)
+        let stranger = try runBroker(requirement: nobody, socket: strangerSocket)
         defer { stranger.terminate() }
         XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", socket: strangerSocket)) {
             XCTAssertEqual($0 as? CaptureBroker.RequestError, .refused)

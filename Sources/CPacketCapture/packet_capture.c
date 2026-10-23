@@ -92,6 +92,9 @@ int tattle_broker_request(const char *socket_path, const char *ifname, int *stat
     *err = 0;
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { *err = errno; return -1; }
+    // A broker that hangs up mid-request must be an error return, not SIGPIPE in the app.
+    int on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof addr);
     addr.sun_family = AF_UNIX;

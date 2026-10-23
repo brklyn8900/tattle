@@ -22,6 +22,7 @@
 #include <net/bpf.h>
 #include <net/if.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -195,6 +196,9 @@ int main(int argc, char **argv) {
     }
     if (requirement_text == NULL) usage();
 
+    // A peer that hangs up before the reply must cost one failed send, not the daemon: the
+    // socket is world-writable, and launchd's respawn would meet the next dead peer the same way.
+    signal(SIGPIPE, SIG_IGN);
     openlog("tattle-capture-broker", LOG_PID, LOG_DAEMON);
     CFStringRef requirement_string = CFStringCreateWithCString(NULL, requirement_text, kCFStringEncodingUTF8);
     SecRequirementRef requirement = NULL;
@@ -232,6 +236,8 @@ int main(int argc, char **argv) {
         }
         int client = accept(listener, NULL, NULL);
         if (client < 0) continue;
+        int on = 1;
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
         serve(client, requirement);
         close(client);
         if (once) break;
