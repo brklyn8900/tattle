@@ -30,15 +30,17 @@ app` signs with it instead, which keeps permission grants across rebuilds.
 
 Connection names come from the first packets of each connection, which only root may
 read. The Network tab's "Allow packet access" installs a small launch daemon, the
-packet-access broker, that opens the capture device read-only and hands it to Tattle and
-to nothing else: it checks the code signature of whoever asks. It is installed and removed
-through the administrator password dialog, with the exact plist shown first, and is
-removable from the Startup tab as well. Without it the Network tab shows addresses
+packet-access broker, that opens the capture device read-only and hands it to Tattle: it
+answers only a caller that runs as the user who installed it, carries Tattle's signature,
+and runs with the hardened runtime. It is installed and removed through the administrator
+password dialog, with the exact plist shown first, and is removable from the Startup tab
+as well. Without it the Network tab shows addresses
 instead of names. Design and reasoning in [ADR-0003](docs/adr/0003-bpf-descriptor-broker.md).
 
 With an Apple Development identity the broker recognises Tattle by team and bundle
 identifier, which survive rebuilds. An ad-hoc build is recognised by its code hash, which
-changes with every rebuild: remove and install the broker again after rebuilding.
+changes with every rebuild; Packet access then says the installed broker is from another
+build and installs it again in one dialog.
 
 ## License
 
