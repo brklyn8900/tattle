@@ -1,14 +1,14 @@
 // The packet-access broker (ADR-0003): a root launch daemon that, on request over a local
 // socket, opens one BPF device read-only, binds it to the requested interface, and hands
 // the descriptor to the caller. It answers only a caller whose code satisfies the
-// requirement given on its command line and that no other process of its user can steer,
-// identified by the socket peer's audit token.
+// requirement given on its command line, runs as the user who installed it, and that no
+// other process of its user can steer, identified by the socket peer's audit token.
 // It parses nothing and keeps nothing between requests.
 //
-//   tattle-capture-broker --requirement <code requirement>
+//   tattle-capture-broker --requirement <code requirement> --uid <uid>
 //       Serves the launchd socket named "Listener" and exits after a minute idle;
 //       launchd starts it again on the next connection.
-//   tattle-capture-broker --requirement <code requirement> --socket <path> [--once]
+//   tattle-capture-broker --requirement <code requirement> --uid <uid> --socket <path> [--once]
 //       Serves a socket it binds itself, for tests. --once answers one request and exits.
 //
 // Protocol: the client sends the interface name and a newline. The broker replies with
@@ -18,6 +18,7 @@
 #include "code_policy.h"
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <bsm/libbsm.h>
 #include <Security/Security.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -45,13 +46,17 @@ enum {
 static const int idle_seconds = 60;
 static const int request_timeout_ms = 2000;
 
-// Whether the process at the other end of `fd` satisfies `requirement` and cannot be
-// steered by another process of its user (code_policy.h).
-static bool peer_is_allowed(int fd, SecRequirementRef requirement) {
+// Whether the process at the other end of `fd` runs as `uid`, satisfies `requirement`, and
+// cannot be steered by another process of its user (code_policy.h).
+static bool peer_is_allowed(int fd, uid_t uid, SecRequirementRef requirement) {
     audit_token_t token;
     socklen_t length = sizeof token;
     if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) != 0 || length != sizeof token) {
         syslog(LOG_WARNING, "no audit token for peer: %s", strerror(errno));
+        return false;
+    }
+    if (audit_token_to_euid(token) != uid) {
+        syslog(LOG_NOTICE, "refused a caller running as user %u", audit_token_to_euid(token));
         return false;
     }
     CFDataRef token_data = CFDataCreate(NULL, (const UInt8 *)&token, sizeof token);
@@ -146,8 +151,8 @@ static void reply(int fd, unsigned char status, int bpf, int err) {
     }
 }
 
-static void serve(int fd, SecRequirementRef requirement) {
-    if (!peer_is_allowed(fd, requirement)) {
+static void serve(int fd, uid_t uid, SecRequirementRef requirement) {
+    if (!peer_is_allowed(fd, uid, requirement)) {
         syslog(LOG_NOTICE, "refused a caller that does not satisfy the requirement");
         reply(fd, STATUS_REFUSED, -1, 0);
         return;
@@ -189,21 +194,38 @@ static int listen_on(const char *path) {
 }
 
 static void usage(void) {
-    fprintf(stderr, "usage: tattle-capture-broker --requirement <code requirement> [--socket <path>] [--once]\n");
+    fprintf(stderr, "usage: tattle-capture-broker --requirement <code requirement> --uid <uid> [--socket <path>] [--once]\n");
     exit(2);
+}
+
+// A user id in decimal, 1 to UINT32_MAX - 1: root never needs the broker, and -1 is no user.
+static bool parse_uid(const char *text, uid_t *uid) {
+    if (*text < '1' || *text > '9') return false;
+    unsigned long long value = 0;
+    for (const char *c = text; *c; c++) {
+        if (*c < '0' || *c > '9') return false;
+        value = value * 10 + (unsigned long long)(*c - '0');
+        if (value >= UINT32_MAX) return false;
+    }
+    *uid = (uid_t)value;
+    return true;
 }
 
 int main(int argc, char **argv) {
     const char *requirement_text = NULL;
     const char *socket_path = NULL;
     bool once = false;
+    uid_t uid = 0;
+    bool has_uid = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--requirement") == 0 && i + 1 < argc) requirement_text = argv[++i];
         else if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) socket_path = argv[++i];
+        else if (strcmp(argv[i], "--uid") == 0 && i + 1 < argc) has_uid = parse_uid(argv[++i], &uid);
         else if (strcmp(argv[i], "--once") == 0) once = true;
         else usage();
     }
-    if (requirement_text == NULL) usage();
+    // Required: a plist from before the uid existed must not start a broker for every account.
+    if (requirement_text == NULL || !has_uid) usage();
 
     // A peer that hangs up before the reply must cost one failed send, not the daemon: the
     // socket is world-writable, and launchd's respawn would meet the next dead peer the same way.
@@ -247,7 +269,7 @@ int main(int argc, char **argv) {
         if (client < 0) continue;
         int on = 1;
         setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-        serve(client, requirement);
+        serve(client, uid, requirement);
         close(client);
         if (once) break;
     }

@@ -34,7 +34,7 @@ let package = Package(
             name: "tattle-capture-broker",
             dependencies: ["CCodePolicy"],
             path: "Sources/tattle-capture-broker",
-            linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation")]
+            linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation"), .linkedLibrary("bsm")]
         ),
         // Test fixture, not bundled by make app: a broker caller the tests sign as each case needs.
         .executableTarget(

@@ -14,14 +14,20 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertNotNil(CaptureBroker.requirementForSelf(), "the test process is signed by Apple")
     }
 
+    func testPlistRecordsTheInstallingUser() throws {
+        let plist = CaptureBroker.plist(requirement: "cdhash H\"00\"", uid: 501)
+        let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
+        XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?.suffix(2), ["--uid", "501"])
+    }
+
     func testPlistAndScriptsQuoteWhatTheyCarry() throws {
-        let plist = CaptureBroker.plist(requirement: "identifier \"a\" and anchor <apple>")
+        let plist = CaptureBroker.plist(requirement: "identifier \"a\" and anchor <apple>", uid: 501)
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.label)</string>"))
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.helperPath)</string>"))
         XCTAssertTrue(plist.contains("<string>identifier \"a\" and anchor &lt;apple&gt;</string>"))
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.socketPath)</string>"))
         let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
-        XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?.last, "identifier \"a\" and anchor <apple>")
+        XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?[2], "identifier \"a\" and anchor <apple>")
 
         let script = CaptureBroker.installScript(helper: "/Applications/Tat tle.app/Contents/MacOS/it's", plistSource: "/tmp/p.plist")
         XCTAssertTrue(script.contains("cp '/Applications/Tat tle.app/Contents/MacOS/it'\\''s' '\(CaptureBroker.helperPath)'"))
@@ -157,10 +163,10 @@ final class CaptureBrokerTests: XCTestCase {
         return FileManager.default.temporaryDirectory.appending(path: "broker-\(getpid())-\(sockets).sock").path
     }
 
-    private func runBroker(requirement: String, socket: String, once: Bool = true) throws -> Process {
+    private func runBroker(requirement: String, uid: String = String(getuid()), socket: String, once: Bool = true) throws -> Process {
         let process = Process()
         process.executableURL = brokerBinary
-        process.arguments = ["--requirement", requirement, "--socket", socket] + (once ? ["--once"] : [])
+        process.arguments = ["--requirement", requirement, "--uid", uid, "--socket", socket] + (once ? ["--once"] : [])
         process.standardError = FileHandle.nullDevice
         try process.run()
         for _ in 0..<100 where !FileManager.default.fileExists(atPath: socket) { usleep(20_000) }
@@ -248,6 +254,35 @@ final class CaptureBrokerTests: XCTestCase {
             defer { broker.terminate() }
             XCTAssertEqual(try ask(steerable, socket: socket), "refused", "\(signing)")
             expectExit(broker)
+        }
+    }
+
+    /// The socket is world-writable; the plist records which account the broker serves.
+    func testBrokerAnswersOnlyTheInstallingUser() throws {
+        let hardened = try caller(.hardened)
+        let otherSocket = socketPath()
+        let other = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1), socket: otherSocket)
+        defer { other.terminate() }
+        XCTAssertEqual(try ask(hardened, socket: otherSocket), "refused", "a caller running as another user")
+        expectExit(other)
+
+        let ownSocket = socketPath()
+        let own = try runBroker(requirement: hardened.requirement, socket: ownSocket)
+        defer { own.terminate() }
+        XCTAssertTrue(Self.accepted.contains(try ask(hardened, socket: ownSocket)))
+        expectExit(own)
+    }
+
+    /// A plist without a usable uid, an older one for instance, must not start a broker that
+    /// serves every account.
+    func testBrokerRequiresTheInstallingUser() throws {
+        for uid in [nil, "0", "-1", "abc", "501x", "4294967295", "4294967296"] {
+            let process = Process()
+            process.executableURL = brokerBinary
+            process.arguments = ["--requirement", nobody, "--socket", socketPath(), "--once"] + (uid.map { ["--uid", $0] } ?? [])
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            expectExit(process, status: 2)
         }
     }
 

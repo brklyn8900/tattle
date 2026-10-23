@@ -76,9 +76,9 @@ enum CaptureBroker {
 
     // MARK: Install and remove
 
-    /// The launch daemon as installed: the requirement travels in the root-owned plist,
-    /// where only an administrator can change it.
-    static func plist(requirement: String) -> String {
+    /// The launch daemon as installed: the requirement and the installing user travel in the
+    /// root-owned plist, where only an administrator can change them.
+    static func plist(requirement: String, uid: uid_t) -> String {
         """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -91,6 +91,8 @@ enum CaptureBroker {
                 <string>\(helperPath)</string>
                 <string>--requirement</string>
                 <string>\(escapeXML(requirement))</string>
+                <string>--uid</string>
+                <string>\(uid)</string>
             </array>
             <key>Sockets</key>
             <dict>
@@ -142,11 +144,11 @@ enum CaptureBroker {
     /// Writes the plist as the user, then installs it and the helper as root through the
     /// administrator dialog. Returns the plist text that was installed.
     @discardableResult
-    static func install(helper: URL? = bundledHelper, requirement: String? = requirementForSelf(),
+    static func install(helper: URL? = bundledHelper, requirement: String? = requirementForSelf(), uid: uid_t = getuid(),
                         runPrivileged: (String) throws -> Void = runPrivileged) throws -> String {
         guard let helper, FileManager.default.fileExists(atPath: helper.path) else { throw InstallError.noHelperInBundle }
         guard let requirement else { throw InstallError.noRequirement }
-        let text = plist(requirement: requirement)
+        let text = plist(requirement: requirement, uid: uid)
         let staging = FileManager.default.temporaryDirectory.appending(path: "\(label).plist")
         try text.write(to: staging, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: staging) }
