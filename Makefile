@@ -29,9 +29,16 @@ app: build
 	  codesign --force --options runtime --sign "$(SIGN_IDENTITY)" $(APPDIR); \
 	else \
 	  echo "warning: no Apple Development identity found; signing ad hoc, permission grants will reset on every rebuild" >&2; \
-	  codesign --force --sign - $(APPDIR)/Contents/MacOS/$(BROKER); \
-	  codesign --force --sign - $(APPDIR); \
+	  codesign --force --options runtime --sign - $(APPDIR)/Contents/MacOS/$(BROKER); \
+	  codesign --force --options runtime --sign - $(APPDIR); \
 	fi
+	@# The broker refuses a caller another process could steer (ADR-0003); fail here instead.
+	@for f in $(APPDIR)/Contents/MacOS/$(APP) $(APPDIR)/Contents/MacOS/$(BROKER); do \
+	  codesign --display --verbose $$f 2>&1 | grep -q 'flags=.*runtime' \
+	    || { echo "error: $$f is not signed with the hardened runtime" >&2; exit 1; }; \
+	  ! codesign --display --entitlements - $$f 2>/dev/null | grep -q get-task-allow \
+	    || { echo "error: $$f carries get-task-allow" >&2; exit 1; }; \
+	done
 	@codesign -dv $(APPDIR) 2>&1 | grep -E '^(Authority|TeamIdentifier)' || true
 
 install: app
