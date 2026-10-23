@@ -88,6 +88,16 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertThrowsError(try CaptureBroker.remove { _ in throw CaptureBroker.InstallError.failed("User cancelled") })
     }
 
+    /// Tattle's environment is the user's to set (launchctl setenv reaches every app launched
+    /// after it), and /bin/sh runs code from SHELLOPTS, PS4 and exported functions before the
+    /// script's first line. The root shell must not inherit it.
+    func testAdministratorDialogGetsAFixedEnvironment() {
+        let process = CaptureBroker.privilegedProcess("true")
+        XCTAssertEqual(process.environment, ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"])
+        XCTAssertEqual(process.executableURL?.path, "/usr/bin/osascript")
+        XCTAssertEqual(process.arguments, ["-e", "do shell script \"true\" with administrator privileges"])
+    }
+
     // MARK: The daemon itself
 
     private var brokerBinary: URL {

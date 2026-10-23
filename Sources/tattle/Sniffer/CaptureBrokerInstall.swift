@@ -271,11 +271,22 @@ extension CaptureBroker {
         }
     }
 
-    /// Runs a shell script as root after the administrator password dialog.
-    static func runPrivileged(_ script: String) throws {
+    /// osascript, set up to run `script` as root after the administrator password dialog.
+    /// It gets a fixed environment, not Tattle's: the user can set Tattle's (launchctl setenv
+    /// reaches apps launched after it), and /bin/sh runs code from SHELLOPTS, PS4 and exported
+    /// functions before the script's first line. Whether the root shell would inherit it is
+    /// not something to rely on either way.
+    static func privilegedProcess(_ script: String) -> Process {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", "do shell script \(appleScript(script)) with administrator privileges"]
+        process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+        return process
+    }
+
+    /// Runs a shell script as root after the administrator password dialog.
+    static func runPrivileged(_ script: String) throws {
+        let process = privilegedProcess(script)
         let err = Pipe()
         process.standardOutput = FileHandle.nullDevice
         process.standardError = err
