@@ -55,30 +55,36 @@ final class CaptureBrokerTests: XCTestCase {
         let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
         XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?[2], "identifier \"a\" and anchor <apple>")
 
-        let script = CaptureBroker.installScript(helper: "/Applications/Tat tle.app/Contents/MacOS/it's", plistSource: "/tmp/p.plist")
-        XCTAssertTrue(script.contains("cp '/Applications/Tat tle.app/Contents/MacOS/it'\\''s' '\(CaptureBroker.helperPath)'"))
-        XCTAssertTrue(script.contains("'/bin/launchctl' bootstrap system '\(CaptureBroker.plistPath)'"))
-        XCTAssertTrue(CaptureBroker.removeScript().contains("'/bin/launchctl' bootout system/\(CaptureBroker.label)"))
+        let identity = try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: Data(count: 20), identifier: "x", team: nil))
+        let script = CaptureBroker.installScript(identity: identity, bundle: URL(filePath: "/Applications/Tat tle.app"), uid: 501)
+        XCTAssertTrue(script.contains("/usr/bin/ditto --noextattr --noqtn --norsrc --noacl '/Applications/Tat tle.app' "))
+        XCTAssertTrue(script.contains("'-R=\(identity.buildRequirement)'"))
+        XCTAssertTrue(script.contains(CaptureBroker.shell(CaptureBroker.plist(requirement: identity.callerRequirement, uid: 501))), "the plist travels in the script")
+        let remove = CaptureBroker.removeScript()
+        XCTAssertTrue(remove.contains("launchctl='/bin/launchctl'") && remove.contains("\"$launchctl\" bootout system/\(CaptureBroker.label)"))
         XCTAssertEqual(CaptureBroker.appleScript("say \"hi\" \\ there"), "\"say \\\"hi\\\" \\\\ there\"")
     }
 
-    func testInstallStagesThePlistAndHandsTheScriptToTheDialog() throws {
-        let helper = FileManager.default.temporaryDirectory.appending(path: "fake-broker-\(getpid())")
+    /// The plist used to be written to $TMPDIR for root to copy, where any process of the user
+    /// could replace it during the dialog. It now travels in the script text only.
+    func testInstallHandsTheDialogAScriptThatCarriesThePlist() throws {
+        let bundle = FileManager.default.temporaryDirectory.appending(path: "Fake-\(getpid()).app")
+        let helper = bundle.appending(path: CaptureBroker.helperInBundle)
+        try FileManager.default.createDirectory(at: helper.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: helper)
-        defer { try? FileManager.default.removeItem(at: helper) }
-        var ran: String?
+        defer { try? FileManager.default.removeItem(at: bundle) }
         let identity = try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: Data(count: 20), identifier: "x", team: nil))
-        let text = try CaptureBroker.install(helper: helper, identity: { identity }) { script in
-            ran = script
-            let source = script.split(separator: "\n").first { $0.hasPrefix("cp ") && $0.contains(".plist") }
-            XCTAssertNotNil(source)
-            let staged = String(source!.split(separator: "'")[1])
-            XCTAssertTrue(FileManager.default.fileExists(atPath: staged), "the plist is on disk while the script runs")
+        var ran: String?
+        let text = try CaptureBroker.install(bundle: bundle, identity: { identity }) { ran = $0 }
+        XCTAssertEqual(text, CaptureBroker.plist(requirement: identity.callerRequirement, uid: getuid()))
+        XCTAssertTrue(ran?.contains(CaptureBroker.shell(text)) ?? false)
+        XCTAssertFalse(ran?.contains(FileManager.default.temporaryDirectory.appending(path: CaptureBroker.label).path) ?? true)
+        XCTAssertThrowsError(try CaptureBroker.install(bundle: URL(filePath: "/nonexistent.app"), identity: { identity }) { _ in }) {
+            XCTAssertEqual($0 as? CaptureBroker.InstallError, .noHelperInBundle)
         }
-        XCTAssertTrue(text.contains(identity.callerRequirement))
-        XCTAssertTrue(ran?.contains("cp '\(helper.path)' '\(CaptureBroker.helperPath)'") ?? false)
-        XCTAssertThrowsError(try CaptureBroker.install(helper: nil, identity: { identity }) { _ in }) { XCTAssertEqual($0 as? CaptureBroker.InstallError, .noHelperInBundle) }
-        XCTAssertThrowsError(try CaptureBroker.install(helper: helper, identity: { throw CaptureBroker.InstallError.unsigned }) { _ in }) { XCTAssertEqual($0 as? CaptureBroker.InstallError, .unsigned) }
+        XCTAssertThrowsError(try CaptureBroker.install(bundle: bundle, identity: { throw CaptureBroker.InstallError.unsigned }) { _ in }) {
+            XCTAssertEqual($0 as? CaptureBroker.InstallError, .unsigned)
+        }
         XCTAssertThrowsError(try CaptureBroker.remove { _ in throw CaptureBroker.InstallError.failed("User cancelled") })
     }
 

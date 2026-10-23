@@ -19,10 +19,9 @@ extension CaptureBroker {
         case failed(String)
     }
 
-    /// The broker binary beside the app's own.
-    static var bundledHelper: URL? {
-        Bundle.main.executableURL?.deletingLastPathComponent().appending(path: "tattle-capture-broker")
-    }
+    /// Where the broker sits in the app bundle. Root installs it from its own verified copy of
+    /// the bundle, at this same path.
+    static let helperInBundle = "Contents/MacOS/tattle-capture-broker"
 
     // MARK: Identity
 
@@ -159,47 +158,107 @@ extension CaptureBroker {
         one click here or from the Startup tab. The packet devices themselves stay root-only.
         """
 
-    static func installScript(helper: String, plistSource: String, layout: Layout = .system) -> String {
+    /// The root half of install. Root reads the user's bundle once, to copy it where no
+    /// process of the user can reach, and uses nothing but that copy and this text: it
+    /// checks the copy against `identity`, which the app confirmed is the running code and
+    /// whose seal fixes the bundled broker, then installs the broker from the copy and the
+    /// plist from this text. Nothing on the system changes until the copy has passed, and a
+    /// failure after the old broker was stopped removes what this install put in place.
+    static func installScript(identity: BuildIdentity, bundle: URL, uid: uid_t, layout: Layout = .system) -> String {
         """
-        set -e
-        mkdir -p \(shell(layout.helperDirectory))
-        cp \(shell(helper)) \(shell(layout.helperPath))
-        chown \(shell(layout.owner)) \(shell(layout.helperPath))
-        chmod 755 \(shell(layout.helperPath))
-        cp \(shell(plistSource)) \(shell(layout.plistPath))
-        chown \(shell(layout.owner)) \(shell(layout.plistPath))
-        chmod 644 \(shell(layout.plistPath))
-        \(shell(layout.launchctl)) bootout system/\(label) 2>/dev/null || true
-        \(shell(layout.launchctl)) bootstrap system \(shell(layout.plistPath))
+        set -eu
+        umask 077
+        launchctl=\(shell(layout.launchctl))
+        helper=\(shell(layout.helperPath))
+        plist=\(shell(layout.plistPath))
+        /bin/mkdir -p -m 755 \(shell(layout.helperDirectory)) \(shell(layout.daemonsDirectory))
+        /bin/rm -rf \(shell(layout.helperDirectory))/.\(label).*
+        stage=$(/usr/bin/mktemp -d \(shell("\(layout.helperDirectory)/.\(label).XXXXXX")))
+        replacing=0
+        finish() {
+            status=$?
+            /bin/rm -rf "$stage"
+            if [ "$status" -ne 0 ] && [ "$replacing" -eq 1 ]; then
+                "$launchctl" bootout system/\(label) 2>/dev/null || true
+                /bin/rm -f "$plist" "$helper"
+            fi
+            exit "$status"
+        }
+        trap finish EXIT
+        \(stoppedFunction)
+        /usr/bin/ditto --noextattr --noqtn --norsrc --noacl \(shell(bundle.path)) "$stage/Tattle.app"
+        if [ -n "$(/usr/bin/find "$stage/Tattle.app" ! -type f ! -type d -print)" ]; then
+            echo 'This copy of Tattle contains links or special files, so it cannot be checked. Nothing was installed.' >&2
+            exit 3
+        fi
+        /usr/sbin/chown -R \(shell(layout.owner)) "$stage"
+        if ! /usr/bin/codesign --verify --strict --deep \(shell("-R=\(identity.buildRequirement)")) "$stage/Tattle.app" 2>/dev/null; then
+            echo 'Tattle on disk is not the Tattle that is running. Quit Tattle, open it again, and try again. Nothing was installed.' >&2
+            exit 3
+        fi
+        new="$stage/Tattle.app/\(helperInBundle)"
+        /bin/test -f "$new"
+        /bin/chmod 755 "$new"
+        /usr/bin/printf '%s' \(shell(plist(requirement: identity.callerRequirement, uid: uid, layout: layout))) > "$stage/plist"
+        /usr/bin/plutil -lint -s "$stage/plist"
+        /bin/chmod 644 "$stage/plist"
+        "$launchctl" bootout system/\(label) 2>/dev/null || true
+        if ! stopped; then
+            echo 'The installed broker would not stop. Nothing was changed.' >&2
+            exit 3
+        fi
+        replacing=1
+        /bin/mv -f "$new" "$helper"
+        /bin/mv -f "$stage/plist" "$plist"
+        "$launchctl" bootstrap system "$plist"
         """
     }
 
+    /// Stops the broker before anything is removed, and removes the plist first: without it
+    /// the broker no longer reads as installed, whatever else a cut-short removal leaves.
     static func removeScript(layout: Layout = .system) -> String {
         """
-        \(shell(layout.launchctl)) bootout system/\(label) 2>/dev/null || true
-        rm -f \(shell(layout.plistPath)) \(shell(layout.helperPath)) \(shell(layout.socketPath))
+        set -u
+        launchctl=\(shell(layout.launchctl))
+        \(stoppedFunction)
+        "$launchctl" bootout system/\(label) 2>/dev/null || true
+        if ! stopped; then
+            echo 'The packet-access broker would not stop. Nothing was removed.' >&2
+            exit 3
+        fi
+        /bin/rm -f \(shell(layout.plistPath))
+        /bin/rm -f \(shell(layout.helperPath)) \(shell(layout.socketPath))
+        /bin/rm -rf \(shell(layout.helperDirectory))/.\(label).*
         """
     }
 
-    /// Writes the plist as the user, then installs it and the helper as root through the
-    /// administrator dialog. Returns the plist text that was installed.
+    /// True once launchd no longer knows the job: bootout can return before it has exited.
+    private static let stoppedFunction = """
+        stopped() {
+            for _ in 1 2 3 4 5 6 7 8 9 10; do
+                "$launchctl" print system/\(label) >/dev/null 2>&1 || return 0
+                /bin/sleep 0.2
+            done
+            return 1
+        }
+        """
+
+    /// Installs the broker for this build and this user through the administrator dialog.
+    /// Returns the plist text that was installed, which is the one Packet access showed.
     @discardableResult
-    static func install(helper: URL? = bundledHelper, identity: () throws -> BuildIdentity = BuildIdentity.running, uid: uid_t = getuid(),
+    static func install(bundle: URL = Bundle.main.bundleURL, identity: () throws -> BuildIdentity = BuildIdentity.running, uid: uid_t = getuid(),
                         layout: Layout = .system, runPrivileged: (String) throws -> Void = runPrivileged) throws -> String {
-        guard let helper, FileManager.default.fileExists(atPath: helper.path) else { throw InstallError.noHelperInBundle }
-        let text = plist(requirement: try identity().callerRequirement, uid: uid, layout: layout)
-        let staging = FileManager.default.temporaryDirectory.appending(path: "\(label).plist")
-        try text.write(to: staging, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: staging) }
-        Log.sniffer.notice("installing the packet-access broker from \(helper.path, privacy: .public)")
+        guard FileManager.default.fileExists(atPath: bundle.appending(path: helperInBundle).path) else { throw InstallError.noHelperInBundle }
+        let identity = try identity()
+        Log.sniffer.notice("installing the packet-access broker from \(bundle.path, privacy: .public)")
         do {
-            try runPrivileged(installScript(helper: helper.path, plistSource: staging.path, layout: layout))
+            try runPrivileged(installScript(identity: identity, bundle: bundle, uid: uid, layout: layout))
         } catch {
             Log.sniffer.error("broker install failed: \(String(describing: error), privacy: .public)")
             throw error
         }
         Log.sniffer.notice("packet-access broker installed")
-        return text
+        return plist(requirement: identity.callerRequirement, uid: uid, layout: layout)
     }
 
     static func remove(layout: Layout = .system, runPrivileged: (String) throws -> Void = runPrivileged) throws {
