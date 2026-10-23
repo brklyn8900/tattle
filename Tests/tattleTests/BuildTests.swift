@@ -1,6 +1,6 @@
 import XCTest
 
-/// Checks on how `make app` builds the bundle, read from make's dry run, so nothing is built.
+/// Checks on how `make app` builds the bundle, read from make's dry run, so make builds nothing.
 final class BuildTests: XCTestCase {
     private var repository: URL { URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() }
 
@@ -28,5 +28,50 @@ final class BuildTests: XCTestCase {
         for line in signing {
             XCTAssertTrue(line.contains("--options runtime"), line)
         }
+    }
+
+    /// What the ad-hoc signing line actually does, not just what it says: a copy of the
+    /// broker probe signed with its options, launched with DYLD_INSERT_LIBRARIES, must not
+    /// run the library. A copy signed without them must, or the library would prove nothing.
+    func testAdHocSigningKeepsInjectedLibrariesOut() throws {
+        let line = try XCTUnwrap(try recipe(["SIGN_IDENTITY="]).first { $0.contains("codesign --force") && $0.contains("--sign -") })
+        let options = Array(line.split(separator: " ").map(String.init).drop { $0 != "codesign" }.dropFirst().prefix { !$0.contains("Tattle.app") })
+
+        let directory = FileManager.default.temporaryDirectory.appending(path: "inject-\(getpid())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appending(path: "inject.c")
+        try #"""
+            #include <stdio.h>
+            #include <stdlib.h>
+            __attribute__((constructor)) static void injected(void) {
+                FILE *out = fopen(getenv("INJECT_MARKER"), "w");
+                if (out) fclose(out);
+            }
+            """#.write(to: source, atomically: true, encoding: .utf8)
+        let library = directory.appending(path: "inject.dylib")
+        try run("/usr/bin/clang", ["-dynamiclib", source.path, "-o", library.path])
+
+        let probe = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appending(path: "tattle-broker-probe")
+        for (name, signing) in [("ad-hoc", options), ("plain", ["--force", "--sign", "-"])] {
+            let copy = directory.appending(path: "probe-\(name)")
+            try FileManager.default.copyItem(at: probe, to: copy)
+            try run("/usr/bin/codesign", signing + [copy.path])
+            let marker = directory.appending(path: "\(name).marker")
+            // No arguments: the probe prints its usage and exits, after any library has loaded.
+            try run(copy.path, [], environment: ["DYLD_INSERT_LIBRARIES": library.path, "INJECT_MARKER": marker.path], status: 2)
+            XCTAssertEqual(FileManager.default.fileExists(atPath: marker.path), name == "plain", "\(name), signed with \(signing)")
+        }
+    }
+
+    private func run(_ path: String, _ arguments: [String], environment: [String: String]? = nil, status: Int32 = 0) throws {
+        let process = Process()
+        process.executableURL = URL(filePath: path)
+        process.arguments = arguments
+        if let environment { process.environment = environment }
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        if waitForExit(process) { XCTAssertEqual(process.terminationStatus, status, "\(path) \(arguments)") }
     }
 }
