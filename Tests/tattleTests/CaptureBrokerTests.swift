@@ -174,8 +174,7 @@ final class CaptureBrokerTests: XCTestCase {
         codesign.arguments = arguments + [url.path]
         codesign.standardError = FileHandle.nullDevice
         try codesign.run()
-        codesign.waitUntilExit()
-        XCTAssertEqual(codesign.terminationStatus, 0, "codesign \(arguments)")
+        if waitForExit(codesign) { XCTAssertEqual(codesign.terminationStatus, 0, "codesign \(arguments)") }
         var code: SecStaticCode?
         XCTAssertEqual(SecStaticCodeCreateWithPath(url as CFURL, [], &code), errSecSuccess)
         var info: CFDictionary?
@@ -197,8 +196,8 @@ final class CaptureBrokerTests: XCTestCase {
 
     /// What the probe printed: accepted, refused, bad-request, open-failed <errno> or transport <errno>.
     private func answer(_ started: (Process, Pipe)) -> String {
+        waitForExit(started.0)
         let text = String(decoding: started.1.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        started.0.waitUntilExit()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

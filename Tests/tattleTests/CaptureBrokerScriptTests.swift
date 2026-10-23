@@ -49,8 +49,7 @@ final class CaptureBrokerScriptTests: XCTestCase {
         process.arguments = Array(arguments.dropFirst())
         process.standardError = FileHandle.nullDevice
         try process.run()
-        process.waitUntilExit()
-        XCTAssertEqual(process.terminationStatus, 0, "\(arguments)")
+        if waitForExit(process) { XCTAssertEqual(process.terminationStatus, 0, "\(arguments)") }
     }
 
     /// Builds and signs, ad hoc with the hardened runtime, a bundle holding a copy of the probe as
@@ -87,9 +86,9 @@ final class CaptureBrokerScriptTests: XCTestCase {
         let err = Pipe()
         process.standardError = err
         try process.run()
+        let exited = waitForExit(process)
         let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw CaptureBroker.InstallError.failed(stderr) }
+        guard exited, process.terminationStatus == 0 else { throw CaptureBroker.InstallError.failed(stderr) }
     }
 
     @discardableResult

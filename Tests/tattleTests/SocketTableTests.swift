@@ -43,12 +43,15 @@ final class SocketTableTests: XCTestCase {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
+        // A file, not a pipe: the wait below is bounded, and output larger than a pipe's
+        // buffer would hold the process until it is read.
+        let output = FileManager.default.temporaryDirectory.appending(path: "socket-table-\(getpid())-\(UUID().uuidString)")
+        FileManager.default.createFile(atPath: output.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: output) }
+        process.standardOutput = try FileHandle(forWritingTo: output)
         process.standardError = FileHandle.nullDevice
         try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+        waitForExit(process)
+        return String(decoding: try Data(contentsOf: output), as: UTF8.self)
     }
 }

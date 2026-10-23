@@ -13,9 +13,8 @@ final class BuildTests: XCTestCase {
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
+        if waitForExit(process) { XCTAssertEqual(process.terminationStatus, 0) }
         let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
-        XCTAssertEqual(process.terminationStatus, 0)
         return text.split(separator: "\n").map(String.init)
     }
 

@@ -74,8 +74,7 @@ final class CodeSignatureTests: XCTestCase {
         process.arguments = arguments
         process.standardError = FileHandle.nullDevice
         try process.run()
-        process.waitUntilExit()
-        XCTAssertEqual(process.terminationStatus, 0, "codesign \(arguments)")
+        if waitForExit(process) { XCTAssertEqual(process.terminationStatus, 0, "codesign \(arguments)") }
     }
 }
 
