@@ -141,6 +141,15 @@ struct FlowNamer: Sendable {
     var flowCount: Int { flows.count }
     var dnsCount: Int { dnsMap.count }
 
+    /// The packet goes to a public address from one this namer does not know as ours:
+    /// the address set is stale, since this Mac sees no other host's traffic. Wi-Fi
+    /// reconnecting after a wake drops and re-adds the interface's address, and a refresh
+    /// that lands in the gap loses it. The source is usually private (a home network),
+    /// so its scope says nothing; the destination's does.
+    func endpointsUnknown(_ p: Packet) -> Bool {
+        !local.contains(p.src) && !local.contains(p.dst) && !p.dst.isLocalScope
+    }
+
     mutating func observe(_ p: Packet, at ts: Double) -> [FlowEvent] {
         let outbound = local.contains(p.src)
         if p.proto == .udp && p.srcPort == 53 && !outbound {

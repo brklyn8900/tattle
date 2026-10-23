@@ -24,6 +24,8 @@ final class Sniffer: @unchecked Sendable {
     private static let retryAfter: TimeInterval = 30
     private static let interfaceCheckEvery: TimeInterval = 5
     private static let addressRefreshEvery: TimeInterval = 60
+    /// How often a packet from an unknown address may trigger a refresh.
+    private static let staleRefreshEvery: TimeInterval = 1
     private static let readTimeout: Duration = .milliseconds(500)
 
     init(open: @escaping Opener = { try PacketCapture.obtain(interface: $0, timeout: Sniffer.readTimeout) },
@@ -75,7 +77,9 @@ final class Sniffer: @unchecked Sendable {
             lastFailure = nil
             installFilter(on: capture, interface: interface)
             onStatus(.capturing(interface: interface))
-            Log.sniffer.info("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(CaptureBroker.isReachable ? "through the broker" : "from the device", privacy: .public)")
+            // Notice, not info: the unified log keeps notices, so a later comparison can
+            // tell when capture was on.
+            Log.sniffer.notice("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(CaptureBroker.isReachable ? "through the broker" : "from the device", privacy: .public)")
             captureLoop(capture, interface: interface)
         }
         onStatus(.stopped)
@@ -118,9 +122,16 @@ final class Sniffer: @unchecked Sendable {
             var events: [FlowEvent] = []
             do {
                 try capture.readPackets { timestamp, bytes in
-                    if let packet = Packet.parse(bytes, dlt: capture.dataLinkType) {
-                        events += namer.observe(packet, at: timestamp)
+                    guard let packet = Packet.parse(bytes, dlt: capture.dataLinkType) else { return }
+                    // A packet between two addresses that are not ours means ours changed:
+                    // refresh now rather than at the next timer, or every flow until then
+                    // goes unnamed.
+                    if namer.endpointsUnknown(packet), Date().timeIntervalSince(lastAddressRefresh) >= Self.staleRefreshEvery {
+                        namer.updateLocalAddresses(localAddresses())
+                        lastAddressRefresh = Date()
+                        Log.sniffer.debug("refreshed local addresses on an unknown packet")
                     }
+                    events += namer.observe(packet, at: timestamp)
                 }
             } catch {
                 Log.sniffer.error("packet read failed, reopening: \(String(describing: error), privacy: .public)")
