@@ -16,6 +16,11 @@ let package = Package(
             name: "CPacketCapture",
             path: "Sources/CPacketCapture"
         ),
+        .target(
+            name: "CCodePolicy",
+            path: "Sources/CCodePolicy",
+            linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation")]
+        ),
         .executableTarget(
             name: "tattle",
             dependencies: [
@@ -27,12 +32,20 @@ let package = Package(
         ),
         .executableTarget(
             name: "tattle-capture-broker",
+            dependencies: ["CCodePolicy"],
             path: "Sources/tattle-capture-broker",
             linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation")]
         ),
+        // Test fixture, not bundled by make app: a broker caller the tests sign as each case needs.
+        .executableTarget(
+            name: "tattle-broker-probe",
+            dependencies: ["CPacketCapture"],
+            path: "Tests/tattle-broker-probe"
+        ),
         .testTarget(
             name: "tattleTests",
-            dependencies: ["tattle"],
+            // The executables are dependencies so a test run always has them built.
+            dependencies: ["tattle", "tattle-capture-broker", "tattle-broker-probe"],
             path: "Tests/tattleTests"
         ),
     ]

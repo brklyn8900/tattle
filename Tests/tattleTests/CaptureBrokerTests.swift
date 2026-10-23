@@ -55,18 +55,89 @@ final class CaptureBrokerTests: XCTestCase {
         Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appending(path: "tattle-capture-broker")
     }
 
-    /// This process's own designated requirement: what the broker must accept.
-    private func selfRequirement() throws -> String {
-        var code: SecCode?
-        XCTAssertEqual(SecCodeCopySelf([], &code), errSecSuccess)
-        var staticCode: SecStaticCode?
-        XCTAssertEqual(SecCodeCopyStaticCode(try XCTUnwrap(code), [], &staticCode), errSecSuccess)
-        var requirement: SecRequirement?
-        XCTAssertEqual(SecCodeCopyDesignatedRequirement(try XCTUnwrap(staticCode), [], &requirement), errSecSuccess)
-        var text: CFString?
-        XCTAssertEqual(SecRequirementCopyString(try XCTUnwrap(requirement), [], &text), errSecSuccess)
-        return try XCTUnwrap(text as String?)
+    private var probeBinary: URL {
+        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appending(path: "tattle-broker-probe")
     }
+
+    /// How a test signs its copy of the probe. Only `.hardened` is a caller the broker should
+    /// answer; each other case is one way another process of the user could steer the caller.
+    enum Signing: CaseIterable {
+        case hardened, plain, getTaskAllow, disableLibraryValidation, allowDyldEnvironment
+
+        var options: [String] { self == .plain ? [] : ["--options", "runtime"] }
+        var entitlement: String? {
+            switch self {
+            case .hardened, .plain: nil
+            case .getTaskAllow: "com.apple.security.get-task-allow"
+            case .disableLibraryValidation: "com.apple.security.cs.disable-library-validation"
+            case .allowDyldEnvironment: "com.apple.security.cs.allow-dyld-environment-variables"
+            }
+        }
+    }
+
+    /// A signed copy of the probe and the requirement that names exactly it.
+    struct Caller {
+        let url: URL
+        let requirement: String
+    }
+
+    private var callers = 0
+
+    /// Copies the probe and signs the copy ad hoc as `signing` says, under its own identifier so
+    /// two copies never share a code hash.
+    private func caller(_ signing: Signing) throws -> Caller {
+        callers += 1
+        let directory = FileManager.default.temporaryDirectory.appending(path: "probe-\(getpid())-\(callers)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "tattle-broker-probe")
+        try FileManager.default.copyItem(at: probeBinary, to: url)
+        var arguments = ["--force", "--sign", "-", "--identifier", "probe-\(callers)"] + signing.options
+        if let entitlement = signing.entitlement {
+            let plist = directory.appending(path: "entitlements.plist")
+            try PropertyListSerialization.data(fromPropertyList: [entitlement: true], format: .xml, options: 0).write(to: plist)
+            arguments += ["--entitlements", plist.path]
+        }
+        let codesign = Process()
+        codesign.executableURL = URL(filePath: "/usr/bin/codesign")
+        codesign.arguments = arguments + [url.path]
+        codesign.standardError = FileHandle.nullDevice
+        try codesign.run()
+        codesign.waitUntilExit()
+        XCTAssertEqual(codesign.terminationStatus, 0, "codesign \(arguments)")
+        var code: SecStaticCode?
+        XCTAssertEqual(SecStaticCodeCreateWithPath(url as CFURL, [], &code), errSecSuccess)
+        var info: CFDictionary?
+        XCTAssertEqual(SecCodeCopySigningInformation(try XCTUnwrap(code), [], &info), errSecSuccess)
+        let cdhash = try XCTUnwrap((info as? [String: Any])?[kSecCodeInfoUnique as String] as? Data)
+        return Caller(url: url, requirement: "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\"")
+    }
+
+    /// Starts `caller` asking the broker at `socket` for `interface`.
+    private func start(_ caller: Caller, socket: String, interface: String = "en0", delay: Int? = nil) throws -> (Process, Pipe) {
+        let process = Process()
+        process.executableURL = caller.url
+        process.arguments = [socket, interface] + (delay.map { ["--delay", String($0)] } ?? [])
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        return (process, output)
+    }
+
+    /// What the probe printed: accepted, refused, bad-request, open-failed <errno> or transport <errno>.
+    private func answer(_ started: (Process, Pipe)) -> String {
+        let text = String(decoding: started.1.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        started.0.waitUntilExit()
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func ask(_ caller: Caller, socket: String, interface: String = "en0") throws -> String {
+        answer(try start(caller, socket: socket, interface: interface))
+    }
+
+    /// An accepted caller: a descriptor where the devices are readable, otherwise the broker's
+    /// own open failing with EACCES, which it reaches only after accepting the caller.
+    private static let accepted: Set<String> = ["accepted", "open-failed \(EACCES)"]
 
     /// Waits for the broker to exit on its own, failing instead of hanging.
     private func expectExit(_ process: Process, status: Int32 = 0) {
@@ -122,7 +193,6 @@ final class CaptureBrokerTests: XCTestCase {
     private let nobody = "cdhash H\"0000000000000000000000000000000000000000\""
 
     func testBrokerSurvivesAPeerThatHangsUp() throws {
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
         let socket = socketPath()
         let broker = try runBroker(requirement: nobody, socket: socket, once: false)
         defer { broker.terminate() }
@@ -135,7 +205,6 @@ final class CaptureBrokerTests: XCTestCase {
     }
 
     func testRequestSurvivesABrokerThatHangsUp() throws {
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
         brokenPipes = 0
         let previous = signal(SIGPIPE) { _ in brokenPipes += 1 }
         defer { signal(SIGPIPE, previous) }
@@ -150,24 +219,53 @@ final class CaptureBrokerTests: XCTestCase {
     }
 
     func testBrokerHandsADescriptorToACallerItRecognises() throws {
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
         try XCTSkipUnless(access("/dev/bpf0", R_OK) == 0, "needs readable /dev/bpf* to run the broker as the user")
         let interface = try XCTUnwrap(PacketCapture.primaryInterface())
+        let hardened = try caller(.hardened)
         let socket = socketPath()
-        let broker = try runBroker(requirement: try selfRequirement(), socket: socket)
+        let broker = try runBroker(requirement: hardened.requirement, socket: socket)
         defer { broker.terminate() }
+        XCTAssertEqual(try ask(hardened, socket: socket, interface: interface), "accepted", "a descriptor the caller can prepare and filter")
+        expectExit(broker)
+    }
 
-        let fd = try CaptureBroker.request(interface: interface, socket: socket)
-        XCTAssertGreaterThanOrEqual(fd, 0)
-        let capture = try PacketCapture(descriptor: fd)
-        XCTAssertGreaterThan(capture.bufferLength, 0, "the broker set the buffer length before binding")
-        let filter = try XCTUnwrap(CaptureFilter.program(linkType: capture.dataLinkType, direction: .sourceAddresses(localAddresses().map(\.bytes))))
-        XCTAssertNoThrow(try capture.install(filter), "the descriptor is ours to filter")
+    func testBrokerAcceptsAHardenedCaller() throws {
+        let hardened = try caller(.hardened)
+        let socket = socketPath()
+        let broker = try runBroker(requirement: hardened.requirement, socket: socket)
+        defer { broker.terminate() }
+        XCTAssertTrue(Self.accepted.contains(try ask(hardened, socket: socket)))
+        expectExit(broker)
+    }
+
+    /// Each of these callers satisfies its requirement, yet another process of the same user
+    /// could put code into it or read its memory, and with it the descriptor.
+    func testBrokerRefusesCallersAnotherProcessCouldSteer() throws {
+        for signing in Signing.allCases where signing != .hardened {
+            let steerable = try caller(signing)
+            let socket = socketPath()
+            let broker = try runBroker(requirement: steerable.requirement, socket: socket)
+            defer { broker.terminate() }
+            XCTAssertEqual(try ask(steerable, socket: socket), "refused", "\(signing)")
+            expectExit(broker)
+        }
+    }
+
+    /// The file a caller was started from is replaced after launch by the code the broker
+    /// accepts: the broker judges the running code, not the file.
+    func testBrokerRefusesACallerReplacedOnDiskAfterLaunch() throws {
+        let impostor = try caller(.hardened)
+        let genuine = try caller(.hardened)
+        let socket = socketPath()
+        let broker = try runBroker(requirement: genuine.requirement, socket: socket)
+        defer { broker.terminate() }
+        let started = try start(impostor, socket: socket, delay: 1)
+        XCTAssertEqual(rename(genuine.url.path, impostor.url.path), 0)
+        XCTAssertEqual(answer(started), "refused")
         expectExit(broker)
     }
 
     func testBrokerRefusesOtherCallersAndBadInterfaces() throws {
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: brokerBinary.path), "broker not built")
         let strangerSocket = socketPath()
         let stranger = try runBroker(requirement: nobody, socket: strangerSocket)
         defer { stranger.terminate() }
@@ -177,22 +275,20 @@ final class CaptureBrokerTests: XCTestCase {
         expectExit(stranger)
         XCTAssertFalse(FileManager.default.fileExists(atPath: strangerSocket), "the broker removes its socket on exit")
 
+        let hardened = try caller(.hardened)
         let pickySocket = socketPath()
-        let picky = try runBroker(requirement: try selfRequirement(), socket: pickySocket)
+        let picky = try runBroker(requirement: hardened.requirement, socket: pickySocket)
         defer { picky.terminate() }
-        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0; rm -rf /", socket: pickySocket)) {
-            XCTAssertEqual($0 as? CaptureBroker.RequestError, .badRequest)
-        }
+        XCTAssertEqual(try ask(hardened, socket: pickySocket, interface: "en0;rm"), "bad-request")
         expectExit(picky)
 
-        try XCTSkipUnless(access("/dev/bpf0", R_OK) == 0, "needs readable /dev/bpf*")
-        let missingSocket = socketPath()
-        let missing = try runBroker(requirement: try selfRequirement(), socket: missingSocket)
-        defer { missing.terminate() }
-        XCTAssertThrowsError(try CaptureBroker.request(interface: "nosuch9", socket: missingSocket)) {
-            guard case .openFailed = $0 as? CaptureBroker.RequestError else { return XCTFail("\($0)") }
+        if access("/dev/bpf0", R_OK) == 0 {
+            let missingSocket = socketPath()
+            let missing = try runBroker(requirement: hardened.requirement, socket: missingSocket)
+            defer { missing.terminate() }
+            XCTAssertTrue(try ask(hardened, socket: missingSocket, interface: "nosuch9").hasPrefix("open-failed"))
+            expectExit(missing)
         }
-        expectExit(missing)
 
         XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", socket: "/nonexistent/broker.sock")) {
             guard case .transport = $0 as? CaptureBroker.RequestError else { return XCTFail("\($0)") }

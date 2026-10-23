@@ -1,7 +1,8 @@
 // The packet-access broker (ADR-0003): a root launch daemon that, on request over a local
 // socket, opens one BPF device read-only, binds it to the requested interface, and hands
 // the descriptor to the caller. It answers only a caller whose code satisfies the
-// requirement given on its command line, identified by the socket peer's audit token.
+// requirement given on its command line and that no other process of its user can steer,
+// identified by the socket peer's audit token.
 // It parses nothing and keeps nothing between requests.
 //
 //   tattle-capture-broker --requirement <code requirement>
@@ -13,6 +14,8 @@
 // Protocol: the client sends the interface name and a newline. The broker replies with
 // one status byte, then, for status 0, the descriptor as ancillary data; for status 3,
 // four bytes of errno in host order.
+
+#include "code_policy.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
@@ -42,7 +45,8 @@ enum {
 static const int idle_seconds = 60;
 static const int request_timeout_ms = 2000;
 
-// Whether the process at the other end of `fd` satisfies `requirement`.
+// Whether the process at the other end of `fd` satisfies `requirement` and cannot be
+// steered by another process of its user (code_policy.h).
 static bool peer_is_allowed(int fd, SecRequirementRef requirement) {
     audit_token_t token;
     socklen_t length = sizeof token;
@@ -64,7 +68,12 @@ static bool peer_is_allowed(int fd, SecRequirementRef requirement) {
         return false;
     }
     status = SecCodeCheckValidity(code, kSecCSDefaultFlags, requirement);
+    tattle_hardening verdict = status == errSecSuccess ? tattle_code_hardening(code) : TATTLE_HARDENING_OK;
     CFRelease(code);
+    if (verdict != TATTLE_HARDENING_OK) {
+        syslog(LOG_NOTICE, "refused a caller another process could steer: %s", tattle_hardening_text(verdict));
+        return false;
+    }
     return status == errSecSuccess;
 }
 
