@@ -79,7 +79,11 @@ static bool peer_is_allowed(int fd, uid_t uid, SecRequirementRef requirement) {
         syslog(LOG_NOTICE, "refused a caller another process could steer: %s", tattle_hardening_text(verdict));
         return false;
     }
-    return status == errSecSuccess;
+    if (status != errSecSuccess) {
+        syslog(LOG_NOTICE, "refused a caller that does not satisfy the requirement");
+        return false;
+    }
+    return true;
 }
 
 // Reads the interface name: up to IFNAMSIZ-1 letters and digits, then a newline.
@@ -153,7 +157,6 @@ static void reply(int fd, unsigned char status, int bpf, int err) {
 
 static void serve(int fd, uid_t uid, SecRequirementRef requirement) {
     if (!peer_is_allowed(fd, uid, requirement)) {
-        syslog(LOG_NOTICE, "refused a caller that does not satisfy the requirement");
         reply(fd, STATUS_REFUSED, -1, 0);
         return;
     }
