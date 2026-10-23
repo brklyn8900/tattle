@@ -33,11 +33,14 @@ app: build
 	  codesign --force --options runtime --sign - $(APPDIR); \
 	fi
 	@# The broker refuses a caller another process could steer (ADR-0003); fail here instead.
+	@# The runtime brings library validation, which ad hoc admits only system libraries.
 	@for f in $(APPDIR)/Contents/MacOS/$(APP) $(APPDIR)/Contents/MacOS/$(BROKER); do \
 	  codesign --display --verbose $$f 2>&1 | grep -q 'flags=.*runtime' \
 	    || { echo "error: $$f is not signed with the hardened runtime" >&2; exit 1; }; \
 	  ! codesign --display --entitlements - $$f 2>/dev/null | grep -q get-task-allow \
 	    || { echo "error: $$f carries get-task-allow" >&2; exit 1; }; \
+	  ! otool -L $$f | tail -n +2 | grep -qvE '^[[:space:]]+(/usr/lib/|/System/Library/)' \
+	    || { echo "error: $$f links a library outside the system, which library validation refuses ad hoc" >&2; exit 1; }; \
 	done
 	@codesign -dv $(APPDIR) 2>&1 | grep -E '^(Authority|TeamIdentifier)' || true
 
