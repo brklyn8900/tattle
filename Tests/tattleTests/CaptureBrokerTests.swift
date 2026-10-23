@@ -6,12 +6,36 @@ import XCTest
 nonisolated(unsafe) private var brokenPipes = 0
 
 final class CaptureBrokerTests: XCTestCase {
-    func testRequirementPrefersTeamOverHash() {
-        XCTAssertEqual(CaptureBroker.requirement(identifier: "io.github.eladefrati.tattle", team: "ABCDE12345", cdhash: Data([1, 2])),
+    func testRequirementPrefersTeamOverHash() throws {
+        let hash = Data(repeating: 0xab, count: 20)
+        XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345")?.callerRequirement,
                        "anchor apple generic and identifier \"io.github.eladefrati.tattle\" and certificate leaf[subject.OU] = \"ABCDE12345\"")
-        XCTAssertEqual(CaptureBroker.requirement(identifier: nil, team: nil, cdhash: Data([0xab, 0x01, 0xff])), "cdhash H\"ab01ff\"")
-        XCTAssertNil(CaptureBroker.requirement(identifier: "x", team: "", cdhash: nil), "nothing to pin")
-        XCTAssertNotNil(CaptureBroker.requirementForSelf(), "the test process is signed by Apple")
+        XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "x", team: nil)?.callerRequirement, "cdhash H\"\(String(repeating: "ab", count: 20))\"")
+        XCTAssertNoThrow(try CaptureBroker.BuildIdentity.running(), "the test process is signed")
+    }
+
+    /// Whether the broker could compile `text`, as it does at startup.
+    private func compiles(_ text: String?) -> Bool {
+        guard let text else { return false }
+        var requirement: SecRequirement?
+        return SecRequirementCreateWithString(text as CFString, [], &requirement) == errSecSuccess
+    }
+
+    /// The broker exits at startup on a requirement it cannot compile, and a quote in the
+    /// identifier or team would end the quoted string and let the rest add a clause.
+    func testRequirementsCompileAndCannotBeWidened() {
+        let hash = Data(repeating: 0xab, count: 20)
+        let team = CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345")
+        let adHoc = CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: nil)
+        for identity in [team, adHoc] {
+            XCTAssertTrue(compiles(identity?.callerRequirement))
+            XCTAssertTrue(compiles(identity?.buildRequirement))
+        }
+        XCTAssertNil(CaptureBroker.BuildIdentity(cdhash: Data([0xab, 0x01, 0xff]), identifier: "io.github.eladefrati.tattle", team: nil), "not a code hash")
+        XCTAssertNil(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "a\" or anchor apple and identifier \"x", team: "ABCDE12345"), "a widening identifier")
+        XCTAssertNil(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345\" or anchor apple"), "a widening team")
+        XCTAssertNil(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "abc"), "not a team identifier")
+        XCTAssertNil(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "", team: nil), "no identifier")
     }
 
     func testPlistRecordsTheInstallingUser() throws {
@@ -41,17 +65,18 @@ final class CaptureBrokerTests: XCTestCase {
         try Data().write(to: helper)
         defer { try? FileManager.default.removeItem(at: helper) }
         var ran: String?
-        let text = try CaptureBroker.install(helper: helper, requirement: "cdhash H\"00\"") { script in
+        let identity = try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: Data(count: 20), identifier: "x", team: nil))
+        let text = try CaptureBroker.install(helper: helper, identity: { identity }) { script in
             ran = script
             let source = script.split(separator: "\n").first { $0.hasPrefix("cp ") && $0.contains(".plist") }
             XCTAssertNotNil(source)
             let staged = String(source!.split(separator: "'")[1])
             XCTAssertTrue(FileManager.default.fileExists(atPath: staged), "the plist is on disk while the script runs")
         }
-        XCTAssertTrue(text.contains("cdhash H\"00\""))
+        XCTAssertTrue(text.contains(identity.callerRequirement))
         XCTAssertTrue(ran?.contains("cp '\(helper.path)' '\(CaptureBroker.helperPath)'") ?? false)
-        XCTAssertThrowsError(try CaptureBroker.install(helper: nil, requirement: "x") { _ in }) { XCTAssertEqual($0 as? CaptureBroker.InstallError, .noHelperInBundle) }
-        XCTAssertThrowsError(try CaptureBroker.install(helper: helper, requirement: nil) { _ in }) { XCTAssertEqual($0 as? CaptureBroker.InstallError, .noRequirement) }
+        XCTAssertThrowsError(try CaptureBroker.install(helper: nil, identity: { identity }) { _ in }) { XCTAssertEqual($0 as? CaptureBroker.InstallError, .noHelperInBundle) }
+        XCTAssertThrowsError(try CaptureBroker.install(helper: helper, identity: { throw CaptureBroker.InstallError.unsigned }) { _ in }) { XCTAssertEqual($0 as? CaptureBroker.InstallError, .unsigned) }
         XCTAssertThrowsError(try CaptureBroker.remove { _ in throw CaptureBroker.InstallError.failed("User cancelled") })
     }
 

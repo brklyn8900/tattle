@@ -16,7 +16,7 @@ struct PacketAccessView: View {
 
     init(state: AppState) {
         self.state = state
-        plist = CaptureBroker.plist(requirement: CaptureBroker.requirementForSelf() ?? "(this build has no code signature to pin)", uid: getuid())
+        plist = CaptureBroker.plist(requirement: (try? CaptureBroker.BuildIdentity.running().callerRequirement) ?? "(this build has no code signature to pin)", uid: getuid())
     }
 
     var body: some View {

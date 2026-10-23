@@ -11,7 +11,6 @@ enum CaptureBroker {
     static let socketPath = "/var/run/tattle-capture-broker.sock"
     static let helperPath = "/Library/PrivilegedHelperTools/io.github.eladefrati.tattle.capture-broker"
     static let plistPath = "/Library/LaunchDaemons/io.github.eladefrati.tattle.capture-broker.plist"
-    static let appIdentifier = "io.github.eladefrati.tattle"
 
     enum RequestError: Error, Equatable {
         /// The broker did not accept this app: a rebuilt ad-hoc app, or someone else's.
@@ -33,7 +32,8 @@ enum CaptureBroker {
 
     enum InstallError: Error, Equatable {
         case noHelperInBundle
-        case noRequirement
+        /// The running app has no signature the broker could check callers against.
+        case unsigned
         /// The administrator dialog was cancelled or the script failed; the message is
         /// osascript's.
         case failed(String)
@@ -47,31 +47,63 @@ enum CaptureBroker {
     static var isInstalled: Bool { FileManager.default.fileExists(atPath: plistPath) }
     static var isReachable: Bool { FileManager.default.fileExists(atPath: socketPath) }
 
-    // MARK: Requirement
+    // MARK: Identity
 
-    /// The code requirement the broker checks callers against. With an Apple identity it
-    /// is the team and the bundle identifier, which survive certificate renewal and
-    /// rebuilds; ad hoc, it is the code hash, which changes with every rebuild.
-    static func requirement(identifier: String?, team: String?, cdhash: Data?) -> String? {
-        if let team, !team.isEmpty {
-            return "anchor apple generic and identifier \"\(identifier ?? appIdentifier)\" and certificate leaf[subject.OU] = \"\(team)\""
+    /// This build of Tattle, as its signature names it. Every field is checked on the way in,
+    /// so the requirements built from it compile and a crafted identifier or team cannot end
+    /// the quoted string and add a clause.
+    struct BuildIdentity: Equatable, Sendable {
+        /// Code directory hash of the main executable.
+        let cdhash: Data
+        let identifier: String
+        /// The Apple team when signed with an Apple identity; nil ad hoc.
+        let team: String?
+
+        /// Nil unless `cdhash` is 20 bytes, `identifier` is 1 to 255 of letters, digits, '.'
+        /// and '-', and `team` is absent or 10 uppercase letters and digits.
+        init?(cdhash: Data, identifier: String, team: String?) {
+            func only(_ text: String, _ allowed: (Character) -> Bool) -> Bool { text.allSatisfy { $0.isASCII && allowed($0) } }
+            guard cdhash.count == 20, (1...255).contains(identifier.count),
+                  only(identifier, { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }) else { return nil }
+            if let team, !(team.count == 10 && only(team, { $0.isUppercase || $0.isNumber })) { return nil }
+            self.cdhash = cdhash
+            self.identifier = identifier
+            self.team = team
         }
-        guard let cdhash, !cdhash.isEmpty else { return nil }
-        return "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\""
-    }
 
-    /// The requirement for the running app, from its own signature.
-    static func requirementForSelf() -> String? {
-        var selfCode: SecCode?
-        guard SecCodeCopySelf([], &selfCode) == errSecSuccess, let code = selfCode else { return nil }
-        var staticCode: SecStaticCode?
-        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let fixed = staticCode else { return nil }
-        var infoRef: CFDictionary?
-        guard SecCodeCopySigningInformation(fixed, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef) == errSecSuccess,
-              let info = infoRef as? [String: Any] else { return nil }
-        return requirement(identifier: info[kSecCodeInfoIdentifier as String] as? String,
-                           team: info[kSecCodeInfoTeamIdentifier as String] as? String,
-                           cdhash: info[kSecCodeInfoUnique as String] as? Data)
+        /// What the broker checks callers against (ADR-0003). With a team: the team and the
+        /// identifier, which survive rebuilds and certificate renewal. Ad hoc: this build.
+        var callerRequirement: String {
+            if let team {
+                return "anchor apple generic and identifier \"\(identifier)\" and certificate leaf[subject.OU] = \"\(team)\""
+            }
+            return buildRequirement
+        }
+
+        /// This exact build, in either signing mode.
+        var buildRequirement: String { "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\"" }
+
+        /// The running app, from its signature.
+        static func running() throws -> BuildIdentity {
+            var selfCode: SecCode?
+            guard SecCodeCopySelf([], &selfCode) == errSecSuccess, let code = selfCode else { throw InstallError.unsigned }
+            return try read(code)
+        }
+
+        /// Reads `code`'s signature from its file.
+        static func read(_ code: SecCode) throws -> BuildIdentity {
+            var staticCode: SecStaticCode?
+            var infoRef: CFDictionary?
+            guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let fixed = staticCode,
+                  SecCodeCopySigningInformation(fixed, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef) == errSecSuccess,
+                  let info = infoRef as? [String: Any],
+                  let cdhash = info[kSecCodeInfoUnique as String] as? Data,
+                  let identifier = info[kSecCodeInfoIdentifier as String] as? String
+            else { throw InstallError.unsigned }
+            let team = (info[kSecCodeInfoTeamIdentifier as String] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            guard let identity = BuildIdentity(cdhash: cdhash, identifier: identifier, team: team) else { throw InstallError.unsigned }
+            return identity
+        }
     }
 
     // MARK: Install and remove
@@ -144,11 +176,10 @@ enum CaptureBroker {
     /// Writes the plist as the user, then installs it and the helper as root through the
     /// administrator dialog. Returns the plist text that was installed.
     @discardableResult
-    static func install(helper: URL? = bundledHelper, requirement: String? = requirementForSelf(), uid: uid_t = getuid(),
+    static func install(helper: URL? = bundledHelper, identity: () throws -> BuildIdentity = BuildIdentity.running, uid: uid_t = getuid(),
                         runPrivileged: (String) throws -> Void = runPrivileged) throws -> String {
         guard let helper, FileManager.default.fileExists(atPath: helper.path) else { throw InstallError.noHelperInBundle }
-        guard let requirement else { throw InstallError.noRequirement }
-        let text = plist(requirement: requirement, uid: uid)
+        let text = plist(requirement: try identity().callerRequirement, uid: uid)
         let staging = FileManager.default.temporaryDirectory.appending(path: "\(label).plist")
         try text.write(to: staging, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: staging) }
