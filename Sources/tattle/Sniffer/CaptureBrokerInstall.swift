@@ -15,8 +15,19 @@ extension CaptureBroker {
         /// The broker would refuse this build (code_policy.h), so installing it gains nothing.
         case notHardened
         /// The administrator dialog was cancelled or the script failed; the message is
-        /// osascript's.
+        /// osascript's, which carries the script's own sentence.
         case failed(String)
+
+        /// What the user reads, never the case name.
+        var text: String {
+            switch self {
+            case .noHelperInBundle: "This copy of Tattle has no packet-access broker inside it. Build it with make app, or download Tattle again."
+            case .unsigned: "This copy of Tattle has no code signature the broker could check. Build it with make app."
+            case .changedOnDisk: "Tattle's files on disk changed after it started, for instance by a rebuild. Quit Tattle, open it again, and try again."
+            case .notHardened: "This copy of Tattle is not signed with the hardened runtime, so the broker would refuse it. Build it with make app."
+            case .failed(let message): message.isEmpty ? "The administrator dialog was cancelled." : message
+            }
+        }
     }
 
     /// Where the broker sits in the app bundle. Root installs it from its own verified copy of

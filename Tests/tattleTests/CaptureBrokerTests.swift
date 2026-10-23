@@ -88,6 +88,28 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertThrowsError(try CaptureBroker.remove { _ in throw CaptureBroker.InstallError.failed("User cancelled") })
     }
 
+    /// The test runner has no broker in its bundle, so install fails before any dialog.
+    @MainActor
+    func testInstallFailuresReachTheUserInPlainWords() async throws {
+        let database = try AppDatabase.inMemory()
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
+                                       settings: try AppSettings(store: SettingsStore(database: database)))
+        let done = await observer.installBroker()
+        XCTAssertFalse(done)
+        let text = try XCTUnwrap(observer.accessError)
+        XCTAssertFalse(text.contains("noHelperInBundle"), text)
+        XCTAssertTrue(text.hasSuffix("."), text)
+    }
+
+    func testEveryInstallErrorReadsAsASentence() {
+        let errors: [CaptureBroker.InstallError] = [.noHelperInBundle, .unsigned, .changedOnDisk, .notHardened, .failed("")]
+        for error in errors {
+            XCTAssertTrue(error.text.hasSuffix("."), error.text)
+            XCTAssertFalse(error.text.contains(String(describing: error)), error.text)
+        }
+        XCTAssertEqual(CaptureBroker.InstallError.failed("the script's own sentence").text, "the script's own sentence")
+    }
+
     /// Tattle's environment is the user's to set (launchctl setenv reaches every app launched
     /// after it), and /bin/sh runs code from SHELLOPTS, PS4 and exported functions before the
     /// script's first line. The root shell must not inherit it.

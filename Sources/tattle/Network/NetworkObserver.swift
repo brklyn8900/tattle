@@ -98,10 +98,10 @@ final class NetworkObserver {
             try await Task.detached { try action() }.value
             restartCapture()
             return true
-        } catch CaptureBroker.InstallError.failed(let message) {
-            accessError = message.isEmpty ? "The administrator dialog was cancelled." : message
+        } catch let error as CaptureBroker.InstallError {
+            accessError = error.text
         } catch {
-            accessError = String(describing: error)
+            accessError = error.localizedDescription
         }
         return false
     }
