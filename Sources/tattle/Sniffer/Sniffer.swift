@@ -31,15 +31,19 @@ final class Sniffer: @unchecked Sendable {
     /// The current run's stop flag and the signal that it has ended. Each run has its own,
     /// so a start right after a stop cannot clear the flag the old run is still to read.
     private var current: (stopping: OSAllocatedUnfairLock<Bool>, ended: DispatchSemaphore)?
+    /// The stopped run the next one must wait for: runs form a chain, so two never overlap and
+    /// a stopped run's last report always precedes the next run's first.
+    private var predecessor: DispatchSemaphore?
 
     private static let retryAfter: TimeInterval = 30
     private static let addressRefreshEvery: TimeInterval = 60
     /// How often a packet from an unknown address may trigger a refresh.
     private static let staleRefreshEvery: TimeInterval = 1
     private static let readTimeout: Duration = .milliseconds(500)
-    /// Longer than a read timeout or a wait step; a run still going after it is left to end
-    /// on its own, under its own stop flag.
-    private static let stopWait = 2.0
+    /// Longest a run can be unreachable by its stop flag: a broker request, or one read. A
+    /// predecessor still going after this and a margin is wedged, and is left to end on its
+    /// own, under its own stop flag.
+    private static let predecessorWait = CaptureBroker.requestTimeout + 3
 
     init(open: @escaping Opener = { try PacketCapture.obtain(interface: $0, timeout: Sniffer.readTimeout) },
          host: Host = Host(),
@@ -56,7 +60,12 @@ final class Sniffer: @unchecked Sendable {
         let stopping = OSAllocatedUnfairLock(initialState: false)
         let ended = DispatchSemaphore(value: 0)
         current = (stopping, ended)
+        let previous = predecessor
+        predecessor = nil
         let thread = Thread { [self] in
+            if let previous, previous.wait(timeout: .now() + Self.predecessorWait) == .timedOut {
+                Log.sniffer.error("the previous capture run did not end within \(Self.predecessorWait) s")
+            }
             run { stopping.withLock { $0 } }
             ended.signal()
         }
@@ -65,15 +74,14 @@ final class Sniffer: @unchecked Sendable {
         thread.start()
     }
 
-    /// Waits for the run to end, which it does within one read timeout, so its capture
-    /// device is closed and its last status reported before another run can start.
+    /// Asks the run to end and returns at once, so the caller (the main actor, after an
+    /// install) never waits on a broker request. The next `start` begins only after this run
+    /// has closed its capture device and reported `.stopped`.
     func stop() {
         guard let run = current else { return }
         current = nil
+        predecessor = run.ended
         run.stopping.withLock { $0 = true }
-        if run.ended.wait(timeout: .now() + Self.stopWait) == .timedOut {
-            Log.sniffer.error("the previous capture run did not end within \(Self.stopWait) s")
-        }
     }
 
     private func run(shouldStop: () -> Bool) {
@@ -88,14 +96,18 @@ final class Sniffer: @unchecked Sendable {
             do {
                 capture = try open(interface)
             } catch let error as CaptureError {
+                guard !shouldStop() else { break }
                 report(.unavailable(error), previous: &lastFailure)
                 wait(Self.retryAfter, shouldStop: shouldStop)
                 continue
             } catch {
+                guard !shouldStop() else { break }
                 report(.unavailable(.open(errno: EIO)), previous: &lastFailure)
                 wait(Self.retryAfter, shouldStop: shouldStop)
                 continue
             }
+            // Stopped while the broker was answering: the descriptor is dropped unused.
+            guard !shouldStop() else { break }
             lastFailure = nil
             let direction = direction(for: capture, interface: interface)
             installFilter(on: capture, direction: direction, interface: interface)

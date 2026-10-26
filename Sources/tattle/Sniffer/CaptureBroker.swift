@@ -39,6 +39,9 @@ enum CaptureBroker {
         }
     }
 
+    /// The longest a request waits for the broker, retry included.
+    static let requestTimeout = TimeInterval(TATTLE_BROKER_TIMEOUT_MS) / 1000
+
     /// launchd holds the installed broker's job; looking does not start it.
     static var isReachable: Bool { isRegistered(.system) }
 

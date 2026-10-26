@@ -70,4 +70,45 @@ final class SnifferTests: XCTestCase {
         XCTAssertEqual(Array(statuses.withLock { $0 }.prefix(3)), [failure, .stopped, failure],
                        "the first run stopped before the second reported")
     }
+
+    /// An opener that does not return until the test lets it, as a broker request that is slow
+    /// to answer. Counts how many opens have begun.
+    private final class SlowOpen: @unchecked Sendable {
+        private let gate = DispatchSemaphore(value: 0)
+        private let begun = OSAllocatedUnfairLock(initialState: 0)
+        var opens: Int { begun.withLock { $0 } }
+        func open() throws -> any CaptureSource {
+            let number = begun.withLock { n -> Int in n += 1; return n }
+            // The first open is the slow one; later ones answer at once.
+            if number == 1 { _ = gate.wait(timeout: .now() + 20) }
+            return FakeCapture(linkType: PacketCapture.linkEthernet)
+        }
+        func release() { gate.signal() }
+    }
+
+    /// A restart while the run is inside open() (the broker request can take its full timeout)
+    /// must not block the caller, must not start a second run beside the first, and the old
+    /// run must say nothing once it has been stopped.
+    func testRestartDuringOpenNeitherBlocksNorOverlaps() {
+        let statuses = OSAllocatedUnfairLock<[Sniffer.Status]>(initialState: [])
+        let slow = SlowOpen()
+        let sniffer = Sniffer(open: { _ in try slow.open() },
+                              host: Sniffer.Host(primaryInterface: { "en0" }, hardwareAddress: { _ in [2, 0, 0, 0, 0, 1] }, addresses: { _ in [] }),
+                              onEvents: { _ in }, onStatus: { status in statuses.withLock { $0.append(status) } })
+        defer { slow.release(); sniffer.stop() }
+        sniffer.start()
+        XCTAssertTrue(eventually { slow.opens == 1 }, "the first run is inside open")
+
+        let began = Date()
+        sniffer.stop()
+        XCTAssertLessThan(Date().timeIntervalSince(began), 0.5, "stop returns without waiting for the run: it is the main actor's call")
+        sniffer.start()
+        usleep(500_000)
+        XCTAssertEqual(slow.opens, 1, "the second run waits for the first to end before it opens a device")
+
+        slow.release()
+        XCTAssertTrue(eventually { statuses.withLock { $0 }.count >= 2 })
+        XCTAssertEqual(statuses.withLock { $0 }, [.stopped, .capturing(interface: "en0")],
+                       "the stopped run reports only that it stopped, and before the new run reports")
+    }
 }
