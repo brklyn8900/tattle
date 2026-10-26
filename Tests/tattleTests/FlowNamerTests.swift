@@ -94,6 +94,20 @@ final class FlowNamerTests: XCTestCase {
                        [FlowEvent(key: udpKey, kind: .opened), FlowEvent(key: udpKey, kind: .unnamed(.quic(.unsupportedVersion)))], "opened, but unreadable")
     }
 
+    /// Only what can be a client's first QUIC packet starts a flow: long header with the fixed
+    /// bit (0xC0), in a datagram of at least 1200 bytes (RFC 9000 14.1), not to DNS. RTP's
+    /// first byte (0x80) and a DNS query whose id has the high bit set would otherwise show as
+    /// "a QUIC version Tattle cannot read".
+    func testOnlyAClientInitialStartsAUDPFlow() {
+        var n = namer()
+        var rtp = [UInt8](repeating: 0, count: 1300)
+        rtp[0] = 0x80
+        XCTAssertEqual(n.observe(udp(dstPort: 5004, rtp), at: t0), [], "RTP version 2")
+        XCTAssertEqual(n.observe(udp([0xc3, 0, 0, 0, 1] + [UInt8](repeating: 0, count: 95)), at: t0), [], "too small for a client Initial")
+        XCTAssertEqual(n.observe(udp(dstPort: 53, SnifferParserTests.rfcInitial), at: t0), [], "a DNS query, whatever its first byte")
+        XCTAssertEqual(n.flowCount, 0)
+    }
+
     func testDNSFallbackAfterThreeSecondsOnlyWhenNothingElseNamed() {
         var n = namer()
         XCTAssertEqual(n.observe(dnsReply, at: t0), [], "a reply updates the map and says nothing")

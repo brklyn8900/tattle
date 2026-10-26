@@ -59,7 +59,7 @@ final class SnifferParserTests: XCTestCase {
     // MARK: QUIC
 
     func testRFC9001ClientInitialDecryptsToClientHello() throws {
-        XCTAssertTrue(QUIC.isLongHeader(Self.rfcInitial))
+        XCTAssertTrue(QUIC.mayBeClientInitial(Self.rfcInitial))
         guard case .success(let initial) = QUIC.parseInitial(Self.rfcInitial, at: 0) else {
             return XCTFail("the published Initial did not decrypt")
         }
@@ -88,7 +88,7 @@ final class SnifferParserTests: XCTestCase {
 
         var shortHeader = Self.rfcInitial
         shortHeader[0] = 0x40
-        XCTAssertFalse(QUIC.isLongHeader(shortHeader))
+        XCTAssertFalse(QUIC.mayBeClientInitial(shortHeader))
         guard case .failure(.notInitial) = QUIC.parseInitial(shortHeader, at: 0) else { return XCTFail() }
     }
 

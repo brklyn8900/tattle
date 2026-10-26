@@ -191,19 +191,21 @@ struct FlowNamer: Sendable {
             }
             return []
         case .udp:
+            // A DNS query can look like anything; replies are read above.
+            guard p.dstPort != 53 else { return [] }
             let datagram = Array(p.payload)
             var events: [FlowEvent] = []
             if var flow = flows[key] {
                 flow.lastSeen = ts
                 flows[key] = flow
             } else {
-                // Only a long header starts a flow: a QUIC connection whose first packet seen
-                // is a short one was open before capture began and has no ClientHello left.
-                guard QUIC.isLongHeader(datagram) else { return [] }
+                // Only a client Initial starts a flow: a QUIC connection whose first packet
+                // seen is a short one was open before capture began and has no ClientHello left.
+                guard QUIC.mayBeClientInitial(datagram) else { return [] }
                 flows[key] = Flow(start: ts, lastSeen: ts, tlsBuffer: nil)
                 events.append(FlowEvent(key: key, kind: .opened))
             }
-            guard var flow = flows[key], !flow.finished, QUIC.isLongHeader(datagram) else { return events }
+            guard var flow = flows[key], !flow.finished, QUIC.mayBeClientInitial(datagram) else { return events }
             switch inspectUDP(&flow, datagram: datagram) {
             case .named(let name, _):
                 flow.named = true

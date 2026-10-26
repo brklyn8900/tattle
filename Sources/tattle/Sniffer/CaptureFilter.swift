@@ -5,7 +5,8 @@ import Foundation
 ///
 /// - outbound TCP SYNs and outbound TCP segments carrying payload (the ClientHello,
 ///   the HTTP request line);
-/// - outbound UDP datagrams whose first payload byte has the QUIC long-header bit;
+/// - outbound UDP datagrams that can be a QUIC client Initial: not to port 53, at least
+///   1200 bytes of payload, first byte a long header with the fixed bit;
 /// - inbound UDP from port 53 (DNS replies).
 ///
 /// Outbound is told from the interface's own hardware address on Ethernet, and from the
@@ -76,8 +77,10 @@ struct CaptureFilter: Equatable, Sendable {
         emitPayloadCheck(&a, accept: accept, drop: drop)
         a.mark(v4udp)
         a.loadXHeaderLength(at: L)
-        a.loadByteIndexed(at: L + 8)  // first UDP payload byte
-        a.jumpIfSet(0x80, accept, else: drop)
+        a.loadHalfIndexed(at: L + 2)  // UDP destination port
+        a.jumpIfEqual(53, drop, else: nil)
+        a.loadHalfIndexed(at: L + 4)  // UDP length
+        emitInitialCheck(&a, firstByte: { $0.loadByteIndexed(at: L + 8) }, accept: accept, drop: drop)
         a.mark(v4in)
         a.loadByte(at: L + 9)
         a.jumpIfEqual(17, nil, else: drop)
@@ -102,8 +105,10 @@ struct CaptureFilter: Equatable, Sendable {
         a.loadByte(at: L + 40 + 12)
         emitPayloadCheck(&a, accept: accept, drop: drop)
         a.mark(v6udp)
-        a.loadByte(at: L + 40 + 8)
-        a.jumpIfSet(0x80, accept, else: drop)
+        a.loadHalf(at: L + 40 + 2)
+        a.jumpIfEqual(53, drop, else: nil)
+        a.loadHalf(at: L + 40 + 4)
+        emitInitialCheck(&a, firstByte: { $0.loadByte(at: L + 40 + 8) }, accept: accept, drop: drop)
         a.mark(v6in)
         a.loadByte(at: L + 6)
         a.jumpIfEqual(17, nil, else: drop)
@@ -145,6 +150,14 @@ struct CaptureFilter: Equatable, Sendable {
             }
             a.jump(inbound)
         }
+    }
+
+    /// A holds the UDP length; accepts a datagram that can be a QUIC client Initial.
+    private static func emitInitialCheck(_ a: inout Assembler, firstByte load: (inout Assembler) -> Void, accept: Assembler.Label, drop: Assembler.Label) {
+        a.jumpIfGreater(UInt32(8 + QUIC.minimumInitialDatagram - 1), nil, else: drop)
+        load(&a)
+        a.and(0xc0)
+        a.jumpIfEqual(0xc0, accept, else: drop)
     }
 
     /// A holds the transport header's data-offset byte and M[0] the bytes from the

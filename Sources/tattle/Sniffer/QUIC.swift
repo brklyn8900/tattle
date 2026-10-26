@@ -29,8 +29,13 @@ enum QUIC {
         0x9a, 0xe6, 0xa4, 0xc8, 0x0c, 0xad, 0xcc, 0xbb, 0x7f, 0x0a,
     ]
 
-    static func isLongHeader(_ datagram: [UInt8]) -> Bool {
-        datagram.count >= 5 && datagram[0] & 0x80 != 0
+    /// A client pads every datagram carrying an Initial to at least this (RFC 9000 14.1).
+    static let minimumInitialDatagram = 1200
+
+    /// Whether a client's datagram can hold an Initial: a long header with the fixed bit set
+    /// (0xC0), at the size a client must pad it to. RTP (0x80) and most other UDP fail it.
+    static func mayBeClientInitial(_ datagram: [UInt8]) -> Bool {
+        datagram.count >= minimumInitialDatagram && datagram[0] & 0xc0 == 0xc0
     }
 
     static func parseInitial(_ datagram: [UInt8], at start: Int) -> Result<Initial, Failure> {

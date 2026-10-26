@@ -61,6 +61,9 @@ final class CaptureFilterTests: XCTestCase {
         XCTAssertFalse(CaptureFilter(instructions: [.init(code: 0x02, jt: 0, jf: 0, k: 16), .init(code: 0x06, jt: 0, jf: 0, k: 0)]).isValid, "memory slot out of range")
     }
 
+    /// A client Initial's first bytes, padded to the 1200 a client sends at least.
+    private let initial: [UInt8] = [0xc3, 0, 0, 0, 1] + [UInt8](repeating: 0, count: 1195)
+
     func testEthernetFilterKeepsHandshakesAndDNSAndDropsTheRest() throws {
         let filter = try XCTUnwrap(CaptureFilter.program(linkType: PacketCapture.linkEthernet, direction: .hardwareAddress(mac)))
         func run(_ frame: [UInt8]) -> UInt32 { Interpreter.run(filter, on: frame) }
@@ -79,11 +82,23 @@ final class CaptureFilterTests: XCTestCase {
         XCTAssertEqual(run(ethernet(from: otherMac, ipv4(from: peerV4, to: myV4, proto: 6, tcp(flags: 0x12, payload: 0)))), 0)
         XCTAssertEqual(run(ethernet(from: otherMac, ipv6(from: peerV6, to: myV6, proto: 6, tcp(flags: 0x18, payload: 1400)))), 0)
 
-        // Outbound UDP: QUIC long header kept, short header and other UDP dropped.
-        XCTAssertEqual(run(ethernet(from: mac, ipv4(from: myV4, to: peerV4, proto: 17, udp(sourcePort: 50000, destinationPort: 443, payload: [0xc3, 0, 0, 0, 1])))), snap)
+        // Outbound UDP: a client Initial kept, short header and other UDP dropped.
+        XCTAssertEqual(run(ethernet(from: mac, ipv4(from: myV4, to: peerV4, proto: 17, udp(sourcePort: 50000, destinationPort: 443, payload: initial)))), snap)
         XCTAssertEqual(run(ethernet(from: mac, ipv4(from: myV4, to: peerV4, proto: 17, udp(sourcePort: 50000, destinationPort: 443, payload: [0x41, 1, 2, 3])))), 0)
         XCTAssertEqual(run(ethernet(from: mac, ipv4(from: myV4, to: peerV4, proto: 17, udp(sourcePort: 50000, destinationPort: 53, payload: [0x12, 0x34, 0x01, 0x00])))), 0, "a DNS query is not needed")
-        XCTAssertEqual(run(ethernet(from: mac, ipv6(from: myV6, to: peerV6, proto: 17, udp(sourcePort: 50000, destinationPort: 443, payload: [0xc3, 0, 0, 0, 1])))), snap)
+        XCTAssertEqual(run(ethernet(from: mac, ipv6(from: myV6, to: peerV6, proto: 17, udp(sourcePort: 50000, destinationPort: 443, payload: initial)))), snap)
+        // Only a client Initial: long header with the fixed bit, at least 1200 bytes, not to DNS.
+        var rtp = initial
+        rtp[0] = 0x80
+        for family in [4, 6] {
+            func out(_ port: UInt16, _ payload: [UInt8]) -> UInt32 {
+                let datagram = udp(sourcePort: 50000, destinationPort: port, payload: payload)
+                return run(ethernet(from: mac, family == 4 ? ipv4(from: myV4, to: peerV4, proto: 17, datagram) : ipv6(from: myV6, to: peerV6, proto: 17, datagram)))
+            }
+            XCTAssertEqual(out(5004, rtp), 0, "RTP, IPv\(family)")
+            XCTAssertEqual(out(443, Array(initial.prefix(1199))), 0, "too small for a client Initial, IPv\(family)")
+            XCTAssertEqual(out(53, initial), 0, "a DNS query, IPv\(family)")
+        }
 
         // Inbound UDP: only replies from port 53.
         XCTAssertEqual(run(ethernet(from: otherMac, ipv4(from: peerV4, to: myV4, proto: 17, udp(sourcePort: 53, destinationPort: 50000, payload: [0x12, 0x34, 0x81, 0x80])))), snap)
@@ -104,7 +119,7 @@ final class CaptureFilterTests: XCTestCase {
         XCTAssertEqual(run(nullLink(ipv4(from: myV4, to: peerV4, proto: 6, tcp(flags: 0x02, payload: 0)))), snap)
         XCTAssertEqual(run(nullLink(ipv4(from: peerV4, to: myV4, proto: 6, tcp(flags: 0x18, payload: 1400)))), 0, "inbound payload dropped")
         XCTAssertEqual(run(nullLink(ipv4(from: peerV4, to: myV4, proto: 17, udp(sourcePort: 53, destinationPort: 5000, payload: [1, 2, 3, 4])))), snap)
-        XCTAssertEqual(run(nullLink(ipv6(from: myV6, to: peerV6, proto: 17, udp(sourcePort: 5000, destinationPort: 443, payload: [0xc0, 0, 0, 0, 1])))), snap)
+        XCTAssertEqual(run(nullLink(ipv6(from: myV6, to: peerV6, proto: 17, udp(sourcePort: 5000, destinationPort: 443, payload: initial)))), snap)
         XCTAssertEqual(run(nullLink(ipv6(from: peerV6, to: myV6, proto: 6, tcp(flags: 0x18, payload: 1400)))), 0)
         // Another address of ours that the filter was not told about looks inbound: dropped.
         XCTAssertEqual(run(nullLink(ipv4(from: [10, 0, 0, 9], to: peerV4, proto: 6, tcp(flags: 0x02, payload: 0)))), 0)
