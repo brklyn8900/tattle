@@ -31,8 +31,8 @@ the same view or from the Startup tab. Design: `docs/adr/0003-bpf-descriptor-bro
 Preconditions:
 
 - Open run; doctor all `ok`.
-- the user is at the Mac to type his password. Removing the broker stops names in the release
-  app too: say so when asking.
+- the user is at the Mac to type his password. Removing the broker stops names in every copy
+  running: say so when asking.
 
 - **Before.** `$V tab Network`, `$V save pa-before`; `ls -l
   /Library/LaunchDaemons/io.github.eladefrati.tattle.capture-broker.plist`; `launchctl
@@ -48,7 +48,7 @@ Preconditions:
   pa-removed`.
 - **Install.** `$V ax press "Allow packet access"`, `$V ax press Install`. Stop for the
   password as above. Then: `$V log "installing the packet-access broker from|packet-access
-  broker installed|capturing on"` shows the dev bundle path and a new capture line; the
+  broker installed|capturing on"` shows the run's bundle path and a new capture line; the
   plist exists, root-owned, with `--uid 501`; the link reads `Packet access`; `$V save
   pa-installed`.
 - **Cancel.** Pressing Cancel in the dialog leaves the broker as it was and shows the error
@@ -62,7 +62,22 @@ Preconditions:
 - The dev copy is signed with the team identity, so a rebuild keeps the broker's
   acceptance; an ad-hoc build is recognised by code hash and shows `install again` after
   every rebuild.
+- With this build's broker installed and running, the view has only `Remove`: to prove
+  Install, remove first.
+- After `pa-startup-remove` the broker's row under "Allowed in the background" stays until
+  the Startup tab's `Refresh`: macOS rewrites its background-items file about a minute
+  after the removal, later than the tab's own refresh (backlog).
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
-  Cancel, `Install again`, `Install for this account` and `pa-startup-remove` are not.
+- On the release build of `f4b89a1`, run 2026-10-25T2345-broker-final (driven with
+  `tattle-ax` by hand, before `--release` existed) proved `pa-remove`, `pa-install` and
+  `pa-startup-remove` (plist, helper, socket and launchd job gone), and against the
+  installed daemon: broker-probe copies signed ad hoc, by the team under another
+  identifier, and with Tattle's identifier without the hardened runtime are refused, the
+  hardened one with Tattle's identifier is accepted; the app launched with
+  `DYLD_INSERT_LIBRARIES` has it stripped by dyld and still captures; 20 connect-and-close
+  cycles on the socket leave the broker's pid and run count unchanged. Its `cycles.py` and
+  `inject.c` are in that run folder.
+- Not proven: Cancel, `Install again`, `Install for this account`, and a second account
+  against the installed daemon (to run on testmac).

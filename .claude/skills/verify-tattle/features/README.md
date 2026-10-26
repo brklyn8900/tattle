@@ -1,16 +1,17 @@
 # Tattle verification map
 
-The maintained list of Tattle's user-facing features and how to prove each in the dev
-copy. Read this index, then the feature's file.
+The maintained list of Tattle's user-facing features and how to prove each in the run's
+copy (the dev copy unless the run was launched with `--release`). Read this index, then
+the feature's file.
 
 ## Baseline preconditions
 
 - Repo at `~/dev/tattle`; commands run from its root with
   `V=.claude/skills/verify-tattle/scripts/tattle-verify`.
 - A run is open: `$V launch` (or `--fresh`) succeeded and `$V doctor` is all `ok`.
-- The dev copy is Tattle Dev, `io.github.eladefrati.tattle.dev`, launched by this run.
-  Never drive the release app.
-- The packet-access broker is installed and serves the dev copy (doctor's capture line
+- The run's copy (Tattle Dev, `io.github.eladefrati.tattle.dev`, or the release build,
+  `io.github.eladefrati.tattle`) was launched by this run.
+- The packet-access broker is installed and serves the run's copy (doctor's capture line
   says `through the broker`) for anything about names; otherwise the Network journeys
   fail on that precondition.
 
@@ -42,7 +43,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Network names and unnamed reasons](./network-names.md): who each connection goes to, or
   why Tattle could not tell. Proven 2026-10-25.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
-  sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25.
+  sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
+  both copies, Remove from Startup and the refused callers on the release build.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
   Proven 2026-10-25.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and

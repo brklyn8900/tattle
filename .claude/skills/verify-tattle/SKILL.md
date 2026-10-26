@@ -1,17 +1,25 @@
 ---
 name: verify-tattle
-description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, drive its panel through the accessibility API, and prove behaviour from the panel, the dev history database and the app's log. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed. Never drives the release app.
+description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed.
 ---
 
 # Verify Tattle
 
 Tattle is a menu bar app: a status item that drops down a 480-point panel with four tabs
 (Network, Processes, Ports, Startup). There is no web or CLI surface; the panel is the
-user surface. Everything here drives the **dev copy** only: `build/TattleDev.app`, bundle
-id `io.github.eladefrati.tattle.dev`, data in `~/Library/Application Support/Tattle Dev/`,
-log subsystem `io.github.eladefrati.tattle.dev`. The release app (`build/Tattle.app` or
-`/Applications/Tattle.app`, bundle id `io.github.eladefrati.tattle`) is the user's: never
-launch, press, quit or read its database.
+user surface. A run drives one copy, chosen at launch, and every later command acts on
+it:
+
+- the **dev copy** (default): `build/TattleDev.app`, bundle id
+  `io.github.eladefrati.tattle.dev`, data in `~/Library/Application Support/Tattle Dev/`,
+  log subsystem `io.github.eladefrati.tattle.dev`;
+- the **release build** (`launch --release`): `build/Tattle.app`, bundle id
+  `io.github.eladefrati.tattle`, data in `~/Library/Application Support/Tattle/`, log
+  subsystem `io.github.eladefrati.tattle`. Use it when the proof must be on the build that
+  ships, such as the broker's install and refusals before a push. It is the copy the user
+  runs: its history is his, so `--fresh` on it moves his data aside for the run.
+
+Use the dev copy otherwise: it runs beside the release build without stopping it.
 
 All commands run from the repo root through one helper:
 
@@ -23,19 +31,23 @@ It builds its accessibility tool (`scripts/tattle-ax.swift`) into
 
 ## Launch
 
-    $V launch            # keeps the dev copy's existing data
-    $V launch --fresh    # moves the dev data folder into the run folder first; cleanup puts it back
+    $V launch            # the dev copy, keeping its existing data
+    $V launch --fresh    # moves the copy's data folder into the run folder first; cleanup puts it back
+    $V launch --release  # the release build instead; combines with --fresh and --replace
 
-`launch` refuses when a dev copy is already running that no open run started: another
-session may be driving it. Check with the other sessions (ListAgents) first; only then
-rerun with `--replace`, which lets `make run` quit it. It refuses while a run is open.
+`launch` refuses when the copy is already running and no open run started it: the user or
+another session may be using it. For the dev copy, check with the other sessions
+(ListAgents); for the release build, it is usually the user's, so say you are replacing it.
+Only then rerun with `--replace`, which quits it. It refuses while a run is open.
 
-What it does: starts `log stream --level debug` for the dev subsystem (unnamed reasons are
-debug lines, which `log show` cannot read back later), runs `make run` (builds and signs
-the dev copy, stops a running dev copy by its exact path, opens it), waits for the
+What it does: starts `log stream --level debug` for the copy's subsystem (unnamed reasons
+are debug lines, which `log show` cannot read back later), builds and opens the copy (the
+dev copy through `make run`, which stops a running dev copy by its exact path; the
+release build by stopping it by its exact path, then `make app`, which deletes and
+rebuilds the bundle, then `open`), waits for the
 sniffer's `capturing on` or `packet capture unavailable` line, then opens the panel and
 waits for the Network tab's `N open connections from M apps` heading. Ready means that
-heading, not just a process. It prints the run id, commit, pid and capture line. A build
+heading, not just a process. It prints the run id, copy, commit, pid and capture line. A build
 takes seconds when nothing changed and a minute or two after a source change.
 
 Teardown is `$V cleanup` (below).
@@ -45,13 +57,13 @@ Teardown is `$V cleanup` (below).
     $V doctor
 
 Read-only. Run it after launch and whenever anything looks off. Every line must be `ok`:
-Accessibility permission for this terminal; exactly one dev copy; started by the open run;
+Accessibility permission for this terminal; exactly one copy of the run's kind; started by the open run;
 bundle id; the running code hash equals the bundle on disk; the menu bar item is
 reachable; the bundle is newer than every file in `Sources/`, `Resources/` and
 `Package.swift` (otherwise relaunch: the app is not the code under test); the database has
 its migrations; this run's log has `capturing on`. `info` lines report the commit and
-uncommitted paths, whether the packet-access broker is installed, and the release app's
-pid, which is never driven.
+uncommitted paths, whether the packet-access broker is installed, and the pid of any other
+copy running, which the run does not drive.
 
 ## Drive
 
@@ -90,18 +102,19 @@ approved these hosts and these bytes on 2026-10-25. Do not point it at another h
 
 Each run writes to `build/verify/runs/<run-id>/`, which cleanup never deletes:
 
-- `run.txt`: run id, commit (and whether sources were uncommitted), pid, capture line.
+- `run.txt`: run id, copy, commit (and whether sources were uncommitted), pid, capture
+  line. `copy` holds `dev` or `release` for the helper.
 - `commands.txt`: every helper command with its time, which ties actions to states.
 - `$V save <name>`: `<name>.txt` (labels), `<name>.ax.txt` (tree) and `<name>.png`
   (screenshot of the panel window). the user set the dev copy's item to always show in the
   menu bar (2026-10-25), so the panel opens on screen. If that setting is lost and the
   menu bar is too full, macOS puts the item and its panel off every display; `shot` then
   moves the panel onto the main display for the capture and says so.
-- `$V db "<sql>"`: read-only query on the dev history database, appended to `db.txt`.
+- `$V db "<sql>"`: read-only query on the run's copy's history database, appended to `db.txt`.
   Tables: `connection` (one row per connection: `localPort`, `pid`, `processName`,
   `remoteAddress`, `remotePort`, `scope`, `name`, `nameSource`, `firstSeen`, `ended`),
   `rule`, `setting`, `grdb_migrations`.
-- `log.txt`: the dev subsystem's log at debug level for the whole run; `$V log "<regex>"`
+- `log.txt`: the copy's subsystem's log at debug level for the whole run; `$V log "<regex>"`
   greps it.
 - `previous-data/` during a `--fresh` run; after cleanup `fresh-data/` holds the run's
   own database.
@@ -125,7 +138,7 @@ Proof standards:
   administrator dialog. Press the button, then stop: tell the user the dialog is up and what
   it will do, and wait for him to type the password into the dialog himself. Never type,
   script or ask for the password in the terminal.
-- **Changes outside the dev copy.** Startup's `Load`, `Unload` and `Remove`, and
+- **Changes outside the run's copy.** Startup's `Load`, `Unload` and `Remove`, and
   Processes' `Quit` and `Force Quit`, act on the user's real system. Use them only on
   something the run created, or with his yes.
 - **Outward traffic** other than `connect`'s approved example.com cases.
@@ -134,16 +147,17 @@ Proof standards:
 
     $V cleanup
 
-Stops what the run started and only that: the `nc` connections, the dev copy (by the pid
-it launched, checked against the dev executable path) and the log stream. After a
+Stops what the run started and only that: the `nc` connections, the run's copy (by the
+pid it launched, checked against the copy's executable path) and the log stream. After a
 `--fresh` run it moves the run's data folder into `fresh-data/` and puts the previous one
 back. It prints the evidence folder and its contents. Run it after every failed attempt
-too, before launching again. It never kills by process name and never touches the release
-app or the broker.
+too, before launching again. It never kills by process name and never touches the other
+copy or the broker. After a release run the release build stays quit: `open
+build/Tattle.app` gives the user his copy back.
 
 ## Gotchas
 
-- Opening the panel makes Tattle Dev the active app and takes focus from whatever the user is
+- Opening the panel makes the run's copy the active app and takes focus from whatever the user is
   using; the panel closes when anything else takes focus. Say so before a long drive if he
   is at the Mac. Reopen with `$V ax open` and check where it is with `$V ax text`.
 - The panel keeps its navigation while closed; `$V tab` backs out first.
@@ -153,6 +167,6 @@ app or the broker.
   filed under `iTerm`, with `nc` in the connection row's subtitle. A process that exits
   before Tattle reads the process list shows as `pid <n>`.
 - Packet access (the broker) is one launch daemon shared by the dev and release copies;
-  removing it stops names in the release app the user is running too.
-- The dev copy has its own permission grants. Without Full Disk Access the Startup tab
+  removing it stops names in every copy running.
+- Each copy has its own permission grants. Without Full Disk Access the Startup tab
   shows `Login items need Full Disk Access` instead of the login items.

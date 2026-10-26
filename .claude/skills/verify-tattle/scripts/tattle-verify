@@ -1,32 +1,48 @@
 #!/bin/bash
-# Launches, drives and inspects the dev copy of Tattle (build/TattleDev.app) for a
-# verification run, and keeps the run's evidence. Never touches the release app.
+# Launches, drives and inspects one copy of Tattle for a verification run, and keeps the
+# run's evidence: the dev copy (build/TattleDev.app) by default, the release build
+# (build/Tattle.app) with launch --release. Every later command acts on the run's copy.
 #
-#   tattle-verify launch [--fresh] [--replace]
+#   tattle-verify launch [--release] [--fresh] [--replace]
 #   tattle-verify doctor
 #   tattle-verify ax <command> [args]     open, close, status, dump, text, press, wait, scroll, frame
 #   tattle-verify tab <Network|Processes|Ports|Startup>
 #   tattle-verify save <name>             panel tree, text and screenshot into the run folder
-#   tattle-verify db "<sql>"              read-only query on the dev history database
+#   tattle-verify db "<sql>"              read-only query on the run's history database
 #   tattle-verify connect <named|garbage|silent> [--hold <seconds>] [--port <local port>]
 #   tattle-verify log [<regex>]           the run's log lines, optionally filtered
 #   tattle-verify cleanup
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)
-DEV_APP="$REPO/build/TattleDev.app"
-DEV_BIN="$DEV_APP/Contents/MacOS/tattle"
-DEV_ID=io.github.eladefrati.tattle.dev
-DATA="$HOME/Library/Application Support/Tattle Dev"
-DB="$DATA/tattle.sqlite"
 STATE="$REPO/build/verify"
 AX_SRC="$REPO/.claude/skills/verify-tattle/scripts/tattle-ax.swift"
 AX="$REPO/build/verify-tools/tattle-ax"
 
 die() { echo "error: $*" >&2; exit 1; }
 
-# The dev copy's processes, by exact executable path, like make stop.
-dev_pids() { pgrep -fx "$DEV_BIN" || true; }
+# Sets the paths of the copy a run drives; OTHER_BIN is the copy it leaves alone.
+use_copy() {
+    COPY=$1
+    case $COPY in
+        dev)
+            APP="$REPO/build/TattleDev.app"; APP_ID=io.github.eladefrati.tattle.dev
+            DATA="$HOME/Library/Application Support/Tattle Dev"; COPY_NAME="dev copy"
+            OTHER_BIN="$REPO/build/Tattle.app/Contents/MacOS/tattle" ;;
+        release)
+            APP="$REPO/build/Tattle.app"; APP_ID=io.github.eladefrati.tattle
+            DATA="$HOME/Library/Application Support/Tattle"; COPY_NAME="release build"
+            OTHER_BIN="$REPO/build/TattleDev.app/Contents/MacOS/tattle" ;;
+        *) die "unknown copy '$COPY' in the open run" ;;
+    esac
+    BIN="$APP/Contents/MacOS/tattle"
+    DB="$DATA/tattle.sqlite"
+}
+# The open run's copy, recorded by launch; the dev copy when no run is open.
+use_copy "$(cat "$STATE/runs/$(cat "$STATE/current" 2>/dev/null)/copy" 2>/dev/null || echo dev)"
+
+# The copy's processes, by exact executable path, like make stop.
+app_pids() { pgrep -fx "$BIN" || true; }
 
 run_dir() {
     [ -f "$STATE/current" ] || die "no open run; start one with: tattle-verify launch"
@@ -35,11 +51,11 @@ run_dir() {
 
 record() { echo "$(date +%H:%M:%S) $*" >> "$(run_dir)/commands.txt"; }
 
-# The pid this run launched, refused when it is gone or is no longer the dev copy.
+# The pid this run launched, refused when it is gone or is no longer the run's copy.
 app_pid() {
     local pid
     pid=$(cat "$(run_dir)/app.pid" 2>/dev/null) || die "this run has no app pid"
-    [ "$(ps -p "$pid" -o command= 2>/dev/null)" = "$DEV_BIN" ] || die "pid $pid is no longer the dev copy this run launched"
+    [ "$(ps -p "$pid" -o command= 2>/dev/null)" = "$BIN" ] || die "pid $pid is no longer the $COPY_NAME this run launched"
     echo "$pid"
 }
 
@@ -68,19 +84,21 @@ stop_pid() {
 }
 
 cmd_launch() {
-    local fresh=0 replace=0
+    local fresh=0 replace=0 copy=dev
     for arg in "$@"; do
         case $arg in
+            --release) copy=release ;;
             --fresh) fresh=1 ;;
             --replace) replace=1 ;;
             *) die "unknown option $arg" ;;
         esac
     done
     [ ! -f "$STATE/current" ] || die "run $(cat "$STATE/current") is still open; run tattle-verify cleanup first"
+    use_copy $copy
     local running
-    running=$(dev_pids)
+    running=$(app_pids)
     if [ -n "$running" ] && [ $replace = 0 ]; then
-        die "the dev copy is already running (pid $running, started $(ps -p "${running%%$'\n'*}" -o lstart= | sed "s/ *$//")), not by this run. Another session may be driving it: ask, then rerun with --replace"
+        die "the $COPY_NAME is already running (pid $running, started $(ps -p "${running%%$'\n'*}" -o lstart= | sed "s/ *$//")), not by this run. the user or another session may be using it: ask, then rerun with --replace"
     fi
     build_ax
     "$AX" trusted >/dev/null || die "this terminal has no Accessibility permission"
@@ -90,29 +108,37 @@ cmd_launch() {
     run="$STATE/runs/$id"
     mkdir -p "$run"
     echo "$id" > "$STATE/current"
+    echo "$copy" > "$run/copy"
     record "launch $*"
 
     # Started first, so the startup lines are in it. Debug level: unnamed reasons are
     # debug lines, which log show cannot read back later.
     nohup /usr/bin/log stream --level debug --style compact \
-        --predicate "subsystem == \"$DEV_ID\"" > "$run/log.txt" 2>&1 < /dev/null &
+        --predicate "subsystem == \"$APP_ID\"" > "$run/log.txt" 2>&1 < /dev/null &
     echo $! > "$run/log.pid"
 
     if [ $fresh = 1 ] && [ -d "$DATA" ]; then
         mv "$DATA" "$run/previous-data"
-        echo "moved the dev data folder to $run/previous-data; cleanup puts it back"
+        echo "moved the $COPY_NAME's data folder to $run/previous-data; cleanup puts it back"
     fi
 
-    # The repo's dev target: builds the dev copy, stops a running one, opens it.
-    make -C "$REPO" run > "$run/build.txt" 2>&1 || { tail -20 "$run/build.txt"; die "make run failed; output in $run/build.txt"; }
+    if [ $copy = dev ]; then
+        # The repo's dev target: builds the dev copy, stops a running one, opens it.
+        make -C "$REPO" run > "$run/build.txt" 2>&1 || { tail -20 "$run/build.txt"; die "make run failed; output in $run/build.txt"; }
+    else
+        # make app deletes the bundle before rebuilding it, so the running copy stops first.
+        for p in $running; do stop_pid "$p" "$BIN"; done
+        make -C "$REPO" app > "$run/build.txt" 2>&1 || { tail -20 "$run/build.txt"; die "make app failed; output in $run/build.txt"; }
+        open "$APP"
+    fi
 
     local pid=""
     for _ in $(seq 60); do
-        pid=$(dev_pids | head -1)
+        pid=$(app_pids | head -1)
         [ -n "$pid" ] && break
         sleep 0.5
     done
-    [ -n "$pid" ] || die "the dev copy did not start"
+    [ -n "$pid" ] || die "the $COPY_NAME did not start"
     echo "$pid" > "$run/app.pid"
 
     local line=""
@@ -132,6 +158,7 @@ cmd_launch() {
 
     {
         echo "run: $id"
+        echo "copy: $COPY_NAME, $APP"
         echo "commit: $(git -C "$REPO" rev-parse --short HEAD)$( [ -n "$(git -C "$REPO" status --porcelain -- Sources Resources Package.swift Makefile)" ] && echo ' + uncommitted changes')"
         echo "pid: $pid"
         echo "fresh data folder: $([ $fresh = 1 ] && echo yes || echo no)"
@@ -151,11 +178,11 @@ cmd_doctor() {
     "$AX" trusted > /dev/null && ok "Accessibility permission" || no "this terminal has no Accessibility permission"
 
     local pids
-    pids=$(dev_pids)
+    pids=$(app_pids)
     case $(echo "$pids" | grep -c . || true) in
-        0) no "the dev copy is not running" ;;
-        1) ok "dev copy running, pid $pids" ;;
-        *) no "more than one dev copy running: $(echo $pids)" ;;
+        0) no "the $COPY_NAME is not running" ;;
+        1) ok "$COPY_NAME running, pid $pids" ;;
+        *) no "more than one $COPY_NAME running: $(echo $pids)" ;;
     esac
     pid=$(echo "$pids" | head -1)
 
@@ -164,20 +191,20 @@ cmd_doctor() {
         if [ -n "$pid" ] && [ "$(cat "$run/app.pid" 2>/dev/null)" = "$pid" ]; then
             ok "started by run $(cat "$STATE/current")"
         else
-            no "the running dev copy was not started by the open run $(cat "$STATE/current"); do not drive it"
+            no "the running $COPY_NAME was not started by the open run $(cat "$STATE/current"); do not drive it"
         fi
     else
-        no "no open run; the running dev copy is not this skill's to drive"
+        no "no open run; the running $COPY_NAME is not this run's to drive"
     fi
 
     local bid
-    bid=$(plutil -extract CFBundleIdentifier raw "$DEV_APP/Contents/Info.plist" 2>/dev/null || true)
-    [ "$bid" = "$DEV_ID" ] && ok "bundle id $bid" || no "bundle id is '$bid', not $DEV_ID"
+    bid=$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist" 2>/dev/null || true)
+    [ "$bid" = "$APP_ID" ] && ok "bundle id $bid" || no "bundle id is '$bid', not $APP_ID"
 
     if [ -n "$pid" ]; then
         local running_hash disk_hash
         running_hash=$(codesign -dv --verbose=4 "$pid" 2>&1 | sed -n 's/^CDHash=//p')
-        disk_hash=$(codesign -dv --verbose=4 "$DEV_APP" 2>&1 | sed -n 's/^CDHash=//p')
+        disk_hash=$(codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^CDHash=//p')
         [ -n "$running_hash" ] && [ "$running_hash" = "$disk_hash" ] \
             && ok "running build is the bundle on disk ($running_hash)" \
             || no "running build ($running_hash) is not the bundle on disk ($disk_hash); relaunch"
@@ -185,7 +212,7 @@ cmd_doctor() {
     fi
 
     local stale
-    stale=$(find "$REPO/Sources" "$REPO/Resources" "$REPO/Package.swift" -type f -newer "$DEV_BIN" 2>/dev/null | head -5)
+    stale=$(find "$REPO/Sources" "$REPO/Resources" "$REPO/Package.swift" -type f -newer "$BIN" 2>/dev/null | head -5)
     [ -z "$stale" ] && ok "bundle is newer than every source file" || no "sources changed since the build: $(echo $stale | sed "s|$REPO/||g"); relaunch"
     info "commit $(git -C "$REPO" rev-parse --short HEAD), $(git -C "$REPO" status --porcelain | grep -c . || true) uncommitted paths"
 
@@ -213,9 +240,9 @@ cmd_doctor() {
         info "packet-access broker not installed"
     fi
 
-    local release
-    release=$(pgrep -fx "$REPO/build/Tattle.app/Contents/MacOS/tattle|/Applications/Tattle.app/Contents/MacOS/tattle" || true)
-    [ -z "$release" ] || info "release app running (pid $(echo $release)); never driven by this skill"
+    local other
+    other=$(pgrep -fx "$OTHER_BIN|/Applications/Tattle.app/Contents/MacOS/tattle" || true)
+    [ -z "$other" ] || info "another copy of Tattle running (pid $(echo $other)); not this run's"
     return $bad
 }
 
@@ -310,12 +337,12 @@ cmd_cleanup() {
     if [ -f "$run/nc.pids" ]; then
         while read -r pid; do stop_pid "$pid" "nc "; done < "$run/nc.pids"
     fi
-    stop_pid "$(cat "$run/app.pid" 2>/dev/null || true)" "$DEV_BIN"
+    stop_pid "$(cat "$run/app.pid" 2>/dev/null || true)" "$BIN"
     stop_pid "$(cat "$run/log.pid" 2>/dev/null || true)" "/usr/bin/log stream"
     if [ -d "$run/previous-data" ]; then
         [ ! -d "$DATA" ] || mv "$DATA" "$run/fresh-data"
         mv "$run/previous-data" "$DATA"
-        echo "restored the dev data folder; this run's database is in $run/fresh-data"
+        echo "restored the $COPY_NAME's data folder; this run's database is in $run/fresh-data"
     fi
     rm -f "$run/app.pid" "$run/log.pid" "$run/nc.pids" "$STATE/current"
     echo "closed; evidence kept in $run:"
@@ -334,5 +361,5 @@ case $cmd in
     connect) cmd_connect "$@" ;;
     log) cmd_log "$@" ;;
     cleanup) cmd_cleanup ;;
-    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
