@@ -1,15 +1,22 @@
 APP           := tattle
 BROKER        := tattle-capture-broker
-BUNDLE_ID     := io.github.eladefrati.tattle
+APP_ID        := io.github.eladefrati.tattle
+DEV_ID        := $(APP_ID).dev
 CONFIG        ?= release
 BUILD         := build
 BIN           := .build/$(CONFIG)/$(APP)
+# What make app bundles: the release app unless dev-app overrides all three.
 APPDIR        := $(BUILD)/Tattle.app
+BUNDLE_ID     := $(APP_ID)
+BUNDLE_NAME   := Tattle
+# make run builds and stops only this copy, with its own bundle id and data folder, so it
+# never replaces or kills a release build that is running from build/Tattle.app.
+DEVDIR        := $(BUILD)/TattleDev.app
 # First Apple Development identity in the keychain; override with SIGN_IDENTITY=... if needed.
 # A stable identity keeps TCC grants across rebuilds; ad-hoc signing resets them every time.
 SIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $$2; exit}')
 
-.PHONY: build test app install run stop log clean
+.PHONY: build test app dev-app install run stop log clean
 
 build:
 	swift build -c $(CONFIG)
@@ -23,6 +30,8 @@ app: build
 	cp $(BIN) $(APPDIR)/Contents/MacOS/$(APP)
 	cp .build/$(CONFIG)/$(BROKER) $(APPDIR)/Contents/MacOS/$(BROKER)
 	cp Resources/Info.plist $(APPDIR)/Contents/Info.plist
+	plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" $(APPDIR)/Contents/Info.plist
+	plutil -replace CFBundleName -string "$(BUNDLE_NAME)" $(APPDIR)/Contents/Info.plist
 	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
 	  codesign --force --options runtime --sign "$(SIGN_IDENTITY)" $(APPDIR)/Contents/MacOS/$(BROKER); \
@@ -44,18 +53,23 @@ app: build
 	done
 	@codesign -dv $(APPDIR) 2>&1 | grep -E '^(Authority|TeamIdentifier)' || true
 
+dev-app:
+	$(MAKE) app APPDIR=$(DEVDIR) BUNDLE_ID=$(DEV_ID) BUNDLE_NAME="Tattle Dev"
+
 install: app
 	rm -rf /Applications/Tattle.app
 	cp -R $(APPDIR) /Applications/
 
-run: app stop
-	open $(APPDIR)
+run: dev-app stop
+	open $(DEVDIR)
 
+# By executable path, anchored so it matches neither the release app nor a shell whose
+# command line merely contains the path.
 stop:
-	-pkill -x $(APP)
+	-pkill -f '^$(abspath $(DEVDIR))/Contents/MacOS/$(APP)$$'
 
 log:
-	/usr/bin/log stream --level debug --style compact --predicate 'subsystem == "$(BUNDLE_ID)"'
+	/usr/bin/log stream --level debug --style compact --predicate 'subsystem == "$(APP_ID)" OR subsystem == "$(DEV_ID)"'
 
 clean:
 	rm -rf $(BUILD) .build

@@ -24,14 +24,16 @@ struct AppDatabase: Sendable {
         return AppDatabase(writer: queue)
     }
 
-    /// The default location: ~/Library/Application Support/Tattle/tattle.sqlite.
+    /// The default location: ~/Library/Application Support/<bundle name>/tattle.sqlite, so
+    /// the release app uses Tattle/ and the dev build (make run) Tattle Dev/.
     /// The folder is marked so Spotlight does not index connection history (proposal,
     /// Privacy and retention); Time Machine is left to the user.
     static func openDefault() throws -> AppDatabase {
         let support = try FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true)
-        let folder = support.appending(path: "Tattle", directoryHint: .isDirectory)
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Tattle"
+        let folder = support.appending(path: name, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let noIndex = folder.appending(path: ".metadata_never_index")
         if !FileManager.default.fileExists(atPath: noIndex.path) {

@@ -22,6 +22,14 @@ Requires macOS 14 or later and Xcode 26 or its command line tools.
     make install   # copy it to /Applications
     make test
 
+    make run       # build and open the dev copy, build/TattleDev.app
+    make stop      # quit the dev copy
+    make log       # stream both copies' logs
+
+The dev copy is a separate app, "Tattle Dev" (`io.github.eladefrati.tattle.dev`), with
+its own data in `~/Library/Application Support/Tattle Dev/` and its own permission
+grants, so `make run` never replaces or quits a release build that is running.
+
 Releases are ad-hoc signed, so macOS blocks the first launch; allow it under System
 Settings, Privacy & Security. With an Apple Development identity in your keychain, `make
 app` signs with it instead, which keeps permission grants across rebuilds.
