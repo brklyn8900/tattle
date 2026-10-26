@@ -83,6 +83,21 @@ Preconditions:
   log; the hardened one with Tattle's identifier is accepted. The broker exits after a
   minute idle and launchd starts it again on the next request. Its probe copies and
   entitlements plist are in `probes/`. Not replayed: the fork-and-exec attack.
+- XPC broker after the 2026-10-26 review, release build of `5ba8b2d`, run
+  2026-10-26T164905: `Install again` replaced `a4b33ed`'s broker (helper cdhash
+  `fa7224e3...` before, the bundled `28b03956...` after; plist root-owned with `--uid 501`
+  and `--service`; no stage left; capture through the broker; example.com named from
+  http). Against the installed daemon: the five probes as before (four refused, the
+  hardened Tattle-identified one accepted). A no-reply message followed by a request on
+  one connection: the old broker answered the second (`status 1`), the new one closes the
+  connection (`Connection interrupted`); client in `clients/second-message.c`. The
+  accepted probe started by `clients/inherit-launcher.c`, which hands it a bad-access
+  exception port, is accepted and reports `exception-ports 0`. Twenty send-then-exec runs
+  (the ad-hoc probe sends, then execs the accepted probe, which asks nothing of the broker)
+  were all refused, ten after the exec had finished (-67065), with no descriptor handed.
+  The broker exits after a minute idle and the next request starts it again. The root
+  broker cannot be stopped from the user's account, so the deterministic stop-until-exec
+  form of that check runs only in the tests.
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
