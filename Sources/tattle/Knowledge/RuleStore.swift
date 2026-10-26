@@ -15,15 +15,33 @@ struct RuleStore: Sendable {
     private func wrote() { writes.withLock { $0 += 1 } }
 
     /// Inserts a rule, replacing an existing one with the same kind, match, pattern and
-    /// source. Returns the stored rule with its id.
+    /// source. Returns the stored rule with its id. An unconfirmed rule never replaces a
+    /// confirmed one of the same key: the upsert would reset the confirmation and the
+    /// creation date, and a confirmed rule is the user's own.
     @discardableResult
     func save(_ rule: Rule) throws -> Rule {
         defer { wrote() }
         return try database.writer.write { db in
+            if rule.confirmed == nil, let kept = try Self.confirmed(rule, in: db) {
+                throw RuleStoreError.alreadyConfirmed(kept.id!)
+            }
             var rule = rule
             try rule.upsert(db)
             return rule
         }
+    }
+
+    /// The confirmed rule that saving `rule` would replace, if any.
+    func confirmedRule(replacedBy rule: Rule) throws -> Rule? {
+        try database.writer.read { try Self.confirmed(rule, in: $0) }
+    }
+
+    private static func confirmed(_ rule: Rule, in db: Database) throws -> Rule? {
+        try Rule
+            .filter(Column("kind") == rule.kind.rawValue && Column("match") == rule.match.rawValue
+                    && Column("pattern") == rule.pattern && Column("source") == rule.source.rawValue
+                    && Column("confirmed") != nil)
+            .fetchOne(db)
     }
 
     /// The rule that explains `key`, or nil. Ties are broken by precedence rank, then
@@ -128,4 +146,5 @@ struct RuleStore: Sendable {
 
 enum RuleStoreError: Error, Equatable {
     case notFound(Int64)
+    case alreadyConfirmed(Int64)
 }

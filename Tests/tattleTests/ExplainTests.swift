@@ -128,6 +128,37 @@ final class ExplainerTests: XCTestCase {
         XCTAssertTrue(sent.hasPrefix("Go.\n"))
     }
 
+    /// GRDB's upsert overwrites every column, so asking again over a confirmed rule reset
+    /// its confirmation and gave it a fresh 45-day clock.
+    func testAskNeverOverwritesAConfirmedRule() async throws {
+        let confirmedAt = Date(timeIntervalSince1970: 1_000)
+        let kept = try store.save(Rule(kind: .host, pattern: "a.example", purpose: "mine", source: .llm,
+                                       confirmed: confirmedAt, created: Date(timeIntervalSince1970: 500)))
+        let provider = FakeProvider(output: #"{"purpose":"new","risk":"low","confidence":"low"}"#)
+        let explainer = explainer(provider)
+        do {
+            _ = try await explainer.ask(ExplainRequest(kind: .host, key: "A.example."))
+            XCTFail("expected a refusal")
+        } catch let error as RuleStoreError {
+            XCTAssertEqual(error, .alreadyConfirmed(kept.id!))
+        }
+        XCTAssertTrue(provider.seen.prompts.isEmpty, "no model call is made for an answer that cannot be kept")
+        XCTAssertEqual(try store.rules().map(\.purpose), ["mine"])
+        XCTAssertEqual(try store.rules().first?.confirmed, confirmedAt)
+        XCTAssertEqual(try store.rules().first?.created, Date(timeIntervalSince1970: 500))
+    }
+
+    func testSaveRefusesAnUnconfirmedRuleOverAConfirmedOneOfTheSameKey() throws {
+        let kept = try store.save(Rule(kind: .host, pattern: "a.example", purpose: "mine", source: .llm, confirmed: Date()))
+        XCTAssertThrowsError(try store.save(Rule(kind: .host, pattern: "a.example", purpose: "new", source: .llm))) {
+            XCTAssertEqual($0 as? RuleStoreError, .alreadyConfirmed(kept.id!))
+        }
+        XCTAssertEqual(try store.rules().map(\.purpose), ["mine"])
+        XCTAssertNotNil(try store.rules().first?.confirmed)
+        // Another source is another key.
+        XCTAssertNoThrow(try store.save(Rule(kind: .host, pattern: "a.example", purpose: "seed", source: .builtin)))
+    }
+
     func testLookupNeverCallsProvider() throws {
         try store.save(Rule(kind: .host, pattern: "a.example", purpose: "known", source: .builtin))
         let provider = FakeProvider(output: "")

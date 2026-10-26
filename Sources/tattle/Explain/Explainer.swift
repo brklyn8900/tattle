@@ -28,8 +28,12 @@ final class Explainer {
         try store.lookup(kind: request.kind, key: request.key)
     }
 
-    /// Asks the model and stores its answer. Called only from the explain button.
+    /// Asks the model and stores its answer. Called only from the explain button. Throws
+    /// `RuleStoreError.alreadyConfirmed`, before any model call, when the user has confirmed
+    /// the stored answer for the item: replacing it would need a rule editor.
     func ask(_ request: ExplainRequest) async throws -> Rule {
+        let key = Rule(kind: request.kind, match: .exact, pattern: request.key, purpose: "", source: .llm)
+        if let kept = try store.confirmedRule(replacedBy: key) { throw RuleStoreError.alreadyConfirmed(kept.id!) }
         let provider = makeProvider(settings.providerCommand)
         let prompt = redactor.redact(Prompt.build(instructions: settings.promptInstructions, request: request))
         lastPrompt = prompt

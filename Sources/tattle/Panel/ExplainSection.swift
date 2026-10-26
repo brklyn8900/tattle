@@ -23,7 +23,7 @@ struct ExplainSection: View {
                             .controlSize(.small)
                     }
                     Spacer()
-                    if rule.source == .llm {
+                    if rule.source == .llm && rule.confirmed == nil {
                         Button("Ask again") { ask() }
                             .controlSize(.small)
                             .disabled(busy || !providerConfigured)
