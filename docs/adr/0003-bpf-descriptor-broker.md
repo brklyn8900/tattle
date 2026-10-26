@@ -48,7 +48,8 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
    peer's audit token, never from a pid, and checked before it reads a byte of the
    request. The caller runs as the user who installed the broker, whose uid is recorded in
    the plist. Its code satisfies the requirement recorded at install time: the app's team
-   and identifier when it is signed with an Apple identity, its code hash when it is
+   and its identifier or the dev copy's (the same identifier with `.dev` appended, which
+   `make run` builds) when it is signed with an Apple identity, its code hash when it is
    ad-hoc signed; the running code must still match its file. And no other process of
    that user can steer it: the kernel reports it valid, under the hardened runtime and not
    debugged, and it carries no get-task-allow and no entitlement that re-enables dyld
@@ -84,8 +85,10 @@ as root.
 - Through the broker, packets go only to a process that runs as the installing user,
   carries Tattle's signature, and cannot be steered by another process of that user. With
   an Apple identity, "Tattle's signature" means any binary the team signed with Tattle's
-  identifier, older builds included, so a process that can use the signing identity (a
-  keychain "Always Allow" grant to codesign) can make one. Ad hoc, it means this exact
+  identifier or the dev copy's, older builds included, so a process that can use the
+  signing identity (a keychain "Always Allow" grant to codesign) can make one. Admitting
+  the dev copy widens nothing: whoever can sign as the team can already sign with
+  Tattle's own identifier. It lets a dev copy capture beside a running release build. Ad hoc, it means this exact
   build. Other accounts on the Mac are refused. Not claimed: anything about root, or about
   software that makes `/dev/bpf*` readable (Wireshark's ChmodBPF, for one), or about an app
   replaced before the user first opened it, which is the user installing someone else's
