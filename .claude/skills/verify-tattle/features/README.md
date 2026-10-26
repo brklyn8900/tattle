@@ -44,5 +44,6 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
+  Proven 2026-10-25.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
-  CPU, and Quit.
+  CPU, and Quit. Proven 2026-10-25.

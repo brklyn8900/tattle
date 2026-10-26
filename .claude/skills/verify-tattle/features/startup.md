@@ -10,8 +10,10 @@ detail adds facts, an explanation, and controls.
 ## Sub-features
 
 - `st-groups`: group headings with their one-line descriptions.
-- `st-row`: `"<label>, <when> · <state> · <signer>"`.
-- `st-detail`: facts, `Explain`, `Reveal Plist`, `Login Items Settings`.
+- `st-row`: `"<name>, <when> · <state> · <signer>"`; the name is the program's when Tattle
+  can resolve it (`CometUpdater`), else the launchd label.
+- `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Plist` with the path),
+  `Explain`, `Reveal Plist`, `Login Items Settings`.
 - `st-control`: `Load` / `Unload` for the user's own agents, `Managed by the system` for
   others, `Remove` only on Tattle's broker.
 - `st-fda`: without Full Disk Access, `Login items need Full Disk Access: ...` and `Open
@@ -29,14 +31,18 @@ Preconditions:
 
 - **List.** `$V tab Startup`, `$V ax wait "Your agents"`, `$V save startup-list`. Each
   group heading present on this Mac is there, ending with `Apple` and `N system jobs`.
-- **Cross-check a row.** Pick a row from `startup-list.txt` under your agents, for
-  example `ai.perplexity.CometUpdater.wake, every hour · not running · ...`. Confirm the
-  plist exists in `~/Library/LaunchAgents/` and `launchctl print gui/$(id -u)/<label>`
-  agrees with the state (no `pid =` line for not running).
-- **Detail.** `$V ax press --prefix "<label>,"`, `$V save startup-detail`: facts, and
-  `Unload` or `Load` per its state.
-- **Broker row.** Under the daemons group the broker's row has `Remove`; driving it is
-  packet-access.md's journey.
+  The rows under `Your agents` match the plists in `~/Library/LaunchAgents/` one for one.
+- **Detail.** Pick a row under your agents, for example `CometUpdater, every hour · not
+  running · Perplexity AI Inc.`: `$V ax press --prefix "CometUpdater,"`, `$V ax wait
+  "Reveal Plist"`, `$V save startup-detail`. Facts: `When every hour`, `State not
+  running`, `Plist ~/Library/LaunchAgents/ai.perplexity.CometUpdater.wake.plist`; a loaded
+  job has `Unload`.
+- **Cross-check.** The label is the plist's file name. `launchctl print gui/$(id
+  -u)/<label>` agrees: `state = not running`, `run interval = 3600 seconds`. For a row
+  `not loaded` (`GoogleUpdater`), `launchctl print` fails and the detail has `Load`.
+- **Broker row.** Under `Daemons`, `io.github.eladefrati.tattle.capture-broker, on demand
+  · running, pid N · ...`; its detail has `Remove` (driving it is packet-access.md's
+  journey; do not press it here).
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
   `Open at login` and background groups are missing: record that precondition as unmet.
 
@@ -48,4 +54,5 @@ Preconditions:
   granted 2026-10-25 (run `2026-10-25T223546` listed the login items).
 - `Login Items Settings` and `Open Full Disk Access Settings` open System Settings, which
   takes the screen; avoid in unattended runs.
-- Not yet proven with this skill.
+- Proven 2026-10-25, run `2026-10-25T224119` (list, detail, cross-check, broker row);
+  Load and Unload not exercised.
