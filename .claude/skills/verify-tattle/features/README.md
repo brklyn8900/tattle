@@ -20,7 +20,7 @@ copy. Read this index, then the feature's file.
 - Press by label (`$V ax press`, `--prefix` for rows); read with `$V ax text`; never
   click by position.
 - Rows are `"<name>, <subtitle>, <count>"`; connection rows are
-  `"<name>, [new,] <address:port> · <PROTO> · <state> · <process>, <age>"`.
+  `"<name>, [from DNS,] [new,] <address:port> · <PROTO> · <state> · <process>, <age>"`.
 - Mutations (packet access, Load/Unload, Quit) follow SKILL.md's Stop and ask.
 
 ## Proof and skip reporting

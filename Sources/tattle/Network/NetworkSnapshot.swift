@@ -70,6 +70,10 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         }
     }
 
+    /// The destination name came only from a DNS reply for the address, which may serve
+    /// many names: shown marked (ADR-0001 decision 2).
+    var isFromDNS: Bool { name?.kind == .destination && name?.source == .dns }
+
     /// Knowledge-base key: the name once the sniffer supplies one, the address until then.
     /// A relay or cover name is still the right key: the rule for it says what it is.
     var explainKey: String { name?.name ?? connection.remoteAddress }
@@ -160,7 +164,8 @@ struct NetworkSnapshot: Equatable, Sendable {
 
     var newCount: Int { connections.filter(\.isNew).count }
     var preExistingCount: Int { connections.filter(\.connection.preExisting).count }
-    var namedCount: Int { connections.filter { $0.name?.kind == .destination }.count }
+    var namedCount: Int { connections.filter { $0.name?.kind == .destination && !$0.isFromDNS }.count }
+    var dnsCount: Int { connections.filter(\.isFromDNS).count }
     var relayedCount: Int { connections.filter { $0.name?.kind == .relay }.count }
     var hiddenCount: Int { connections.filter { $0.name?.kind == .hidden }.count }
 

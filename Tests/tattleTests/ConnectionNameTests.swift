@@ -61,9 +61,15 @@ final class ConnectionNameTests: XCTestCase {
         let dns = LiveConnection(connection: connection("17.253.144.10"), owner: owner, isNew: false,
                                  outcome: .named(ConnectionName(name: "cdn.example.net", source: .dns, kind: .destination)))
         XCTAssertEqual(dns.facts(now: t0).first { $0.name == "Name from" }?.value, "a DNS reply for the address", "marked, because the DNS map is ambiguous")
+        // ADR-0001 decision 2: a DNS name is marked wherever it is shown, row and counts.
+        XCTAssertEqual(dns.title, "cdn.example.net")
+        XCTAssertTrue(dns.isFromDNS)
+        XCTAssertFalse(named.isFromDNS)
+        XCTAssertFalse(unnamed.isFromDNS)
 
         let snapshot = NetworkSnapshot(connections: [unnamed, named, relayed, hidden, dns], takenAt: t0)
-        XCTAssertEqual(snapshot.namedCount, 2)
+        XCTAssertEqual(snapshot.namedCount, 1, "named from the connection's own packets")
+        XCTAssertEqual(snapshot.dnsCount, 1)
         XCTAssertEqual(snapshot.relayedCount, 1)
         XCTAssertEqual(snapshot.hiddenCount, 1)
     }

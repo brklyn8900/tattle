@@ -61,6 +61,7 @@ private struct ConnectionsList: View {
         case .capturing:
             var named: [String] = []
             if snapshot.namedCount > 0 { named.append("\(snapshot.namedCount) named") }
+            if snapshot.dnsCount > 0 { named.append("\(snapshot.dnsCount) from DNS") }
             if snapshot.relayedCount > 0 { named.append("\(snapshot.relayedCount) relayed") }
             if snapshot.hiddenCount > 0 { named.append("\(snapshot.hiddenCount) with the name hidden") }
             parts.append(named.isEmpty ? "Names appear as connections open" : named.joined(separator: ", "))
@@ -115,6 +116,9 @@ private struct ConnectionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(live.title).font(.body.monospacedDigit())
+                    if live.isFromDNS {
+                        Text("from DNS").font(.caption).foregroundStyle(.secondary)
+                    }
                     if live.isNew {
                         Text("new").font(.caption).foregroundStyle(.orange)
                     }

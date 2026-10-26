@@ -9,7 +9,10 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
 ## Sub-features
 
 - `net-header`: heading `N open connections from M apps` and a sentence with new, already
-  open, and `K named` / `relayed` / `with the name hidden` counts.
+  open, and `K named` / `from DNS` / `relayed` / `with the name hidden` counts. `named`
+  counts names from the connection's own packets; DNS names are counted apart.
+- `net-dns`: a name that came only from a DNS reply carries a grey `from DNS` tag after it
+  in the row, and the detail says `Name from a DNS reply for the address`.
 - `net-group`: a group row per app, opening a detail with facts and its connections.
 - `net-named`: a connection detail with `Destination`, `Address`, and `Name from` (for
   example `the HTTP request`).
