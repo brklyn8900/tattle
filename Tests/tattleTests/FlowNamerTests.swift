@@ -95,6 +95,41 @@ final class FlowNamerTests: XCTestCase {
                        [FlowEvent(key: key, kind: .named("example.org", .http))])
     }
 
+    private func tlsOutcome(_ sni: [UInt8]) -> FlowEvent.Kind? {
+        var n = namer()
+        _ = n.observe(tcp(flags: 0x02, seq: 1), at: t0)
+        let hello = SnifferParserTests.clientHello(sni: sni)
+        return n.observe(tcp(flags: 0x18, seq: 2, [0x16, 0x03, 0x01, UInt8(hello.count >> 8), UInt8(hello.count & 0xff)] + hello), at: t0).first?.kind
+    }
+
+    private func httpOutcome(_ host: [UInt8]) -> FlowEvent.Kind? {
+        var n = namer()
+        _ = n.observe(tcp(port: 80, flags: 0x02, seq: 1), at: t0)
+        return n.observe(tcp(port: 80, flags: 0x18, seq: 2, Array("GET / HTTP/1.1\r\nHost: ".utf8) + host + Array("\r\n\r\n".utf8)), at: t0).first?.kind
+    }
+
+    private func quicOutcome(_ sni: [UInt8]) -> FlowEvent.Kind? {
+        var n = namer()
+        let hello = SnifferParserTests.clientHello(sni: sni)
+        let frame: [UInt8] = [0x06, 0x00, 0x40 | UInt8(hello.count >> 8), UInt8(hello.count & 0xff)] + hello
+        return n.observe(udp(SnifferParserTests.sealInitial(frame)), at: t0).last?.kind
+    }
+
+    /// A name off the wire is a host name or nothing: the sender picks every byte of it.
+    func testNamesThatFailValidationLeaveTheFlowUnnamed() {
+        for (shape, name) in SnifferParserTests.rejectedNames {
+            XCTAssertEqual(tlsOutcome(name), .unnamed(.noServerName), "SNI with \(shape)")
+            XCTAssertEqual(quicOutcome(name), .unnamed(.noServerName), "QUIC SNI with \(shape)")
+            // A Host header is one line: a CR or LF in it ends the header instead.
+            guard !name.contains(0x0d), !name.contains(0x0a), shape != "a port outside a Host header" else { continue }
+            XCTAssertEqual(httpOutcome(name), .unnamed(.noServerName), "Host with \(shape)")
+        }
+        XCTAssertEqual(httpOutcome(Array("example.org:x".utf8)), .unnamed(.noServerName), "a port that is not a number")
+        XCTAssertEqual(tlsOutcome(Array("Example.COM.".utf8)), .named("example.com", .sni))
+        XCTAssertEqual(quicOutcome(Array("Example.COM.".utf8)), .named("example.com", .quic))
+        XCTAssertEqual(httpOutcome(Array("Example.ORG:8080".utf8)), .named("example.org", .http), "the port is not part of the name")
+    }
+
     func testQUICInitialNamesTheFlow() {
         var n = namer()
         XCTAssertEqual(n.observe(udp(SnifferParserTests.rfcInitial), at: t0),

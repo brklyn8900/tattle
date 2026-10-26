@@ -47,6 +47,33 @@ final class SnifferParserTests: XCTestCase {
 
     static var rfcClientHello: [UInt8] { Array(rfcCryptoFrame.dropFirst(4)) }
 
+    /// The smallest ClientHello that carries `sni` as its server name.
+    static func clientHello(sni: [UInt8]) -> [UInt8] {
+        let entry: [UInt8] = [0, UInt8(sni.count >> 8), UInt8(sni.count & 0xff)] + sni
+        let list: [UInt8] = [UInt8(entry.count >> 8), UInt8(entry.count & 0xff)] + entry
+        let ext: [UInt8] = [0, 0, UInt8(list.count >> 8), UInt8(list.count & 0xff)] + list
+        let body: [UInt8] = [3, 3] + [UInt8](repeating: 0xab, count: 32) + [0, 0, 2, 0x13, 0x01, 1, 0]
+            + [UInt8(ext.count >> 8), UInt8(ext.count & 0xff)] + ext
+        return [1, 0, UInt8(body.count >> 8), UInt8(body.count & 0xff)] + body
+    }
+
+    /// Names a wire parser must refuse: each would reach row titles, history, rule keys and
+    /// the LLM prompt as given.
+    static let rejectedNames: [(String, [UInt8])] = [
+        ("a newline", Array("example.com\r\nX-Injected: 1".utf8)),
+        ("a NUL", Array("example.com".utf8) + [0] + Array("evil".utf8)),
+        ("a bidi override", Array("\u{202E}moc.elpmaxe".utf8)),
+        ("the empty string", []),
+        ("only a dot", Array(".".utf8)),
+        ("an empty label", Array("example..com".utf8)),
+        ("a leading hyphen", Array("-example.com".utf8)),
+        ("a trailing hyphen", Array("example-.com".utf8)),
+        ("a space", Array("example .com".utf8)),
+        ("a 64-byte label", Array((String(repeating: "a", count: 64) + ".com").utf8)),
+        ("more than 253 bytes", Array(Array(repeating: String(repeating: "a", count: 63), count: 4).joined(separator: ".").utf8)),
+        ("a port outside a Host header", Array("example.com:443".utf8)),
+    ]
+
     static func hex(_ text: String) -> [UInt8] {
         var out: [UInt8] = []
         var index = text.startIndex
@@ -219,11 +246,27 @@ final class SnifferParserTests: XCTestCase {
         guard case .notClientHello = TLS.clientHello([2, 0, 0, 0]) else { return XCTFail() }
     }
 
+    func testServerNamesAreValidatedAndNormalized() {
+        for (shape, name) in Self.rejectedNames {
+            guard case .hello(let sni) = TLS.clientHello(Self.clientHello(sni: name)) else { return XCTFail(shape) }
+            XCTAssertNil(sni, "an SNI with \(shape) is no name")
+        }
+        guard case .hello(let sni) = TLS.clientHello(Self.clientHello(sni: Array("Example.COM.".utf8))) else { return XCTFail() }
+        XCTAssertEqual(sni, "example.com", "lowercased, trailing dot dropped")
+        let longest = Array(repeating: String(repeating: "a", count: 63), count: 3).joined(separator: ".") + "." + String(repeating: "b", count: 61)
+        guard case .hello(let edge) = TLS.clientHello(Self.clientHello(sni: Array(longest.utf8))) else { return XCTFail() }
+        XCTAssertEqual(edge, longest, "63-byte labels and 253 bytes in all are allowed")
+        guard case .hello(let underscore) = TLS.clientHello(Self.clientHello(sni: Array("_dmarc.x-1.example".utf8))) else { return XCTFail() }
+        XCTAssertEqual(underscore, "_dmarc.x-1.example")
+    }
+
     func testHTTPHost() {
-        XCTAssertEqual(HTTP.host(Array("GET /x HTTP/1.1\r\nHost: example.org\r\nAccept: */*\r\n\r\n".utf8)[...]), "example.org")
-        XCTAssertEqual(HTTP.host(Array("POST / HTTP/1.1\r\nhost:  api.example.org:8080 \r\n\r\n".utf8)[...]), "api.example.org:8080")
-        XCTAssertNil(HTTP.host(Array("GET / HTTP/1.1\r\n\r\nHost: late.example\r\n".utf8)[...]), "headers end at the blank line")
-        XCTAssertNil(HTTP.host(Array("SSH-2.0-OpenSSH\r\n".utf8)[...]))
+        XCTAssertEqual(HTTP.request(Array("GET /x HTTP/1.1\r\nHost: example.org\r\nAccept: */*\r\n\r\n".utf8)[...])?.host, "example.org")
+        XCTAssertEqual(HTTP.request(Array("POST / HTTP/1.1\r\nhost:  api.example.org:8080 \r\n\r\n".utf8)[...])?.host, "api.example.org", "the port is not part of the name")
+        let late = HTTP.request(Array("GET / HTTP/1.1\r\n\r\nHost: late.example\r\n".utf8)[...])
+        XCTAssertNotNil(late, "a request")
+        XCTAssertNil(late?.host, "headers end at the blank line")
+        XCTAssertNil(HTTP.request(Array("SSH-2.0-OpenSSH\r\n".utf8)[...]))
     }
 
     // MARK: DNS
@@ -253,6 +296,19 @@ final class SnifferParserTests: XCTestCase {
         bytes.removeLast(4)
         bytes += [0x26, 0x06, 0x28, 0x00, 0x02, 0x20, 0x00, 0x01, 0x02, 0x48, 0x18, 0x93, 0x25, 0xc8, 0x19, 0x46]
         XCTAssertEqual(DNS.parseReply(bytes[...])?.addresses.map(\.text), ["2606:2800:220:1:248:1893:25c8:1946"])
+    }
+
+    /// DNS labels are length-prefixed, so one can hold a dot or any byte at all.
+    func testDNSNamesAreValidatedAndNormalized() {
+        var dotted = Self.compressedReply
+        dotted[14] = 0x2e  // "www" becomes "w.w" inside one label
+        XCTAssertNil(DNS.parseReply(dotted[...]), "a label containing a dot")
+        var newline = Self.compressedReply
+        newline[15] = 0x0a
+        XCTAssertNil(DNS.parseReply(newline[...]), "a label containing a newline")
+        var upper = Self.compressedReply
+        upper[13] = 0x57  // "Www"
+        XCTAssertEqual(DNS.parseReply(upper[...])?.name, "www.example.com")
     }
 
     func testDNSIgnoresQueriesAndPointerLoops() {

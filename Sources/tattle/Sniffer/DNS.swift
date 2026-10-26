@@ -17,7 +17,7 @@ enum DNS {
             let answers = Int(try r.u16())
             try r.skip(4)
             guard questions >= 1 else { return nil }
-            let qname = try readName(bytes, &r)
+            guard let qname = try readName(bytes, &r) else { return nil }
             try r.skip(4)
             for _ in 1..<max(questions, 1) {
                 _ = try readName(bytes, &r)
@@ -34,16 +34,17 @@ enum DNS {
                     addresses.append(IPAddress(bytes: Array(rdata)))
                 }
             }
-            return Reply(name: qname, addresses: addresses)
+            return Reply(name: qname.text, addresses: addresses)
         } catch {
             return nil
         }
     }
 
     // Reads a name with RFC 1035 compression; the reader advances past the name as it
-    // appears in the sequential stream, not past any pointer target.
-    private static func readName(_ bytes: [UInt8], _ r: inout ByteReader) throws -> String {
-        var labels: [String] = []
+    // appears in the sequential stream, not past any pointer target. Nil for a name that is
+    // not a host name; a label holding a dot is one, since joining would hide it.
+    private static func readName(_ bytes: [UInt8], _ r: inout ByteReader) throws -> HostName? {
+        var labels: [ArraySlice<UInt8>] = []
         var pos = r.pos
         var jumped = false
         var hops = 0
@@ -66,9 +67,10 @@ enum DNS {
                 continue
             }
             guard pos + 1 + len <= bytes.count else { throw ByteReader.ParseError.short }
-            labels.append(String(decoding: bytes[(pos + 1)..<(pos + 1 + len)], as: UTF8.self))
+            labels.append(bytes[(pos + 1)..<(pos + 1 + len)])
             pos += 1 + len
         }
-        return labels.joined(separator: ".")
+        guard !labels.contains(where: { $0.contains(UInt8(ascii: ".")) }) else { return nil }
+        return HostName(Array(labels.joined(separator: [UInt8(ascii: ".")])))
     }
 }

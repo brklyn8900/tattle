@@ -48,7 +48,8 @@ struct FlowEvent: Equatable, Sendable {
         case notHandshake
         /// A segment arrived out of order before the handshake was complete.
         case gap
-        /// A ClientHello without a server name, or one too large to buffer.
+        /// A ClientHello or HTTP request without a valid host name, or a handshake too large
+        /// to buffer.
         case noServerName
         case quic(QUIC.Failure)
         /// No handshake within the window: no payload, or one that never completed.
@@ -239,7 +240,8 @@ struct FlowNamer: Sendable {
         guard var buffer = flow.tlsBuffer else { return .pending }
         if buffer.isEmpty, payload.first != 0x16 {
             flow.tlsBuffer = nil
-            return HTTP.host(payload).map { .named($0, .http) } ?? .unnamed(.notHandshake)
+            guard let request = HTTP.request(payload) else { return .unnamed(.notHandshake) }
+            return request.host.map { .named($0, .http) } ?? .unnamed(.noServerName)
         }
         buffer.append(contentsOf: payload)
         switch TLS.clientHelloFromRecords(buffer) {

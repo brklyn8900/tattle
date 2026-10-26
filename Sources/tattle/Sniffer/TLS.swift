@@ -33,7 +33,7 @@ enum TLS {
                     let nameLength = Int(try e.u16())
                     let name = try e.take(nameLength)
                     guard nameType == 0 else { return .hello(sni: nil) }
-                    return .hello(sni: String(decoding: name, as: UTF8.self))
+                    return .hello(sni: HostName(name)?.text)
                 }
                 try r.skip(length)
             }
@@ -68,8 +68,13 @@ enum TLS {
 }
 
 enum HTTP {
-    // Plaintext HTTP/1.x request: the Host header names the destination.
-    static func host(_ payload: ArraySlice<UInt8>) -> String? {
+    /// A plaintext HTTP/1.x request, and the name its Host header gives the destination:
+    /// nil when there is no Host header or its value is not a host name.
+    struct Request {
+        let host: String?
+    }
+
+    static func request(_ payload: ArraySlice<UInt8>) -> Request? {
         let head = Array(payload.prefix(2048))
         let text = String(decoding: head, as: UTF8.self)
         let methods = ["GET ", "POST ", "HEAD ", "PUT ", "DELETE ", "OPTIONS ", "CONNECT ", "PATCH "]
@@ -77,9 +82,10 @@ enum HTTP {
         for line in text.split(separator: "\r\n", omittingEmptySubsequences: false).dropFirst() {
             if line.isEmpty { break }
             if line.lowercased().hasPrefix("host:") {
-                return line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                let value = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                return Request(host: HostName(value.utf8, allowingPort: true)?.text)
             }
         }
-        return nil
+        return Request(host: nil)
     }
 }
