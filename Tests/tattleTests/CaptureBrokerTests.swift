@@ -1,5 +1,6 @@
 import Security
 import XCTest
+import XPC
 @testable import tattle
 
 final class CaptureBrokerTests: XCTestCase {
@@ -389,6 +390,21 @@ final class CaptureBrokerTests: XCTestCase {
             XCTAssertEqual($0 as? CaptureBroker.RequestError, .transport(errno: ECONNREFUSED))
         }
         XCTAssertTrue(CaptureBroker.isRegistered(agent.service))
+    }
+
+    /// The broker closes a connection after its first message, answered or not, so the uid it
+    /// takes from the connection is that of the one request it answers.
+    func testBrokerClosesAConnectionAfterItsFirstMessage() throws {
+        let broker = try runBroker(requirement: nobody)
+        let connection = xpc_connection_create_mach_service(broker.label, nil, 0)
+        xpc_connection_set_event_handler(connection) { _ in }
+        xpc_connection_activate(connection)
+        defer { xpc_connection_cancel(connection) }
+        let message = xpc_dictionary_create_empty()
+        xpc_dictionary_set_string(message, "interface", "en0")
+        xpc_connection_send_message(connection, message)
+        let reply = xpc_connection_send_message_with_reply_sync(connection, message)
+        XCTAssertTrue(xpc_get_type(reply) == XPC_TYPE_ERROR, "a second message on the connection was answered: \(String(describing: reply))")
     }
 
     /// A request is judged by the process that sent it, not by what its pid runs when the

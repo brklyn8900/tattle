@@ -109,8 +109,7 @@ static int open_bpf(const char *ifname) {
 }
 
 // The reply goes to the reply port of `request`, which belongs to the process that sent it: the
-// one just checked. The connection is closed after its one request, so the uid it reports, fixed
-// when it was made, is the uid of the request answered; a client asking again gets a new one.
+// one just checked.
 static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
     xpc_object_t reply = xpc_dictionary_create_reply(request);
     if (reply == NULL) return;  // sent without asking for a reply: no one to answer
@@ -136,7 +135,6 @@ static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecReq
     xpc_dictionary_set_int64(reply, "status", status);
     xpc_connection_send_message(peer, reply);
     xpc_release(reply);
-    xpc_connection_cancel(peer);
 }
 
 static void usage(void) {
@@ -197,8 +195,15 @@ int main(int argc, char **argv) {
         xpc_connection_set_target_queue(peer, queue);
         xpc_connection_set_event_handler(peer, ^(xpc_object_t message) {
             if (xpc_get_type(message) != XPC_TYPE_DICTIONARY) return;
-            dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
+            // Another account's messages must not keep a root process running.
+            if (xpc_connection_get_euid(peer) == uid) {
+                dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
+            }
             serve(peer, message, uid, requirement);
+            // One message per connection, answered or not, so the uid the connection reports,
+            // fixed when it was made, is that of the request answered; a client asking again
+            // gets a new one.
+            xpc_connection_cancel(peer);
         });
         xpc_connection_activate(peer);
     });
