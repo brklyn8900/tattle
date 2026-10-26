@@ -10,12 +10,18 @@
 // one line: accepted | refused | bad-request | open-failed <errno> | transport <errno>.
 // --exception-ports adds a second line, "exception-ports <n>": how many task exception ports
 // the probe still holds after asking.
+//
+//   tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]
+//
+// Sends the request without waiting for the answer, then execs <program> in the same process,
+// which the broker must not take for the sender (ADR-0003). Prints nothing itself.
 // "accepted" means a descriptor this process could prepare and filter, so it appears only
 // where the capture devices are readable; with root-only devices an accepted caller prints
 // "open-failed 13".
 
 #include "packet_capture.h"
 
+#include <dispatch/dispatch.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <mach/mach.h>
@@ -23,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <xpc/xpc.h>
 
 static int exception_ports(void) {
     exception_mask_t masks[EXC_TYPES_COUNT];
@@ -59,17 +66,35 @@ static void report(int fd, int status, int err) {
     }
 }
 
+// The barrier runs once the request has left this process, so the exec cannot overtake it.
+static int send_then_exec(const char *service, const char *ifname, char **program) {
+    xpc_connection_t connection = xpc_connection_create_mach_service(service, NULL, 0);
+    xpc_connection_set_event_handler(connection, ^(xpc_object_t event) { (void)event; });
+    xpc_connection_activate(connection);
+    xpc_object_t request = xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(request, "interface", ifname);
+    xpc_connection_send_message_with_reply(connection, request, NULL, ^(xpc_object_t reply) { (void)reply; });
+    dispatch_semaphore_t sent = dispatch_semaphore_create(0);
+    xpc_connection_send_barrier(connection, ^{ dispatch_semaphore_signal(sent); });
+    dispatch_semaphore_wait(sent, DISPATCH_TIME_FOREVER);
+    execv(program[0], program);
+    perror("execv");
+    return 1;
+}
+
 int main(int argc, char **argv) {
     unsigned delay = 0;
     bool show_ports = false;
     bool usable = argc >= 3;
     for (int i = 3; usable && i < argc; i++) {
+        if (strcmp(argv[i], "--send-then-exec") == 0 && i + 1 < argc) return send_then_exec(argv[1], argv[2], &argv[i + 1]);
         if (strcmp(argv[i], "--delay") == 0 && i + 1 < argc) delay = (unsigned)atoi(argv[++i]);
         else if (strcmp(argv[i], "--exception-ports") == 0) show_ports = true;
         else usable = false;
     }
     if (!usable) {
-        fprintf(stderr, "usage: tattle-broker-probe <service> <interface> [--delay <seconds>] [--exception-ports]\n");
+        fprintf(stderr, "usage: tattle-broker-probe <service> <interface> [--delay <seconds>] [--exception-ports]\n"
+                        "       tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]\n");
         return 2;
     }
     if (delay > 0) sleep(delay);

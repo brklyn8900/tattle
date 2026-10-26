@@ -391,6 +391,46 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertTrue(CaptureBroker.isRegistered(agent.service))
     }
 
+    /// A request is judged by the process that sent it, not by what its pid runs when the
+    /// broker reads it: a sender that execs a program the broker accepts is still refused. The
+    /// broker is stopped until the exec is done, so one that judged the pid would accept.
+    func testBrokerJudgesTheSenderNotWhatItsPidRunsByThen() throws {
+        let plain = try caller(.plain)
+        let hardened = try caller(.hardened)
+        let broker = try runBroker(requirement: hardened.requirement)
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: broker.service), "the test runner is refused")
+        let pid = try XCTUnwrap(broker.pid, "launchd started the broker")
+        let refusals = { broker.log.components(separatedBy: "refused a caller").count - 1 }
+        let before = refusals()
+        XCTAssertEqual(kill(pid, SIGSTOP), 0)
+        var resumed = false
+        defer { if !resumed { kill(pid, SIGCONT) } }
+
+        let process = Process()
+        process.executableURL = plain.url
+        // The program it becomes stays alive while the broker judges, and asks it nothing.
+        process.arguments = [broker.label, "en0", "--send-then-exec", hardened.url.path, BrokerAgent.uniqueLabel(), "en0", "--delay", "3"]
+        process.standardOutput = FileHandle.nullDevice
+        try process.run()
+        let target = hardened.url.resolvingSymlinksInPath().path
+        let deadline = Date().addingTimeInterval(5)
+        while executablePath(process.processIdentifier) != target && Date() < deadline { usleep(10_000) }
+        XCTAssertEqual(executablePath(process.processIdentifier), target, "the sender became the accepted program")
+
+        XCTAssertEqual(kill(pid, SIGCONT), 0)
+        resumed = true
+        while refusals() == before && Date() < deadline.addingTimeInterval(5) { usleep(20_000) }
+        XCTAssertEqual(refusals(), before + 1, broker.log)
+        XCTAssertFalse(broker.log.contains("cannot open a capture device") || broker.log.contains("handed a capture device"), broker.log)
+        waitForExit(process)
+    }
+
+    private func executablePath(_ pid: pid_t) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return URL(filePath: String(cString: buffer)).resolvingSymlinksInPath().path
+    }
+
     /// Whoever launches Tattle chooses the task exception ports it inherits, and a trap would
     /// hand that process Tattle's task, which the broker cannot see. A caller drops them before
     /// it asks, whatever the answer.
