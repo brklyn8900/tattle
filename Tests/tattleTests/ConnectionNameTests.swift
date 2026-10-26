@@ -139,6 +139,45 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay, "a DNS lookup does not poison the memo")
     }
 
+    @MainActor
+    private func observer(rules: RuleStore, database: AppDatabase) throws -> NetworkObserver {
+        NetworkObserver(store: ConnectionStore(database: database), rules: rules,
+                        settings: try AppSettings(store: SettingsStore(database: database)))
+    }
+
+    /// An LLM answer's category is free text from a process Tattle does not control: it must
+    /// not decide that a host's name is hidden from every later row.
+    @MainActor
+    func testOnlySeedAndUserRulesDecideAKind() throws {
+        let database = try AppDatabase.inMemory()
+        let rules = RuleStore(database: database)
+        let observer = try observer(rules: rules, database: database)
+        try rules.save(Rule(kind: .host, pattern: "llm.example", purpose: "p", category: "relay", source: .llm))
+        try rules.save(Rule(kind: .host, pattern: "confirmed.example", purpose: "p", category: "ech-cover", source: .llm, confirmed: t0))
+        try rules.save(Rule(kind: .host, pattern: "iap.example", purpose: "p", category: "relay", source: .iap))
+        XCTAssertEqual(observer.kind(of: "llm.example", source: .sni), .destination)
+        XCTAssertEqual(observer.kind(of: "confirmed.example", source: .sni), .destination, "confirming ranks it higher, it is still a model's text")
+        XCTAssertEqual(observer.kind(of: "iap.example", source: .sni), .destination)
+
+        // A model rule that outranks the seed (confirmed) must not mask the seed's category.
+        try rules.save(Rule(kind: .host, pattern: "seeded.example", purpose: "p", category: "relay", source: .builtin))
+        try rules.save(Rule(kind: .host, pattern: "seeded.example", purpose: "p", category: "cdn", source: .llm, confirmed: t0))
+        XCTAssertEqual(observer.kind(of: "seeded.example", source: .sni), .relay)
+    }
+
+    @MainActor
+    func testARuleSavedLaterIsSeenByTheNextLookup() throws {
+        let database = try AppDatabase.inMemory()
+        let rules = RuleStore(database: database)
+        let observer = try observer(rules: rules, database: database)
+        XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .destination)
+        try rules.save(Rule(kind: .host, pattern: "late.example", purpose: "p", category: "relay", source: .user))
+        XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .relay)
+
+        try rules.save(Rule(kind: .host, pattern: "late.example", purpose: "p", category: "ech-cover", source: .user))
+        XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .hidden, "the same user key was replaced")
+    }
+
     func testEveryDnsNameIsMarkedWhateverItsKind() {
         let owner = ConnectionOwner(processName: "Safari")
         for kind in [ConnectionName.Kind.destination, .relay, .hidden] {

@@ -1,15 +1,25 @@
 import Foundation
 import GRDB
+import os
 
 /// Reads and writes knowledge-base rules.
 struct RuleStore: Sendable {
     let database: AppDatabase
 
+    /// Counts the writes through this store and its copies, so a reader that remembers
+    /// answers derived from rules can tell when they may be stale.
+    private let writes = OSAllocatedUnfairLock(initialState: 0)
+
+    var revision: Int { writes.withLock { $0 } }
+
+    private func wrote() { writes.withLock { $0 += 1 } }
+
     /// Inserts a rule, replacing an existing one with the same kind, match, pattern and
     /// source. Returns the stored rule with its id.
     @discardableResult
     func save(_ rule: Rule) throws -> Rule {
-        try database.writer.write { db in
+        defer { wrote() }
+        return try database.writer.write { db in
             var rule = rule
             try rule.upsert(db)
             return rule
@@ -50,6 +60,7 @@ struct RuleStore: Sendable {
     /// Replaces every rule of `source` with `rules`, in one transaction. A rule that the
     /// user had confirmed keeps its confirmation and creation date if it is still present.
     func replaceAll(source: Rule.Source, with rules: [Rule]) throws {
+        defer { wrote() }
         try database.writer.write { db in
             let existing = try Rule.filter(Column("source") == source.rawValue).fetchAll(db)
             let kept = Dictionary(
@@ -78,6 +89,7 @@ struct RuleStore: Sendable {
     /// ranks with user rules from now on. `pattern` promotes it to a glob rule: only the
     /// user can do that, and only here.
     func confirm(id: Int64, at date: Date = Date(), promotingTo pattern: String? = nil) throws {
+        defer { wrote() }
         try database.writer.write { db in
             guard var rule = try Rule.fetchOne(db, key: id) else {
                 throw RuleStoreError.notFound(id)
@@ -94,6 +106,7 @@ struct RuleStore: Sendable {
     /// Deletes unconfirmed LLM rules older than their lifetime. Returns how many went.
     @discardableResult
     func pruneExpired(now: Date = Date()) throws -> Int {
+        defer { wrote() }
         let cutoff = now.addingTimeInterval(-Rule.unconfirmedLLMLifetime)
         return try database.writer.write { db in
             try Rule

@@ -25,8 +25,10 @@ final class NetworkObserver {
     private var owners: [Int32: ConnectionOwner] = [:]
     private var known = Set<String>()
     private var names = PendingNames()
-    /// What a name is, by the knowledge base, looked up once per name.
+    /// What a name is, by the knowledge base, looked up once per name and dropped when a
+    /// rule is written.
     private var kinds: [String: ConnectionName.Kind] = [:]
+    private var kindsRevision = 0
     private var lastTouch = Date.distantPast
     private var lastPrune = Date.distantPast
     private var task: Task<Void, Never>?
@@ -35,6 +37,9 @@ final class NetworkObserver {
     /// A reading asked for while one was running, and whether it must be eager.
     private var pollRequested: Bool?
     private var promptPollScheduled = false
+
+    /// Rule sources whose category may decide a connection's kind.
+    private static let kindSources = SeedLoader.seedSources.union([.user])
 
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
@@ -132,8 +137,16 @@ final class NetworkObserver {
     /// so it is never a relay or cover name, whatever the knowledge base says of it.
     func kind(of name: String, source: NameSource) -> ConnectionName.Kind {
         if source == .dns { return .destination }
+        if rules.revision != kindsRevision {
+            kinds = [:]
+            kindsRevision = rules.revision
+        }
         if let kind = kinds[name] { return kind }
-        let kind = ConnectionName.kind(forCategory: (try? rules.lookup(kind: .host, key: name))?.category)
+        // Only Tattle's own and the user's rules say what a name is. A model's answer is free
+        // text, and a confirmed one outranks the seed in a plain lookup.
+        let category = (try? rules.candidates(kind: .host, key: name))?
+            .first { Self.kindSources.contains($0.source) }?.category
+        let kind = ConnectionName.kind(forCategory: category)
         kinds[name] = kind
         return kind
     }
