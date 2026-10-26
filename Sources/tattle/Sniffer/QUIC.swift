@@ -169,23 +169,40 @@ enum QUIC {
 }
 
 // Reassembles the CRYPTO stream of one connection until the ClientHello is complete.
+// Holds at most `FlowNamer.bufferLimit` bytes, the TCP cap: a sender chooses every offset
+// and length, so empty, overlapping and far-off chunks are refused rather than stored.
 struct QUICAssembly {
-    private var chunks: [UInt64: [UInt8]] = [:]
+    /// The most chunks held ahead of the stream. Each new chunk is checked against all of
+    /// them; a real ClientHello spans a handful of Initials.
+    static let maxAhead = 32
+
+    /// Contiguous bytes from offset zero.
+    private(set) var stream: [UInt8] = []
+    /// Chunks that arrived ahead of the stream, none overlapping another or the stream.
+    private var ahead: [QUIC.Chunk] = []
+    /// A chunk reached past the byte cap, or one more was held ahead than `maxAhead`: the
+    /// handshake is too large to name.
+    private(set) var overLimit = false
 
     mutating func add(_ new: [QUIC.Chunk]) {
-        for chunk in new where chunks[chunk.offset] == nil {
-            chunks[chunk.offset] = chunk.data
+        for chunk in new where !chunk.data.isEmpty && !overLimit {
+            let start = chunk.offset
+            let end = start + UInt64(chunk.data.count)
+            guard end <= UInt64(FlowNamer.bufferLimit) else { return giveUp() }
+            guard start >= UInt64(stream.count),
+                  !ahead.contains(where: { start < $0.offset + UInt64($0.data.count) && $0.offset < end }) else { continue }
+            guard ahead.count < Self.maxAhead else { return giveUp() }
+            ahead.append(chunk)
+        }
+        // Each chunk taken is nonempty, so the stream grows on every pass.
+        while let index = ahead.firstIndex(where: { $0.offset == UInt64(stream.count) }) {
+            stream.append(contentsOf: ahead.remove(at: index).data)
         }
     }
 
-    // Contiguous bytes from offset zero.
-    var stream: [UInt8] {
-        var out: [UInt8] = []
-        var next: UInt64 = 0
-        while let data = chunks[next] {
-            out.append(contentsOf: data)
-            next += UInt64(data.count)
-        }
-        return out
+    private mutating func giveUp() {
+        overLimit = true
+        stream = []
+        ahead = []
     }
 }

@@ -103,6 +103,40 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.flowCount, 1)
     }
 
+    /// Any local process can send a sealed Initial whose CRYPTO frame is empty: the keys come
+    /// from the packet. It must not hang the capture thread.
+    func testASealedInitialWithAnEmptyCryptoFrameReturns() {
+        let datagram = SnifferParserTests.sealInitial([0x06, 0x00, 0x00])
+        let packet = udp(datagram)
+        let start = t0
+        let me = self.me
+        XCTAssertTrue(SnifferParserTests.returns {
+            var n = FlowNamer(localAddresses: [me])
+            _ = n.observe(packet, at: start)
+            _ = n.observe(packet, at: start + 0.1)
+        }, "observe returned")
+    }
+
+    /// A ClientHello that claims to be larger than the TCP buffer cap, sent one Initial at a
+    /// time, stops being buffered at the cap, as over TCP.
+    func testAQUICHandshakeLargerThanTheCapIsGivenUp() {
+        var n = namer()
+        let piece = 1000
+        var hello: [UInt8] = [1, 0x01, 0x00, 0x00]  // a ClientHello of 64 KB
+        hello += [UInt8](repeating: 0x41, count: piece - hello.count)
+        var offset = 0
+        var events: [FlowEvent] = []
+        while offset <= FlowNamer.bufferLimit + piece, !events.contains(where: { $0.kind != .opened }) {
+            let data = offset == 0 ? hello : [UInt8](repeating: 0x41, count: piece)
+            let frame: [UInt8] = [0x06, 0x80 | UInt8(offset >> 24), UInt8((offset >> 16) & 0xff), UInt8((offset >> 8) & 0xff), UInt8(offset & 0xff),
+                                  0x40 | UInt8(piece >> 8), UInt8(piece & 0xff)] + data
+            events += n.observe(udp(SnifferParserTests.sealInitial(frame)), at: t0 + Double(offset) / 100_000)
+            offset += piece
+        }
+        XCTAssertEqual(events.last, FlowEvent(key: udpKey, kind: .unnamed(.noServerName)))
+        XCTAssertLessThanOrEqual(offset, FlowNamer.bufferLimit + piece, "given up at the cap")
+    }
+
     func testShortHeaderDoesNotStartAFlow() {
         var n = namer()
         XCTAssertEqual(n.observe(udp([0x41, 1, 2, 3]), at: t0), [], "a connection open before capture started")

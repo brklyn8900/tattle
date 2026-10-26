@@ -108,7 +108,7 @@ struct FlowNamer: Sendable {
     static let idleAfter = 120.0
     /// How long a DNS answer is remembered.
     static let dnsRemembered = 3600.0
-    /// The most handshake bytes buffered for one TCP flow.
+    /// The most handshake bytes buffered for one flow, TCP or QUIC.
     static let bufferLimit = 16_384
 
     private struct Flow {
@@ -266,8 +266,14 @@ struct FlowNamer: Sendable {
             case .success(let initial):
                 flow.quicAssembly.add(initial.chunks)
                 offset = initial.nextOffset
+                if flow.quicAssembly.overLimit {
+                    flow.quicDone = true
+                    flow.quicAssembly = QUICAssembly()
+                    return .unnamed(.noServerName)
+                }
                 if case .hello(let sni) = TLS.clientHello(flow.quicAssembly.stream) {
                     flow.quicDone = true
+                    flow.quicAssembly = QUICAssembly()
                     return sni.map { .named($0, .quic) } ?? .unnamed(.noServerName)
                 }
             case .failure(.unsupportedVersion):
@@ -298,6 +304,7 @@ struct FlowNamer: Sendable {
             if !flow.named, !flow.finished, now - flow.start >= Self.finalizeAfter {
                 flow.tlsBuffer = nil
                 flow.quicDone = true
+                flow.quicAssembly = QUICAssembly()
                 if !flow.dnsNamed { events.append(FlowEvent(key: key, kind: .unnamed(.timeout))) }
             }
             if now - flow.lastSeen >= Self.idleAfter {

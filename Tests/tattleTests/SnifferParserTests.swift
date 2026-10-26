@@ -1,3 +1,5 @@
+import CommonCrypto
+import CryptoKit
 import XCTest
 @testable import tattle
 
@@ -56,7 +58,93 @@ final class SnifferParserTests: XCTestCase {
         return out
     }
 
+    /// Seals `frames` into a client Initial as any sender can (RFC 9001 section 5), padded
+    /// with PADDING frames to the 1200 bytes a client must send.
+    static func sealInitial(_ frames: [UInt8], dcid: [UInt8] = [0x83, 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08]) -> [UInt8] {
+        func expand(_ secret: some ContiguousBytes, _ label: String, _ length: Int) -> SymmetricKey {
+            let full = Array("tls13 \(label)".utf8)
+            let info = [UInt8(length >> 8), UInt8(length & 0xff), UInt8(full.count)] + full + [0]
+            return SymmetricKey(data: HKDF<SHA256>.expand(pseudoRandomKey: SymmetricKey(data: secret), info: info, outputByteCount: length))
+        }
+        let salt: [UInt8] = [0x38, 0x76, 0x2c, 0xf7, 0xf5, 0x59, 0x34, 0xb3, 0x4d, 0x17,
+                             0x9a, 0xe6, 0xa4, 0xc8, 0x0c, 0xad, 0xcc, 0xbb, 0x7f, 0x0a]
+        let initial = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: dcid), salt: salt)
+        let client = expand(initial, "client in", 32)
+        let key = expand(client, "quic key", 16)
+        let iv = expand(client, "quic iv", 12).withUnsafeBytes { Array($0) }
+        let hp = expand(client, "quic hp", 16).withUnsafeBytes { Array($0) }
+
+        var header: [UInt8] = [0xc0, 0, 0, 0, 1, UInt8(dcid.count)] + dcid + [0, 0]
+        let fixed = header.count + 2 + 1 + 16  // length field, one-byte packet number, tag
+        let plaintext = frames + [UInt8](repeating: 0, count: max(0, QUIC.minimumInitialDatagram - fixed - frames.count))
+        let length = 1 + plaintext.count + 16
+        header += [0x40 | UInt8(length >> 8), UInt8(length & 0xff)]
+        let pnOffset = header.count
+        header.append(0)  // packet number 0, so the nonce is the iv
+        let box = try! AES.GCM.seal(plaintext, using: key, nonce: AES.GCM.Nonce(data: iv), authenticating: header)
+        var packet = header + Array(box.ciphertext) + Array(box.tag)
+
+        let sample = Array(packet[(pnOffset + 4)..<(pnOffset + 20)])
+        var mask = [UInt8](repeating: 0, count: 16)
+        var moved = 0
+        CCCrypt(CCOperation(kCCEncrypt), CCAlgorithm(kCCAlgorithmAES), CCOptions(kCCOptionECBMode),
+                hp, hp.count, nil, sample, 16, &mask, 16, &moved)
+        packet[0] ^= mask[0] & 0x0f
+        packet[pnOffset] ^= mask[1]
+        return packet
+    }
+
+    /// Runs `body` on another thread and says whether it returned within `seconds`: a parser
+    /// that loops forever must fail the test, not hang the suite.
+    static func returns(within seconds: TimeInterval = 5, _ body: @escaping @Sendable () -> Void) -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        Thread { body(); done.signal() }.start()
+        return done.wait(timeout: .now() + seconds) == .success
+    }
+
     // MARK: QUIC
+
+    func testTheSealerMatchesTheRFCInitial() throws {
+        guard case .success(let initial) = QUIC.parseInitial(Self.sealInitial(Self.rfcCryptoFrame), at: 0) else {
+            return XCTFail("a sealed Initial must decrypt")
+        }
+        XCTAssertEqual(initial.chunks.map(\.data), [Self.rfcClientHello])
+    }
+
+    /// A CRYPTO frame of length zero (`06 00 00`) is valid on the wire. The old reassembly
+    /// never advanced past it and spun the capture thread forever.
+    func testAnEmptyCryptoChunkDoesNotStallTheAssembly() {
+        XCTAssertTrue(Self.returns {
+            var assembly = QUICAssembly()
+            assembly.add([QUIC.Chunk(offset: 0, data: [])])
+            assembly.add([QUIC.Chunk(offset: 0, data: [1, 2, 3])])
+            XCTAssertEqual(assembly.stream, [1, 2, 3], "the empty chunk is ignored, the real one kept")
+        }, "the assembly returned")
+    }
+
+    /// Every chunk is checked against those held ahead of the stream, so thousands of one-byte
+    /// chunks would make each later frame cost thousands of comparisons on the capture thread.
+    func testQUICAssemblyHoldsAtMost32ChunksAheadOfTheStream() {
+        var held = QUICAssembly()
+        held.add((1...32).map { QUIC.Chunk(offset: UInt64($0), data: [1]) })
+        XCTAssertFalse(held.overLimit, "32 ahead are allowed")
+        var flooded = QUICAssembly()
+        flooded.add((1...33).map { QUIC.Chunk(offset: UInt64($0), data: [1]) })
+        XCTAssertTrue(flooded.overLimit, "the 33rd ends the assembly")
+        flooded.add([QUIC.Chunk(offset: 0, data: [0])])
+        XCTAssertEqual(flooded.stream, [], "and it stays ended")
+    }
+
+    func testQUICAssemblyRejectsOverlapsAndBytesPastTheCap() {
+        var assembly = QUICAssembly()
+        assembly.add([QUIC.Chunk(offset: 0, data: [0, 1, 2, 3])])
+        assembly.add([QUIC.Chunk(offset: 2, data: [9, 9, 9, 9])])
+        XCTAssertEqual(assembly.stream, [0, 1, 2, 3], "an overlap is dropped, not spliced in")
+        XCTAssertFalse(assembly.overLimit)
+        assembly.add([QUIC.Chunk(offset: UInt64(FlowNamer.bufferLimit) - 1, data: [7, 7])])
+        XCTAssertTrue(assembly.overLimit, "a byte past the cap ends the assembly")
+        XCTAssertEqual(assembly.stream, [], "and frees what it held")
+    }
 
     func testRFC9001ClientInitialDecryptsToClientHello() throws {
         XCTAssertTrue(QUIC.mayBeClientInitial(Self.rfcInitial))
