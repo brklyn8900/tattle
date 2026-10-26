@@ -47,12 +47,13 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
    and starts it again after it exits a minute idle. It is written in C, does no parsing,
    and holds no state between requests.
 2. The broker answers a request only when three things hold of the process that sent it,
-   never judged from a pid, and checked before it reads anything in the request. Its code
-   is judged from that request's own audit token (`SecCodeCreateWithXPCMessage`, macOS
-   11), which names the sending process as it was when it sent: after an exec it names no
-   code at all. Its uid is the connection's (`xpc_connection_get_euid`), fixed when the
-   connection is made; the broker answers one request per connection and then closes it,
-   so that is the uid of the request it answers. The reply, and with it the descriptor,
+   never judged from a pid, and checked before it acts on anything in the request (libxpc
+   decodes every message, any account's, before the broker sees it). Its code is judged
+   from that request's own audit token (`SecCodeCreateWithXPCMessage`), which names the
+   sending process as it was when it sent: after an exec it names no code at all. Its uid
+   is the connection's (`xpc_connection_get_euid`), fixed when the connection is made; the
+   broker closes each connection after its first message, answered or not, so that is the
+   uid of the request it answers. The reply, and with it the descriptor,
    goes to that request's reply port, which belongs to its sender; a forked child inherits
    no XPC connection. The caller runs as the user who installed the broker, whose uid is
    recorded in the plist. Its code satisfies the requirement recorded at install time: the app's
@@ -61,10 +62,12 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
    it is ad-hoc signed; the running code must still match its file. And no other process
    of that user can steer it: the kernel reports it valid, under the hardened runtime and
    not debugged, and it carries no get-task-allow and no entitlement that re-enables dyld
-   environment variables or unsigned libraries. Every build of Tattle and of the broker,
-   ad hoc included, is signed with the hardened runtime. An ad-hoc build changes hash on
-   every rebuild and must reinstall the broker; the app says when the installed broker is
-   not this build's.
+   environment variables or unsigned libraries. The broker cannot see the one lever left to
+   whoever launched the caller, the task exception ports it inherits, to which a trap
+   would hand the caller's task; so Tattle drops its own before every request. Every
+   build of Tattle and of the broker, ad hoc included, is signed with the hardened
+   runtime. An ad-hoc build changes hash on every rebuild and must reinstall the broker;
+   the app says when the installed broker is not this build's.
 3. All parsing runs in the app as the user, exactly as it would have with readable
    devices. A parser fault is a user-level crash.
 4. Installing and removing the broker goes through the administrator password dialog
@@ -100,7 +103,8 @@ as root.
   the dev copy widens nothing: whoever can sign as the team can already sign with
   Tattle's own identifier. It lets a dev copy capture beside a running release build. Ad hoc, it means this exact
   build. Other accounts on the Mac are refused. Not claimed: anything about root, or about
-  software that makes `/dev/bpf*` readable (Wireshark's ChmodBPF, for one), or about an app
+  software that makes `/dev/bpf*` readable (Wireshark's ChmodBPF, for one), about a launcher
+  that makes Tattle trap before it first asks, or about an app
   replaced before the user first opened it, which is the user installing someone else's
   app.
 - Install pins the exact running build, and through its seal the exact bundled broker, in
@@ -113,13 +117,15 @@ as root.
   test runner, cannot use it, so tests call it through a signed fixture, and run the
   broker as an agent in the user's own launchd domain, which takes the same XPC path
   without root.
-- The checks need macOS 11, under the app's macOS 14 floor. The broker does not use XPC's
+- `SecCodeCreateWithXPCMessage` is public, but the SDK states no availability for it; it
+  is checked on macOS 26 only, and the broker links it strongly, so on a release without
+  it the broker would not start. The broker does not use XPC's
   own peer requirements: a peer they refuse sees only an interrupted connection, which the
   app could not tell from a crashed broker, and their lightweight form cannot say "no
   get-task-allow".
-- A broker installed before the move to XPC served a socket. Tattle no longer speaks to
-  it; it reads as another build's, and Install again replaces it under the same label and
-  deletes the socket file it left, which launchd does not remove when it stops the job.
+- Tattle handles no exceptions of its own, so dropping its exception ports loses nothing
+  but an inherited handler for resource-limit reports; crash reports still come through
+  the system's own port.
 - The sniffer code is the same as planned; it receives a descriptor instead of opening
   the file. Until the broker exists, testing uses a one-off `chmod o+r /dev/bpf*`
   reverted with `chmod o-r` afterwards; neither survives a reboot.
