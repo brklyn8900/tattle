@@ -48,6 +48,9 @@ struct PendingNames: Equatable, Sendable {
     static let keepFor: TimeInterval = 300
 
     private var names: [String: (outcome: NameOutcome, at: Date)] = [:]
+    /// When each flow's opened event arrived: history rows older than that are another
+    /// connection's.
+    private var opened: [String: Date] = [:]
 
     init() {}
 
@@ -61,16 +64,18 @@ struct PendingNames: Equatable, Sendable {
 
     func outcome(for flowKey: String) -> NameOutcome? { names[flowKey]?.outcome }
 
-    /// Takes in the sniffer's events and returns the outcomes among them, in order, for the
-    /// caller to put on rows and history. `kind` says what a name is. An opened flow drops
-    /// what its key held: that was an earlier connection on a reused local port.
-    mutating func apply(_ events: [FlowEvent], at date: Date, kind: (String) -> ConnectionName.Kind) -> [(flow: FlowKey, outcome: NameOutcome)] {
-        var outcomes: [(flow: FlowKey, outcome: NameOutcome)] = []
+    /// Takes in the sniffer's events and returns the outcomes among them, in order, with when
+    /// their flow opened, for the caller to put on rows and history. `kind` says what a name
+    /// is. An opened flow drops what its key held: that was an earlier connection on a
+    /// reused local port.
+    mutating func apply(_ events: [FlowEvent], at date: Date, kind: (String) -> ConnectionName.Kind) -> [(flow: FlowKey, outcome: NameOutcome, openedAt: Date)] {
+        var outcomes: [(flow: FlowKey, outcome: NameOutcome, openedAt: Date)] = []
         for event in events {
             let outcome: NameOutcome
             switch event.kind {
             case .opened:
                 names[event.key.text] = nil
+                opened[event.key.text] = date
                 continue
             case .named(let text, let source):
                 outcome = .named(ConnectionName(name: text, source: source, kind: kind(text)))
@@ -78,7 +83,8 @@ struct PendingNames: Equatable, Sendable {
                 outcome = .unnamed(reason)
             }
             set(outcome, for: event.key.text, at: date)
-            outcomes.append((event.key, outcome))
+            // An outcome comes at most the namer's give-up time after its flow opened.
+            outcomes.append((event.key, outcome, opened[event.key.text] ?? date.addingTimeInterval(-FlowNamer.finalizeAfter)))
         }
         return outcomes
     }
@@ -86,6 +92,7 @@ struct PendingNames: Equatable, Sendable {
     /// Forgets names older than `keepFor`, except those of flows still open.
     mutating func prune(now: Date, keeping open: Set<String>) {
         names = names.filter { open.contains($0.key) || now.timeIntervalSince($0.value.at) < Self.keepFor }
+        opened = opened.filter { open.contains($0.key) || now.timeIntervalSince($0.value) < Self.keepFor }
     }
 
     var count: Int { names.count }

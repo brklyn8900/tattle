@@ -80,11 +80,18 @@ struct ConnectionStore: Sendable {
         }
     }
 
+    /// A poll already under way when a flow opened can record its connection this much
+    /// earlier than the open; an older connection on the same four-tuple ended long before.
+    static let openedSlack: TimeInterval = 3
+
     /// Records the sniffer's outcome on the newest row of the flow, open or not: a short
-    /// connection may have closed by the time its name arrives. An unnamed outcome keeps
-    /// its reason in the name source column, prefixed so it is never read as a source.
-    /// An IPv6 socket talking IPv4 recorded a mapped address; the flow carries the plain one.
-    func record(_ outcome: NameOutcome, flow: FlowKey) throws {
+    /// connection may have closed by the time its name arrives. Only a row first seen since
+    /// the flow opened is the flow's: an outcome that arrives before the poll adds the row
+    /// waits in PendingNames instead of landing on an older connection's row. An unnamed
+    /// outcome keeps its reason in the name source column, prefixed so it is never read as a
+    /// source. An IPv6 socket talking IPv4 recorded a mapped address; the flow carries the
+    /// plain one.
+    func record(_ outcome: NameOutcome, flow: FlowKey, openedAt: Date) throws {
         let name: String?
         let source: String
         switch outcome {
@@ -101,10 +108,11 @@ struct ConnectionStore: Sendable {
                     UPDATE connection SET name = ?, nameSource = ?
                     WHERE id = (SELECT MAX(id) FROM connection
                                 WHERE proto = ? AND localPort = ? AND remotePort = ?
-                                  AND (remoteAddress = ? OR remoteAddress = '::ffff:' || ?))
+                                  AND (remoteAddress = ? OR remoteAddress = '::ffff:' || ?)
+                                  AND firstSeen >= ?)
                     """,
                 arguments: [name, source, flow.proto == .tcp ? "tcp" : "udp", flow.localPort, flow.remotePort,
-                            flow.remote.text, flow.remote.text])
+                            flow.remote.text, flow.remote.text, openedAt.addingTimeInterval(-Self.openedSlack)])
         }
     }
 

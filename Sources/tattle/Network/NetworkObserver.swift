@@ -119,11 +119,11 @@ final class NetworkObserver {
     // MARK: Sniffer events
 
     private func handle(_ events: [FlowEvent]) {
-        for (flow, outcome) in names.apply(events, at: Date(), kind: kind(of:)) {
+        for (flow, outcome, openedAt) in names.apply(events, at: Date(), kind: kind(of:)) {
             if let reason = outcome.reason {
                 Log.sniffer.debug("no name for \(flow.text, privacy: .public): \(String(describing: reason), privacy: .public)")
             }
-            attach(outcome, to: flow)
+            attach(outcome, to: flow, openedAt: openedAt)
         }
         if events.contains(where: { $0.kind == .opened }) { schedulePromptPoll() }
     }
@@ -136,9 +136,11 @@ final class NetworkObserver {
     }
 
     /// Puts the outcome on the live row, if the socket table has shown the connection
-    /// yet, and on its history record, which may already be closed.
-    private func attach(_ outcome: NameOutcome, to flow: FlowKey) {
-        if var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flow.text }) {
+    /// yet, and on its history record, which may already be closed. A row first seen before
+    /// the flow opened is an older connection on the same four-tuple, not yet seen closed.
+    private func attach(_ outcome: NameOutcome, to flow: FlowKey, openedAt: Date) {
+        let since = openedAt.addingTimeInterval(-ConnectionStore.openedSlack)
+        if var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flow.text && $0.connection.firstSeen >= since }) {
             snapshot.connections[index].name = outcome.name
             snapshot.connections[index].unnamedReason = outcome.reason
             self.snapshot = snapshot
@@ -146,7 +148,7 @@ final class NetworkObserver {
             Log.sniffer.debug("outcome for \(flow.text, privacy: .public) arrived with no live connection")
         }
         do {
-            try store.record(outcome, flow: flow)
+            try store.record(outcome, flow: flow, openedAt: openedAt)
         } catch {
             Log.app.error("connection name write failed: \(error, privacy: .public)")
         }

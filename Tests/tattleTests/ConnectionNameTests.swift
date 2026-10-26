@@ -101,6 +101,8 @@ final class ConnectionNameTests: XCTestCase {
 
         _ = table.apply([FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("new.example.com", .quic))], at: t0 + 120, kind: destination)
         XCTAssertEqual(table.outcome(for: key.text)?.name?.name, "new.example.com", "an outcome in the same batch as the open is kept")
+        let later = table.apply([FlowEvent(key: key, kind: .unnamed(.timeout))], at: t0 + 140, kind: destination)
+        XCTAssertEqual(later.map(\.openedAt), [t0 + 120], "history is told when the flow opened, so older rows are left alone")
     }
 
     func testUnnamedReasonOnTheRowAndInHistoryCodes() {

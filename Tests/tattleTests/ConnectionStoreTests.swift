@@ -45,27 +45,49 @@ final class ConnectionStoreTests: XCTestCase {
         let first = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari"))
         try store.close(key: first.key, lastSeen: t0 + 1, ended: t0 + 2)
         try store.open(ConnectionRecord(connection(200, "17.1.1.1", at: t0 + 20), processName: "curl"))
-        try store.record(.named(ConnectionName(name: "www.apple.com", source: .sni, kind: .destination)), flow: flow)
+        try store.record(.named(ConnectionName(name: "www.apple.com", source: .sni, kind: .destination)), flow: flow, openedAt: t0 + 20)
         let rows = try store.history(remoteAddress: "17.1.1.1")
         XCTAssertEqual(rows.map(\.name), ["www.apple.com", nil], "the reused port names the newest row only, whatever its pid")
         XCTAssertEqual(rows[0].nameSource, "sni")
 
         try store.close(key: rows[0].key, lastSeen: t0 + 21, ended: t0 + 22)
-        try store.record(.named(ConnectionName(name: "cdn.apple.com", source: .dns, kind: .destination)), flow: flow)
+        try store.record(.named(ConnectionName(name: "cdn.apple.com", source: .dns, kind: .destination)), flow: flow, openedAt: t0 + 20)
         XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1")[0].name, "cdn.apple.com", "a DNS fallback can land after the connection closed")
 
         var mapped = connection(300, "::ffff:17.1.1.1", at: t0 + 30)
         mapped.isIPv6 = true
         try store.open(ConnectionRecord(mapped, processName: "node"))
-        try store.record(.named(ConnectionName(name: "v6.apple.com", source: .quic, kind: .destination)), flow: flow)
+        try store.record(.named(ConnectionName(name: "v6.apple.com", source: .quic, kind: .destination)), flow: flow, openedAt: t0 + 30)
         XCTAssertEqual(try store.history(remoteAddress: "::ffff:17.1.1.1")[0].name, "v6.apple.com", "an IPv6 socket talking IPv4")
         try store.record(.named(ConnectionName(name: "nowhere", source: .sni, kind: .destination)),
-                         flow: FlowKey(proto: .udp, localPort: 1, remote: IPAddress(bytes: [2, 2, 2, 2]), remotePort: 443))
+                         flow: FlowKey(proto: .udp, localPort: 1, remote: IPAddress(bytes: [2, 2, 2, 2]), remotePort: 443), openedAt: t0)
 
-        try store.record(.unnamed(.timeout), flow: flow)
+        try store.record(.unnamed(.timeout), flow: flow, openedAt: t0 + 30)
         let silent = try store.history(remoteAddress: "::ffff:17.1.1.1")[0]
         XCTAssertNil(silent.name)
         XCTAssertEqual(silent.nameSource, "none:timeout", "why there is no name, where a source would be")
+    }
+
+    /// The sniffer often names a flow before the socket table shows it. Until the poll adds
+    /// the new connection's row, the newest row for the four-tuple is an older connection's,
+    /// and it must keep its own outcome; the new row takes the name when it is added.
+    func testANameThatArrivesBeforeItsRowLeavesOlderRowsAlone() throws {
+        let flow = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        var old = ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari")
+        old.name = "old.example.com"
+        old.nameSource = "sni"
+        old = try store.open(old)
+        try store.close(key: old.key, lastSeen: t0 + 1, ended: t0 + 2)
+
+        try store.record(.named(ConnectionName(name: "new.example.com", source: .quic, kind: .destination)), flow: flow, openedAt: t0 + 60)
+        let rows = try store.history(remoteAddress: "17.1.1.1")
+        XCTAssertEqual(rows.map(\.name), ["old.example.com"])
+        XCTAssertEqual(rows.map(\.nameSource), ["sni"])
+
+        // A poll already under way when the flow opened records it a moment earlier.
+        try store.open(ConnectionRecord(connection(200, "17.1.1.1", at: t0 + 59.5), processName: "curl"))
+        try store.record(.named(ConnectionName(name: "new.example.com", source: .quic, kind: .destination)), flow: flow, openedAt: t0 + 60)
+        XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1").map(\.name), ["new.example.com", "old.example.com"])
     }
 
     func testTouchStaleAndPrune() throws {
