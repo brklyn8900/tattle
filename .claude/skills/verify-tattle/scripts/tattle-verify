@@ -1,0 +1,325 @@
+#!/bin/bash
+# Launches, drives and inspects the dev copy of Tattle (build/TattleDev.app) for a
+# verification run, and keeps the run's evidence. Never touches the release app.
+#
+#   tattle-verify launch [--fresh] [--replace]
+#   tattle-verify doctor
+#   tattle-verify ax <command> [args]     open, close, status, dump, text, press, wait, scroll, frame
+#   tattle-verify tab <Network|Processes|Ports|Startup>
+#   tattle-verify save <name>             panel tree, text and screenshot into the run folder
+#   tattle-verify db "<sql>"              read-only query on the dev history database
+#   tattle-verify connect <named|garbage|silent> [--hold <seconds>]
+#   tattle-verify log [<regex>]           the run's log lines, optionally filtered
+#   tattle-verify cleanup
+set -euo pipefail
+
+REPO=$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)
+DEV_APP="$REPO/build/TattleDev.app"
+DEV_BIN="$DEV_APP/Contents/MacOS/tattle"
+DEV_ID=io.github.eladefrati.tattle.dev
+DATA="$HOME/Library/Application Support/Tattle Dev"
+DB="$DATA/tattle.sqlite"
+STATE="$REPO/build/verify"
+AX_SRC="$REPO/.claude/skills/verify-tattle/scripts/tattle-ax.swift"
+AX="$REPO/build/verify-tools/tattle-ax"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+# The dev copy's processes, by exact executable path, like make stop.
+dev_pids() { pgrep -fx "$DEV_BIN" || true; }
+
+run_dir() {
+    [ -f "$STATE/current" ] || die "no open run; start one with: tattle-verify launch"
+    echo "$STATE/runs/$(cat "$STATE/current")"
+}
+
+record() { echo "$(date +%H:%M:%S) $*" >> "$(run_dir)/commands.txt"; }
+
+# The pid this run launched, refused when it is gone or is no longer the dev copy.
+app_pid() {
+    local pid
+    pid=$(cat "$(run_dir)/app.pid" 2>/dev/null) || die "this run has no app pid"
+    [ "$(ps -p "$pid" -o command= 2>/dev/null)" = "$DEV_BIN" ] || die "pid $pid is no longer the dev copy this run launched"
+    echo "$pid"
+}
+
+build_ax() {
+    if [ ! -x "$AX" ] || [ "$AX_SRC" -nt "$AX" ]; then
+        mkdir -p "$(dirname "$AX")"
+        swiftc -O "$AX_SRC" -o "$AX"
+    fi
+}
+
+ax() { build_ax; "$AX" "$(app_pid)" "$@"; }
+
+# Kills a pid only while its command line still starts with the expected text.
+stop_pid() {
+    local pid=$1 expected=$2
+    [ -n "$pid" ] || return 0
+    case "$(ps -p "$pid" -o command= 2>/dev/null)" in
+        "$expected"*) kill "$pid" 2>/dev/null || true ;;
+        *) return 0 ;;
+    esac
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.5
+    done
+    echo "warning: pid $pid ($expected) did not exit" >&2
+}
+
+cmd_launch() {
+    local fresh=0 replace=0
+    for arg in "$@"; do
+        case $arg in
+            --fresh) fresh=1 ;;
+            --replace) replace=1 ;;
+            *) die "unknown option $arg" ;;
+        esac
+    done
+    [ ! -f "$STATE/current" ] || die "run $(cat "$STATE/current") is still open; run tattle-verify cleanup first"
+    local running
+    running=$(dev_pids)
+    if [ -n "$running" ] && [ $replace = 0 ]; then
+        die "the dev copy is already running (pid $running, started $(ps -p "${running%%$'\n'*}" -o lstart= | sed "s/ *$//")), not by this run. Another session may be driving it: ask, then rerun with --replace"
+    fi
+    build_ax
+    "$AX" trusted >/dev/null || die "this terminal has no Accessibility permission"
+
+    local id run
+    id=$(date +%Y-%m-%dT%H%M%S)
+    run="$STATE/runs/$id"
+    mkdir -p "$run"
+    echo "$id" > "$STATE/current"
+    record "launch $*"
+
+    # Started first, so the startup lines are in it. Debug level: unnamed reasons are
+    # debug lines, which log show cannot read back later.
+    nohup /usr/bin/log stream --level debug --style compact \
+        --predicate "subsystem == \"$DEV_ID\"" > "$run/log.txt" 2>&1 < /dev/null &
+    echo $! > "$run/log.pid"
+
+    if [ $fresh = 1 ] && [ -d "$DATA" ]; then
+        mv "$DATA" "$run/previous-data"
+        echo "moved the dev data folder to $run/previous-data; cleanup puts it back"
+    fi
+
+    # The repo's dev target: builds the dev copy, stops a running one, opens it.
+    make -C "$REPO" run > "$run/build.txt" 2>&1 || { tail -20 "$run/build.txt"; die "make run failed; output in $run/build.txt"; }
+
+    local pid=""
+    for _ in $(seq 60); do
+        pid=$(dev_pids | head -1)
+        [ -n "$pid" ] && break
+        sleep 0.5
+    done
+    [ -n "$pid" ] || die "the dev copy did not start"
+    echo "$pid" > "$run/app.pid"
+
+    local line=""
+    for _ in $(seq 60); do
+        line=$(grep -E "capturing on|packet capture unavailable|startup failed" "$run/log.txt" | tail -1 || true)
+        [ -n "$line" ] && break
+        sleep 0.5
+    done
+    [ -n "$line" ] || die "no capture line in the log after 30 s; see $run/log.txt"
+    case $line in *"startup failed"*) die "the app could not start: $line" ;; esac
+
+    # Ready means the Network tab has read the socket table, not just a process up.
+    "$AX" "$pid" open > /dev/null
+    "$AX" "$pid" press Network > /dev/null
+    "$AX" "$pid" wait "open connections from" 30 > /dev/null || die "the Network tab did not load"
+    "$AX" "$pid" close > /dev/null
+
+    {
+        echo "run: $id"
+        echo "commit: $(git -C "$REPO" rev-parse --short HEAD)$( [ -n "$(git -C "$REPO" status --porcelain -- Sources Resources Package.swift Makefile)" ] && echo ' + uncommitted changes')"
+        echo "pid: $pid"
+        echo "fresh data folder: $([ $fresh = 1 ] && echo yes || echo no)"
+        echo "capture: $(echo "$line" | sed "s/.*\] //")"
+    } > "$run/run.txt"
+    cat "$run/run.txt"
+    echo "ready; evidence goes to $run"
+}
+
+cmd_doctor() {
+    local bad=0 pid run
+    ok() { echo "ok    $*"; }
+    no() { echo "FAIL  $*"; bad=1; }
+    info() { echo "info  $*"; }
+
+    build_ax
+    "$AX" trusted > /dev/null && ok "Accessibility permission" || no "this terminal has no Accessibility permission"
+
+    local pids
+    pids=$(dev_pids)
+    case $(echo "$pids" | grep -c . || true) in
+        0) no "the dev copy is not running" ;;
+        1) ok "dev copy running, pid $pids" ;;
+        *) no "more than one dev copy running: $(echo $pids)" ;;
+    esac
+    pid=$(echo "$pids" | head -1)
+
+    if [ -f "$STATE/current" ]; then
+        run=$(run_dir)
+        if [ -n "$pid" ] && [ "$(cat "$run/app.pid" 2>/dev/null)" = "$pid" ]; then
+            ok "started by run $(cat "$STATE/current")"
+        else
+            no "the running dev copy was not started by the open run $(cat "$STATE/current"); do not drive it"
+        fi
+    else
+        no "no open run; the running dev copy is not this skill's to drive"
+    fi
+
+    local bid
+    bid=$(plutil -extract CFBundleIdentifier raw "$DEV_APP/Contents/Info.plist" 2>/dev/null || true)
+    [ "$bid" = "$DEV_ID" ] && ok "bundle id $bid" || no "bundle id is '$bid', not $DEV_ID"
+
+    if [ -n "$pid" ]; then
+        local running_hash disk_hash
+        running_hash=$(codesign -dv --verbose=4 "$pid" 2>&1 | sed -n 's/^CDHash=//p')
+        disk_hash=$(codesign -dv --verbose=4 "$DEV_APP" 2>&1 | sed -n 's/^CDHash=//p')
+        [ -n "$running_hash" ] && [ "$running_hash" = "$disk_hash" ] \
+            && ok "running build is the bundle on disk ($running_hash)" \
+            || no "running build ($running_hash) is not the bundle on disk ($disk_hash); relaunch"
+        "$AX" "$pid" status > /dev/null 2>&1 && ok "menu bar item reachable" || no "no menu bar item for pid $pid"
+    fi
+
+    local stale
+    stale=$(find "$REPO/Sources" "$REPO/Resources" "$REPO/Package.swift" -type f -newer "$DEV_BIN" 2>/dev/null | head -5)
+    [ -z "$stale" ] && ok "bundle is newer than every source file" || no "sources changed since the build: $(echo $stale | sed "s|$REPO/||g"); relaunch"
+    info "commit $(git -C "$REPO" rev-parse --short HEAD), $(git -C "$REPO" status --porcelain | grep -c . || true) uncommitted paths"
+
+    if [ -f "$DB" ]; then
+        local migrations
+        migrations=$(sqlite3 -readonly -cmd ".timeout 3000" "$DB" "select group_concat(identifier, ' ') from grdb_migrations" 2>&1)
+        ok "database $DB, migrations: $migrations"
+    else
+        no "no database at $DB"
+    fi
+
+    if [ -n "${run:-}" ] && [ -f "$run/log.txt" ]; then
+        local line
+        line=$(grep -E "capturing on|packet capture unavailable" "$run/log.txt" | tail -1 || true)
+        case $line in
+            *"capturing on"*) ok "capture: $(echo "$line" | sed "s/.*\] //")" ;;
+            "") no "no capture line in this run's log" ;;
+            *) info "capture: $(echo "$line" | sed "s/.*\] //") (names off)" ;;
+        esac
+    fi
+
+    if [ -f /Library/LaunchDaemons/io.github.eladefrati.tattle.capture-broker.plist ]; then
+        info "packet-access broker installed"
+    else
+        info "packet-access broker not installed"
+    fi
+
+    local release
+    release=$(pgrep -fx "$REPO/build/Tattle.app/Contents/MacOS/tattle|/Applications/Tattle.app/Contents/MacOS/tattle" || true)
+    [ -z "$release" ] || info "release app running (pid $(echo $release)); never driven by this skill"
+    return $bad
+}
+
+cmd_tab() {
+    [ $# = 1 ] || die "usage: tattle-verify tab <Network|Processes|Ports|Startup>"
+    record "tab $1"
+    ax open > /dev/null
+    # A tab inside a pushed detail keeps its stack; go back to the list first.
+    while ax press Back > /dev/null 2>&1; do sleep 0.3; done
+    ax press "$1"
+}
+
+cmd_save() {
+    [ $# = 1 ] || die "usage: tattle-verify save <name>"
+    local run
+    run=$(run_dir)
+    record "save $1"
+    ax dump > "$run/$1.ax.txt"
+    ax text > "$run/$1.txt"
+    ax shot "$run/$1.png" > /dev/null || echo "warning: no screenshot; the tree and text are the evidence" >&2
+    echo "saved $run/$1.txt, .ax.txt, .png"
+}
+
+cmd_db() {
+    [ $# = 1 ] || die "usage: tattle-verify db \"<sql>\""
+    local run
+    run=$(run_dir)
+    record "db $1"
+    { echo "-- $(date +%H:%M:%S) $1"; sqlite3 -readonly -header -column -cmd ".timeout 3000" "$DB" "$1"; echo; } | tee -a "$run/db.txt"
+}
+
+# Opens a TCP connection to the internet whose naming outcome is known in advance; the
+# hosts and the bytes sent were approved by the user (2026-10-25). The sniffer skips
+# local-network destinations, so the target has to be on the internet.
+# The unnamed cases go to GitHub's SSH server, which waits about two minutes for the
+# client's first line, so the connection is still open, and in the panel, when the 20 s
+# timeout passes. example.com closed them after 3 s and 14 s.
+# The address is looked up over TCP from the gateway: the capture filter keeps only UDP
+# DNS replies, so the sniffer never learns the name from the lookup, and its DNS
+# fallback cannot name the garbage and silent connections. The local port is chosen
+# here, so the history row is found by it.
+cmd_connect() {
+    local kind=${1:-} hold=90
+    shift || true
+    [ "${1:-}" = "--hold" ] && hold=$2
+    local host port payload expect
+    case $kind in
+        named) host=example.com; port=80; payload='GET / HTTP/1.1\r\nHost: example.com\r\n\r\n'; expect="name example.com, nameSource http" ;;
+        garbage) host=github.com; port=22; payload='tattle-verify'; expect="no name, nameSource none:not-handshake" ;;
+        silent) host=github.com; port=22; payload=''; expect="no name, nameSource none:timeout, 20 s after it opens" ;;
+        *) die "usage: tattle-verify connect <named|garbage|silent> [--hold <seconds>]" ;;
+    esac
+    local gw ip run lport pid
+    gw=$(route -n get default 2>/dev/null | awk '/gateway:/{print $2}')
+    [ -n "$gw" ] || die "no default gateway"
+    ip=$(dig +tcp +short +time=3 "$host" A @"$gw" | grep -E '^[0-9.]+$' | head -1)
+    [ -n "$ip" ] || die "could not look up $host over TCP from $gw"
+    run=$(run_dir)
+    lport=$(( 50000 + RANDOM % 10000 ))
+    { printf "$payload"; sleep "$hold"; } | nc -G 5 -p "$lport" "$ip" "$port" > /dev/null 2>&1 &
+    pid=$!
+    echo "$pid" >> "$run/nc.pids"
+    record "connect $kind: $host $ip:$port from local port $lport, pid $pid"
+    echo "$kind: tcp $lport > $ip:$port ($host, nc pid $pid, held $hold s); expect $expect"
+    echo "check: tattle-verify db \"select processName, remoteAddress, remotePort, name, nameSource, firstSeen, ended from connection where localPort = $lport\""
+}
+
+cmd_log() {
+    local run
+    run=$(run_dir)
+    if [ $# = 0 ]; then cat "$run/log.txt"; else grep -E "$1" "$run/log.txt" || true; fi
+}
+
+cmd_cleanup() {
+    [ -f "$STATE/current" ] || { echo "no open run"; return 0; }
+    local run
+    run=$(run_dir)
+    record "cleanup"
+    if [ -f "$run/nc.pids" ]; then
+        while read -r pid; do stop_pid "$pid" "nc "; done < "$run/nc.pids"
+    fi
+    stop_pid "$(cat "$run/app.pid" 2>/dev/null || true)" "$DEV_BIN"
+    stop_pid "$(cat "$run/log.pid" 2>/dev/null || true)" "/usr/bin/log stream"
+    if [ -d "$run/previous-data" ]; then
+        [ ! -d "$DATA" ] || mv "$DATA" "$run/fresh-data"
+        mv "$run/previous-data" "$DATA"
+        echo "restored the dev data folder; this run's database is in $run/fresh-data"
+    fi
+    rm -f "$run/app.pid" "$run/log.pid" "$run/nc.pids" "$STATE/current"
+    echo "closed; evidence kept in $run:"
+    ls "$run"
+}
+
+cmd=${1:-}
+shift || true
+case $cmd in
+    launch) cmd_launch "$@" ;;
+    doctor) cmd_doctor ;;
+    ax) record "ax $*"; ax "$@" ;;
+    tab) cmd_tab "$@" ;;
+    save) cmd_save "$@" ;;
+    db) cmd_db "$@" ;;
+    connect) cmd_connect "$@" ;;
+    log) cmd_log "$@" ;;
+    cleanup) cmd_cleanup ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
