@@ -31,8 +31,9 @@ struct CaptureFilter: Equatable, Sendable {
 
     var instructions: [Instruction]
 
-    /// The program for a link type, or nil for one this filter has no layout for, in
-    /// which case everything is copied and the parsers do all the dropping.
+    /// The program for a link type, or nil for one this filter has no layout for, or when
+    /// so many source addresses push a jump past BPF's reach, in which case everything is
+    /// copied and the parsers do all the dropping.
     static func program(linkType: UInt32, direction: Direction) -> CaptureFilter? {
         let linkLength: UInt32
         switch linkType {
@@ -113,7 +114,7 @@ struct CaptureFilter: Equatable, Sendable {
         a.ret(snapLength)
         a.mark(drop)
         a.ret(0)
-        return CaptureFilter(instructions: a.resolve())
+        return a.resolve().map(CaptureFilter.init(instructions:))
     }
 
     private enum Family { case v4, v6 }
@@ -193,7 +194,8 @@ struct CaptureFilter: Equatable, Sendable {
     }
 
     /// Emits instructions with symbolic jump targets and resolves them to the relative
-    /// offsets BPF wants, which must be forward. A missing target falls through.
+    /// offsets BPF wants, which must be forward and, for a conditional jump, at most 255.
+    /// A missing target falls through.
     private struct Assembler {
         struct Label: Hashable { let id: Int }
 
@@ -247,19 +249,24 @@ struct CaptureFilter: Equatable, Sendable {
         mutating func jump(_ target: Label) { emit(Op.jmp | Op.ja, ja: target) }
         mutating func ret(_ length: UInt32) { emit(Op.ret | Op.k, length) }
 
-        func resolve() -> [Instruction] {
-            pending.enumerated().map { index, p in
-                func offset(_ target: Target) -> Int {
+        /// Nil when a jump goes backward or a conditional one past 255 instructions.
+        func resolve() -> [Instruction]? {
+            var instructions: [Instruction] = []
+            for (index, p) in pending.enumerated() {
+                func offset(_ target: Target, limit: Int) -> Int? {
                     guard case .label(let label) = target, let position = positions[label] else { return 0 }
                     let delta = position - (index + 1)
-                    precondition(delta >= 0 && delta <= 255, "BPF jumps go forward and at most 255 instructions")
-                    return delta
+                    return delta >= 0 && delta <= limit ? delta : nil
                 }
                 if case .label = p.ja {
-                    return Instruction(code: p.code, jt: 0, jf: 0, k: UInt32(offset(p.ja)))
+                    guard let k = offset(p.ja, limit: Int(UInt32.max)) else { return nil }
+                    instructions.append(Instruction(code: p.code, jt: 0, jf: 0, k: UInt32(k)))
+                } else {
+                    guard let jt = offset(p.jt, limit: 255), let jf = offset(p.jf, limit: 255) else { return nil }
+                    instructions.append(Instruction(code: p.code, jt: UInt8(jt), jf: UInt8(jf), k: p.k))
                 }
-                return Instruction(code: p.code, jt: UInt8(offset(p.jt)), jf: UInt8(offset(p.jf)), k: p.k)
             }
+            return instructions
         }
     }
 }

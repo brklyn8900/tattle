@@ -110,6 +110,23 @@ final class CaptureFilterTests: XCTestCase {
         XCTAssertEqual(run(nullLink(ipv4(from: [10, 0, 0, 9], to: peerV4, proto: 6, tcp(flags: 0x02, payload: 0)))), 0)
     }
 
+    /// A full-tunnel VPN puts the capture on a link without a hardware address, so direction
+    /// comes from addresses. Too many of them push the early jumps past BPF's 255-instruction
+    /// reach; that must leave the capture unfiltered, not stop the app.
+    func testTooManyAddressesGiveNoFilterInsteadOfStoppingTheApp() {
+        let many = (0..<40).map { [0x20, 0x01, 0x0d, 0xb8] + [UInt8](repeating: 0, count: 11) + [UInt8($0)] }
+        XCTAssertNil(CaptureFilter.program(linkType: PacketCapture.linkNull, direction: .sourceAddresses(many)))
+    }
+
+    /// The direction test gets only the capture interface's own addresses, which keeps the
+    /// program short: loopback's never include another interface's.
+    func testInterfaceAddressesAreThatInterfacesOnly() {
+        let loopback = localAddresses(of: "lo0")
+        XCTAssertTrue(loopback.contains(IPAddress(bytes: [127, 0, 0, 1])))
+        XCTAssertTrue(loopback.allSatisfy { $0.bytes.count == 4 ? $0.bytes[0] == 127 : $0.isLocalScope })
+        XCTAssertTrue(localAddresses(of: "lo0").isSubset(of: localAddresses()))
+    }
+
     func testKernelAcceptsTheProgram() throws {
         try XCTSkipUnless(access("/dev/bpf0", R_OK) == 0, "needs readable /dev/bpf*")
         let interface = try XCTUnwrap(PacketCapture.primaryInterface())

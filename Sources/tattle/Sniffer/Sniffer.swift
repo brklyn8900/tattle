@@ -111,10 +111,12 @@ final class Sniffer: @unchecked Sendable {
         if capture.dataLinkType == PacketCapture.linkEthernet, let mac = PacketCapture.hardwareAddress(of: interface) {
             direction = .hardwareAddress(mac)
         } else {
-            direction = .sourceAddresses(localAddresses().map(\.bytes))
+            // Only this interface's: every address costs instructions, and a packet
+            // captured here leaves from one of them.
+            direction = .sourceAddresses(localAddresses(of: interface).map(\.bytes))
         }
         guard let filter = CaptureFilter.program(linkType: capture.dataLinkType, direction: direction) else {
-            Log.sniffer.notice("no kernel filter for link type \(capture.dataLinkType); copying every packet")
+            Log.sniffer.notice("no kernel filter for link type \(capture.dataLinkType) on \(interface, privacy: .public); copying every packet")
             return
         }
         do {
