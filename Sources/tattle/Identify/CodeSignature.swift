@@ -40,6 +40,13 @@ struct CodeSignature: Equatable, Sendable {
         }
     }
 
+    /// `summary` for text that leaves the machine: a development certificate is named after
+    /// the developer, so only its kind is given.
+    var promptSummary: String {
+        if case .development = signer { return "Apple Development" }
+        return summary
+    }
+
     /// Interpreters whose signature says nothing about what they run.
     static let interpreters: Set<String> = [
         "sh", "bash", "zsh", "ksh", "csh", "tcsh", "dash", "osascript", "python", "python3",

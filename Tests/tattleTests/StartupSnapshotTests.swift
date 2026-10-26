@@ -78,6 +78,27 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(background[1].state, .off, "set by the app but switched off by the user")
     }
 
+    /// What the panel shows differs from what a prompt carries: a development certificate is
+    /// named after the developer, and the user's account after their login.
+    private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let signed = facts.first { $0.name == "Signed by" }
+        XCTAssertEqual(signed?.value, "Username Doe", file: file, line: line)
+        XCTAssertEqual(signed?.promptValue, "Apple Development", file: file, line: line)
+        guard runsAs else { return }
+        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
+        let account = facts.first { $0.name == "Runs as" }
+        XCTAssertEqual(account?.value, "you (\(login))", file: file, line: line)
+        XCTAssertEqual(account?.promptValue, "you", file: file, line: line)
+    }
+
+    func testStartupFactKeepsTheCertificateNameOutOfItsPromptValue() throws {
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
+            loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
+            signature: { _ in CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345") })
+        assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: false)
+    }
+
     func testLaunchctlOverrideAndNotLoaded() {
         let launchd = LaunchdReader.Result(items: [job("a"), job("b")], appleCount: 0, skipped: [:])
         let state = LaunchctlState(services: [:], overrides: ["a": true])

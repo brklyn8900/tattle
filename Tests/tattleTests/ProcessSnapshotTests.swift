@@ -163,6 +163,28 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(facts["CPU"])
     }
 
+    /// Everything the panel shows about the user's own process, as the model would get it.
+    func testPromptFactsOfTheUsersOwnProcessCarryNoLoginDirectoryOrCertificateName() throws {
+        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
+        let entries = [entry(900, 1, "/Users/\(login)/dev/build/Mine.app/Contents/MacOS/Mine", uid: getuid(), cwd: "/Users/\(login)/dev/client-acme")]
+        let snapshot = ProcessSnapshot.build(
+            entries: entries, previous: nil,
+            signature: { _ in CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345") }, takenAt: epoch)
+        let item = try XCTUnwrap(snapshot.item(pid: 900))
+        let shown = Dictionary(item.facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
+        XCTAssertEqual(shown["Signed by"], "Username Doe", "the panel is unchanged")
+        XCTAssertEqual(shown["Runs as"], "you (\(login))")
+        XCTAssertNotNil(shown["Working in"])
+
+        let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts))
+        XCTAssertFalse(sent.contains("Username Doe"), sent)
+        XCTAssertTrue(sent.contains("Apple Development") && sent.contains("ABCDE12345"), sent)
+        XCTAssertFalse(sent.contains("client-acme"), sent)
+        XCTAssertFalse(sent.contains("Working in"), sent)
+        XCTAssertFalse(sent.contains("you ("), sent)
+        XCTAssertTrue(sent.contains(#"{"name":"Runs as","value":"you"}"#), sent)
+    }
+
     func testBuiltinGlossaryResolves() throws {
         let database = try AppDatabase.inMemory()
         let rules = RuleStore(database: database)

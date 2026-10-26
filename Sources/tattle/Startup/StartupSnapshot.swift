@@ -86,7 +86,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         facts.append(Fact(name: "When", value: trigger))
         facts.append(Fact(name: "State", value: state.text))
         if let signature {
-            facts.append(Fact(name: "Signed by", value: signature.summary))
+            facts.append(.signedBy(signature))
             if let team = signature.teamIdentifier ?? teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         } else if let teamIdentifier {
             facts.append(Fact(name: "Team", value: teamIdentifier))

@@ -53,6 +53,16 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(CodeSignature.classify("Apple Distribution: Acme (X)"), .other("Apple Distribution: Acme (X)"))
     }
 
+    func testPromptSummaryKeepsTheKindOfADevelopmentCertificateNotItsName() {
+        let development = CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345")
+        XCTAssertEqual(development.summary, "Username Doe", "the panel still names it")
+        XCTAssertEqual(development.promptSummary, "Apple Development")
+        for signer in [CodeSignature.Signer.apple, .appStore, .developerID(name: "Slack Technologies"), .adHoc, .unsigned, .script, .invalid("x")] {
+            let signature = CodeSignature(signer: signer)
+            XCTAssertEqual(signature.promptSummary, signature.summary, "\(signer)")
+        }
+    }
+
     func testInterpreterSignsTheScriptNotItself() throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

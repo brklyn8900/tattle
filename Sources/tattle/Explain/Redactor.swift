@@ -21,16 +21,19 @@ struct Redactor: Sendable {
     func redact(_ text: String) -> String {
         var out = text
         // Home path before username: the path contains the username.
+        // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
         if !home.isEmpty {
-            out = out.replacingOccurrences(of: home, with: "<home>")
+            let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![\\w.~@+-])"
+            out = out.replacingOccurrences(of: pattern, with: "<home>", options: .regularExpression)
         }
         for name in machineNames.sorted(by: { $0.count > $1.count }) {
             out = out.replacingOccurrences(
                 of: NSRegularExpression.escapedPattern(for: name),
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
-        // A one- or two-letter username would match ordinary text ("-e"); the home path
-        // replacement above already covers where such a name appears.
+        // A one- or two-letter username would match ordinary text ("-e"). Where it appears
+        // in a path the home replacement covers it; the facts built for a prompt never
+        // carry the login (UserName.describeForModel).
         if username.count >= 3 {
             let pattern = "\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b"
             out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)

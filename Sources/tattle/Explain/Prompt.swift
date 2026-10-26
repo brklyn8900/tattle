@@ -24,7 +24,7 @@ enum Prompt {
     static func build(instructions: String, request: ExplainRequest) -> String {
         let captured: [String: Any] = [
             "item": ["kind": label(for: request.kind), "key": request.key],
-            "facts": request.facts.map { ["name": $0.name, "value": $0.value] },
+            "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": $0.promptValue ?? $0.value] },
         ]
         // The input is only strings, so serialization cannot fail.
         let json = try! JSONSerialization.data(withJSONObject: captured, options: [.sortedKeys, .withoutEscapingSlashes])

@@ -69,10 +69,10 @@ struct PortItem: Equatable, Sendable, Identifiable {
         ]
         if let path = process?.path { facts.append(Fact(name: "Path", value: path)) }
         if let signature {
-            facts.append(Fact(name: "Signed by", value: signature.summary))
+            facts.append(.signedBy(signature))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
-        facts.append(Fact(name: "Runs as", value: UserName.describe(uid)))
+        facts.append(.runsAs(uid))
         if let serviceName { facts.append(Fact(name: "IANA name", value: serviceName)) }
         return facts
     }

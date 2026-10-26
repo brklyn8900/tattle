@@ -102,10 +102,10 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         ]
         if let app = owner.app, app.name != owner.processName { facts.append(Fact(name: "App", value: app.name)) }
         if let signature = owner.signature {
-            facts.append(Fact(name: "Signed by", value: signature.summary))
+            facts.append(.signedBy(signature))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
-        facts.append(Fact(name: "Runs as", value: UserName.describe(connection.uid)))
+        facts.append(.runsAs(connection.uid))
         if connection.preExisting {
             facts.append(Fact(name: "Since", value: "before Tattle started looking"))
         } else {
@@ -141,6 +141,18 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
     var newCount: Int { connections.filter(\.isNew).count }
     var remoteCount: Int { connections.filter { $0.connection.scope == .remote }.count }
     var localCount: Int { connections.count - remoteCount }
+
+    func facts(gone: Bool) -> [Fact] {
+        var facts = [Fact(name: gone ? "Were open" : "Open", value: String(connections.count))]
+        if remoteCount > 0 { facts.append(Fact(name: "Internet", value: String(remoteCount))) }
+        if localCount > 0 { facts.append(Fact(name: "This network", value: String(localCount))) }
+        if newCount > 0 { facts.append(Fact(name: "First contact", value: String(newCount))) }
+        if let signature {
+            facts.append(.signedBy(signature))
+            if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
+        }
+        return facts
+    }
 }
 
 struct NetworkSnapshot: Equatable, Sendable {

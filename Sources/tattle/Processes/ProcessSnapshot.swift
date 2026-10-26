@@ -77,13 +77,14 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
             facts.append(Fact(name: "Path", value: path))
         }
         if let signature {
-            facts.append(Fact(name: interpreter == nil ? "Signed by" : "Interpreter signed by", value: signature.summary))
+            facts.append(.signedBy(signature, as: interpreter == nil ? "Signed by" : "Interpreter signed by"))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
         if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
         if pid > 0 { facts.append(Fact(name: "Parent", value: "\(parentName ?? "pid \(parentPid)") (pid \(parentPid))")) }
-        if let directory = workingDirectoryText { facts.append(Fact(name: "Working in", value: directory)) }
-        facts.append(Fact(name: "Runs as", value: UserName.describe(uid)))
+        // A folder name can say what the user is working on: the panel shows it, the model is not told.
+        if let directory = workingDirectoryText { facts.append(Fact(name: "Working in", value: directory, inPrompt: false)) }
+        facts.append(.runsAs(uid))
         facts.append(Fact(name: "Started", value: started.formatted(.relative(presentation: .named))))
         if let usage {
             facts.append(Fact(name: "Memory", value: Self.memoryText(usage.memoryBytes) + (usage.memoryIsFootprint ? " footprint" : " resident")))
@@ -180,7 +181,7 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
         var facts = [Fact(name: "Processes", value: String(members.count))]
         if let path { facts.append(Fact(name: "Path", value: path)) }
         if let signature {
-            facts.append(Fact(name: "Signed by", value: signature.summary))
+            facts.append(.signedBy(signature))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
         facts.append(Fact(name: "Memory", value: ProcessItem.memoryText(memoryBytes)))

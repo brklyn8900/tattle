@@ -19,4 +19,10 @@ enum UserName {
         cache.withLock { $0[uid] = text }
         return text
     }
+
+    /// The same without the login name of the user's own account, for text that leaves
+    /// the machine.
+    static func describeForModel(_ uid: uid_t) -> String {
+        uid == getuid() && uid != 0 ? "you" : describe(uid)
+    }
 }

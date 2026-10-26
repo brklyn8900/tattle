@@ -178,6 +178,19 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .hidden, "the same user key was replaced")
     }
 
+    func testPromptFactsOfAConnectionCarryNoLoginOrCertificateName() {
+        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
+        var mine = connection("17.253.144.10")
+        mine.uid = getuid()
+        let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345"))
+        let row = LiveConnection(connection: mine, owner: owner, isNew: false)
+        let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .host, key: "x.example", facts: row.facts(now: t0)))
+        XCTAssertEqual(row.facts(now: t0).first { $0.name == "Runs as" }?.value, "you (\(login))", "the panel is unchanged")
+        XCTAssertFalse(sent.contains("Username Doe"), sent)
+        XCTAssertFalse(sent.contains("you ("), sent)
+        XCTAssertTrue(sent.contains("Apple Development"), sent)
+    }
+
     func testEveryDnsNameIsMarkedWhateverItsKind() {
         let owner = ConnectionOwner(processName: "Safari")
         for kind in [ConnectionName.Kind.destination, .relay, .hidden] {

@@ -50,6 +50,27 @@ final class PortsSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items(in: .ephemeral).map(\.port), [60000])
     }
 
+    /// What the panel shows differs from what a prompt carries: a development certificate is
+    /// named after the developer, and the user's account after their login.
+    private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let signed = facts.first { $0.name == "Signed by" }
+        XCTAssertEqual(signed?.value, "Username Doe", file: file, line: line)
+        XCTAssertEqual(signed?.promptValue, "Apple Development", file: file, line: line)
+        guard runsAs else { return }
+        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
+        let account = facts.first { $0.name == "Runs as" }
+        XCTAssertEqual(account?.value, "you (\(login))", file: file, line: line)
+        XCTAssertEqual(account?.promptValue, "you", file: file, line: line)
+    }
+
+    func testPortFactsKeepTheLoginAndCertificateNameOutOfTheirPromptValues() throws {
+        let snapshot = PortsSnapshot.build(
+            entries: [entry(.tcp, "0.0.0.0", 5000, pid: 634, uid: getuid())], services: services,
+            identity: { _ in ProcessIdentity(pid: 634, name: "Mine", path: "/x/Mine") },
+            signature: { _ in CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345") })
+        assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: true)
+    }
+
     func testServiceNames() {
         XCTAssertEqual(services.name(port: 22, proto: .tcp), "ssh")
         XCTAssertEqual(services.name(port: 7000, proto: .tcp), "afs3-fileserver")

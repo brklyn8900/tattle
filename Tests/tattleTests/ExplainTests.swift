@@ -15,6 +15,15 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1"), "<home>/x run by e with osascript -e 1")
     }
 
+    /// "/Users/eve/..." is another account's folder, not the home "/Users/u" plus "ve/...".
+    func testHomeMatchesOnAPathBoundary() {
+        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
+        XCTAssertEqual(short.redact("/Users/eve/Library/x"), "/Users/eve/Library/x")
+        XCTAssertEqual(short.redact("/Users/u/Library/x and /Users/u"), "<home>/Library/x and <home>")
+        XCTAssertEqual(short.redact(#"{"key":"/Users/u"}"#), #"{"key":"<home>"}"#)
+        XCTAssertEqual(short.redact("/Users/u.old/x"), "/Users/u.old/x")
+    }
+
     func testMachineNames() {
         XCTAssertEqual(redactor.redact("host USERS-COMPUTER.local and Users-Computer"), "host <machine> and <machine>")
     }
@@ -96,6 +105,18 @@ final class PromptTests: XCTestCase {
         let prompt = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: "/Users/username/App"))
         XCTAssertTrue(prompt.contains("/Users/username/App"))
         XCTAssertFalse(prompt.contains("\\/"))
+    }
+
+    func testPanelOnlyFactsAndPromptValues() throws {
+        let facts = [
+            Fact(name: "Working in", value: "~/dev/client-acme", inPrompt: false),
+            Fact(name: "Runs as", value: "you (e)", promptValue: "you"),
+            Fact(name: "Team", value: "ABCDE12345"),
+        ]
+        let data = try capturedData(in: Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: "p", facts: facts)))
+        XCTAssertEqual(data["facts"] as? [[String: String]], [["name": "Runs as", "value": "you"], ["name": "Team", "value": "ABCDE12345"]])
+        XCTAssertEqual(facts[0].value, "~/dev/client-acme", "the panel still has it")
+        XCTAssertEqual(facts[1].value, "you (e)")
     }
 
     func testDefaultInstructionsSayTheDataIsNotInstructions() {

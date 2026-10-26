@@ -164,11 +164,11 @@ private struct ConnectionGroupDetail: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
-                FactsGrid(facts: facts(group, gone: current == nil))
+                FactsGrid(facts: group.facts(gone: current == nil))
                 Divider()
                 // The same key as the Processes tab, so an explanation of the program
                 // given there is shown here and the other way round.
-                ExplainSection(request: ExplainRequest(kind: .process, key: group.name, facts: facts(group, gone: current == nil)), state: state)
+                ExplainSection(request: ExplainRequest(kind: .process, key: group.name, facts: group.facts(gone: current == nil)), state: state)
                 Divider()
                 HStack {
                     if let path = group.connections.first?.owner.app?.path ?? group.connections.first?.owner.path {
@@ -192,18 +192,6 @@ private struct ConnectionGroupDetail: View {
             .padding(12)
         }
         .navigationTitle(group.name)
-    }
-
-    private func facts(_ group: ConnectionGroup, gone: Bool) -> [Fact] {
-        var facts = [Fact(name: gone ? "Were open" : "Open", value: String(group.connections.count))]
-        if group.remoteCount > 0 { facts.append(Fact(name: "Internet", value: String(group.remoteCount))) }
-        if group.localCount > 0 { facts.append(Fact(name: "This network", value: String(group.localCount))) }
-        if group.newCount > 0 { facts.append(Fact(name: "First contact", value: String(group.newCount))) }
-        if let signature = group.signature {
-            facts.append(Fact(name: "Signed by", value: signature.summary))
-            if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
-        }
-        return facts
     }
 }
 
