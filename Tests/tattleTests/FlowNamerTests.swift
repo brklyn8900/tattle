@@ -118,6 +118,31 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.expire(now: t0 + 5), [], "once")
     }
 
+    /// The DNS fallback is a stand-in, not an answer: a handshake that comes after it (late,
+    /// as after a wake) names the flow from the wire, and the give-up timeout does not
+    /// replace the DNS name with "sent nothing".
+    func testAWireNameAfterTheDNSFallbackReplacesIt() {
+        var n = namer()
+        _ = n.observe(dnsReply, at: t0)
+        _ = n.observe(tcp(flags: 0x02, seq: 1000), at: t0 + 1)
+        XCTAssertEqual(n.expire(now: t0 + 4.5), [FlowEvent(key: tcpKey, kind: .named("cdn.example.net", .dns))])
+        XCTAssertEqual(n.observe(tcp(flags: 0x18, seq: 1001, clientHelloRecord), at: t0 + 6),
+                       [FlowEvent(key: tcpKey, kind: .named("example.com", .sni))])
+        XCTAssertEqual(n.expire(now: t0 + 1 + FlowNamer.finalizeAfter), [])
+
+        var silent = namer()
+        _ = silent.observe(dnsReply, at: t0)
+        _ = silent.observe(tcp(flags: 0x02, seq: 1000), at: t0 + 1)
+        _ = silent.expire(now: t0 + 4.5)
+        XCTAssertEqual(silent.expire(now: t0 + 1 + FlowNamer.finalizeAfter), [], "the DNS name stands")
+
+        var garbage = namer()
+        _ = garbage.observe(dnsReply, at: t0)
+        _ = garbage.observe(tcp(flags: 0x02, seq: 1000), at: t0 + 1)
+        _ = garbage.expire(now: t0 + 4.5)
+        XCTAssertEqual(garbage.observe(tcp(flags: 0x18, seq: 1001, [0x53, 0x53, 0x48]), at: t0 + 6), [], "a failure on the wire does not replace the DNS name")
+    }
+
     func testDNSMapIsOnlyConsultedOnceAndForgotten() {
         var n = namer()
         _ = n.observe(tcp(flags: 0x02, seq: 1), at: t0)

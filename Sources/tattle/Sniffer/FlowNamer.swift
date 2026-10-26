@@ -114,8 +114,12 @@ struct FlowNamer: Sendable {
     private struct Flow {
         var start: Double
         var lastSeen: Double
+        /// Named from its own packets.
         var named = false
         var dnsTried = false
+        /// Named from the DNS map, a stand-in until the wire names it: a later wire name
+        /// replaces it, a later failure does not.
+        var dnsNamed = false
         var tlsBuffer: [UInt8]? = []  // nil once the stream is known not to be TLS or HTTP
         var nextSeq: UInt32 = 0
         var quicAssembly = QUICAssembly()
@@ -181,13 +185,13 @@ struct FlowNamer: Sendable {
                     flow.named = true
                     return [FlowEvent(key: key, kind: .named(name, source))]
                 case .unnamed(let reason):
-                    return [FlowEvent(key: key, kind: .unnamed(reason))]
+                    return flow.dnsNamed ? [] : [FlowEvent(key: key, kind: .unnamed(reason))]
                 case .pending:
                     return []
                 }
             } else if p.tcpSeq &- flow.nextSeq < 0x8000_0000 {
                 flow.tlsBuffer = nil
-                return [FlowEvent(key: key, kind: .unnamed(.gap))]
+                return flow.dnsNamed ? [] : [FlowEvent(key: key, kind: .unnamed(.gap))]
             }
             return []
         case .udp:
@@ -211,7 +215,7 @@ struct FlowNamer: Sendable {
                 flow.named = true
                 events.append(FlowEvent(key: key, kind: .named(name, .quic)))
             case .unnamed(let reason):
-                events.append(FlowEvent(key: key, kind: .unnamed(reason)))
+                if !flow.dnsNamed { events.append(FlowEvent(key: key, kind: .unnamed(reason))) }
             case .pending:
                 break
             }
@@ -282,14 +286,14 @@ struct FlowNamer: Sendable {
             if !flow.named, !flow.dnsTried, now - flow.start >= Self.dnsFallbackAfter {
                 flow.dnsTried = true
                 if let entry = dnsMap[key.remote] {
-                    flow.named = true
+                    flow.dnsNamed = true
                     events.append(FlowEvent(key: key, kind: .named(entry.name, .dns)))
                 }
             }
             if !flow.named, !flow.finished, now - flow.start >= Self.finalizeAfter {
                 flow.tlsBuffer = nil
                 flow.quicDone = true
-                events.append(FlowEvent(key: key, kind: .unnamed(.timeout)))
+                if !flow.dnsNamed { events.append(FlowEvent(key: key, kind: .unnamed(.timeout))) }
             }
             if now - flow.lastSeen >= Self.idleAfter {
                 flows[key] = nil
