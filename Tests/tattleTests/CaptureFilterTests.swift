@@ -142,6 +142,23 @@ final class CaptureFilterTests: XCTestCase {
         XCTAssertTrue(localAddresses(of: "lo0").isSubset(of: localAddresses()))
     }
 
+    /// An IPv6-only network has a default route but no IPv4 one; capture must still start.
+    func testPrimaryInterfaceComesFromIPv4ThenIPv6() {
+        func store(_ v4: String?, _ v6: String?) -> (String) -> [String: Any]? {
+            { key in
+                switch key {
+                case "State:/Network/Global/IPv4": v4.map { ["PrimaryInterface": $0] }
+                case "State:/Network/Global/IPv6": v6.map { ["PrimaryInterface": $0] }
+                default: nil
+                }
+            }
+        }
+        XCTAssertEqual(PacketCapture.primaryInterface(store: store("en0", "en0")), "en0")
+        XCTAssertEqual(PacketCapture.primaryInterface(store: store(nil, "en1")), "en1", "IPv6-only")
+        XCTAssertEqual(PacketCapture.primaryInterface(store: store("en0", "utun3")), "en0", "IPv4 first, as before")
+        XCTAssertNil(PacketCapture.primaryInterface(store: store(nil, nil)))
+    }
+
     func testKernelAcceptsTheProgram() throws {
         try XCTSkipUnless(access("/dev/bpf0", R_OK) == 0, "needs readable /dev/bpf*")
         let interface = try XCTUnwrap(PacketCapture.primaryInterface())

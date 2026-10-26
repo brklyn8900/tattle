@@ -122,11 +122,17 @@ final class PacketCapture: CaptureSource {
         return mac
     }
 
-    /// The interface carrying the default IPv4 route, from the system configuration
-    /// store: what `route get default` reports.
+    /// The interface carrying the default route, from the system configuration store: what
+    /// `route get default` reports, or `route get -inet6 default` on an IPv6-only network.
     static func primaryInterface() -> String? {
-        guard let value = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
-              let name = value["PrimaryInterface"] as? String, !name.isEmpty else { return nil }
-        return name
+        primaryInterface { SCDynamicStoreCopyValue(nil, $0 as CFString) as? [String: Any] }
+    }
+
+    /// The same, from a store lookup by key.
+    static func primaryInterface(store: (String) -> [String: Any]?) -> String? {
+        for key in ["State:/Network/Global/IPv4", "State:/Network/Global/IPv6"] {
+            if let name = store(key)?["PrimaryInterface"] as? String, !name.isEmpty { return name }
+        }
+        return nil
     }
 }
