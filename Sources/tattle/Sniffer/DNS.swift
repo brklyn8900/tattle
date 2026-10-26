@@ -3,6 +3,9 @@ import Foundation
 enum DNS {
     struct Reply {
         let name: String  // the question name: what the application asked for
+        /// Addresses of records owned by the question name or by a CNAME target reached
+        /// from it. Records for other names are dropped: a server answering for its own name
+        /// can add records for anyone else's.
         let addresses: [IPAddress]
     }
 
@@ -23,18 +26,30 @@ enum DNS {
                 _ = try readName(bytes, &r)
                 try r.skip(4)
             }
-            var addresses: [IPAddress] = []
+            var records: [(owner: String, address: IPAddress)] = []
+            var aliases: [String: [String]] = [:]
             for _ in 0..<answers {
-                _ = try readName(bytes, &r)
+                let owner = try readName(bytes, &r)
                 let type = try r.u16()
                 try r.skip(6)
                 let rdlen = Int(try r.u16())
+                let start = r.pos
                 let rdata = try r.take(rdlen)
+                guard let owner else { continue }
                 if (type == 1 && rdlen == 4) || (type == 28 && rdlen == 16) {
-                    addresses.append(IPAddress(bytes: Array(rdata)))
+                    records.append((owner.text, IPAddress(bytes: Array(rdata))))
+                } else if type == 5 {
+                    var target = ByteReader(bytes, from: start, to: start + rdlen)
+                    if let alias = try readName(bytes, &target) { aliases[owner.text, default: []].append(alias.text) }
                 }
             }
-            return Reply(name: qname.text, addresses: addresses)
+            // Every name the question reaches through CNAMEs, each visited once.
+            var reached: Set<String> = [qname.text]
+            var queue = [qname.text]
+            while let name = queue.popLast() {
+                for alias in aliases[name] ?? [] where reached.insert(alias).inserted { queue.append(alias) }
+            }
+            return Reply(name: qname.text, addresses: records.filter { reached.contains($0.owner) }.map(\.address))
         } catch {
             return nil
         }

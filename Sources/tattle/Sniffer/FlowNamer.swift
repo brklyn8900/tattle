@@ -131,16 +131,24 @@ struct FlowNamer: Sendable {
     }
 
     private var local: Set<IPAddress>
+    private var resolvers: Set<IPAddress>
     private var dnsMap: [IPAddress: (name: String, at: Double)] = [:]
     private var flows: [FlowKey: Flow] = [:]
 
-    init(localAddresses: Set<IPAddress>) {
+    init(localAddresses: Set<IPAddress>, resolvers: Set<IPAddress>) {
         local = localAddresses
+        self.resolvers = resolvers
     }
 
     /// Addresses change with DHCP leases and network switches.
     mutating func updateLocalAddresses(_ addresses: Set<IPAddress>) {
         if !addresses.isEmpty { local = addresses }
+    }
+
+    /// The resolvers change with the network, as the addresses do; an empty reading keeps
+    /// the old set for the same reason.
+    mutating func updateResolvers(_ addresses: Set<IPAddress>) {
+        if !addresses.isEmpty { resolvers = addresses }
     }
 
     var flowCount: Int { flows.count }
@@ -158,7 +166,9 @@ struct FlowNamer: Sendable {
     mutating func observe(_ p: Packet, at ts: Double) -> [FlowEvent] {
         let outbound = local.contains(p.src)
         if p.proto == .udp && p.srcPort == 53 && !outbound {
-            if let reply = DNS.parseReply(p.payload) {
+            // Only an answer from a resolver this Mac asks, sent to this Mac, may name
+            // addresses: any host on the network can broadcast a reply.
+            if resolvers.contains(p.src), local.contains(p.dst), let reply = DNS.parseReply(p.payload) {
                 for address in reply.addresses { dnsMap[address] = (reply.name, ts) }
             }
             return []

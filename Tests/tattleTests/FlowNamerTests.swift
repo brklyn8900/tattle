@@ -7,7 +7,7 @@ final class FlowNamerTests: XCTestCase {
     private let resolver = IPAddress(bytes: [192, 168, 1, 1])
     private let t0 = 1_700_000_000.0
 
-    private func namer() -> FlowNamer { FlowNamer(localAddresses: [me]) }
+    private func namer() -> FlowNamer { FlowNamer(localAddresses: [me], resolvers: [resolver]) }
 
     private func tcp(from src: IPAddress? = nil, to dst: IPAddress? = nil, port: UInt16 = 443, flags: UInt8, seq: UInt32, _ payload: [UInt8] = []) -> Packet {
         Packet(src: src ?? me, dst: dst ?? peer, srcPort: 50000, dstPort: port, proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: payload[...])
@@ -146,7 +146,7 @@ final class FlowNamerTests: XCTestCase {
         let start = t0
         let me = self.me
         XCTAssertTrue(SnifferParserTests.returns {
-            var n = FlowNamer(localAddresses: [me])
+            var n = FlowNamer(localAddresses: [me], resolvers: [])
             _ = n.observe(packet, at: start)
             _ = n.observe(packet, at: start + 0.1)
         }, "observe returned")
@@ -229,6 +229,78 @@ final class FlowNamerTests: XCTestCase {
         _ = garbage.observe(tcp(flags: 0x02, seq: 1000), at: t0 + 1)
         _ = garbage.expire(now: t0 + 4.5)
         XCTAssertEqual(garbage.observe(tcp(flags: 0x18, seq: 1001, [0x53, 0x53, 0x48]), at: t0 + 6), [], "a failure on the wire does not replace the DNS name")
+    }
+
+    /// A DNS reply without compression: `answers` are (owner, type, rdata), type 1 (A) or 5 (CNAME).
+    static func dnsMessage(question: String, answers: [(String, UInt16, [UInt8])]) -> [UInt8] {
+        func name(_ text: String) -> [UInt8] {
+            text.split(separator: ".").flatMap { [UInt8($0.utf8.count)] + Array($0.utf8) } + [0]
+        }
+        var bytes: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0x00, 0x01, UInt8(answers.count >> 8), UInt8(answers.count & 0xff), 0, 0, 0, 0]
+        bytes += name(question) + [0x00, 0x01, 0x00, 0x01]
+        for (owner, type, rdata) in answers {
+            bytes += name(owner) + [UInt8(type >> 8), UInt8(type & 0xff), 0x00, 0x01, 0, 0, 0, 0x3c, UInt8(rdata.count >> 8), UInt8(rdata.count & 0xff)] + rdata
+        }
+        return bytes
+    }
+
+    private func cname(_ owner: String, _ target: String) -> (String, UInt16, [UInt8]) {
+        (owner, 5, target.split(separator: ".").flatMap { [UInt8($0.utf8.count)] + Array($0.utf8) } + [0])
+    }
+
+    private func named(after reply: Packet, _ n: inout FlowNamer) -> FlowEvent.Kind? {
+        _ = n.observe(reply, at: t0)
+        _ = n.observe(tcp(port: 22, flags: 0x02, seq: 1), at: t0)
+        return n.expire(now: t0 + FlowNamer.dnsFallbackAfter).first?.kind
+    }
+
+    /// Only the resolvers this Mac asks may name addresses: a broadcast from any host on the
+    /// network named an arbitrary address www.apple.com.
+    func testADNSReplyFromAHostThatIsNotAResolverIsIgnored() {
+        var n = namer()
+        let lanHost = IPAddress(bytes: [192, 168, 1, 20])
+        let forged = udp(from: lanHost, to: me, srcPort: 53, dstPort: 60000, Self.dnsMessage(question: "www.apple.com", answers: [("www.apple.com", 1, peer.bytes)]))
+        XCTAssertNil(named(after: forged, &n), "from a host that is not a resolver")
+        XCTAssertEqual(n.dnsCount, 0)
+
+        var moved = namer()
+        moved.updateResolvers([lanHost])
+        XCTAssertEqual(named(after: forged, &moved), .named("www.apple.com", .dns), "the resolver set follows the network")
+    }
+
+    func testADNSReplyNotAddressedToThisMacIsIgnored() {
+        let answer = Self.dnsMessage(question: "www.apple.com", answers: [("www.apple.com", 1, peer.bytes)])
+        for destination in [IPAddress(bytes: [192, 168, 1, 255]), IPAddress(bytes: [255, 255, 255, 255]), IPAddress(bytes: [224, 0, 0, 251]), IPAddress(bytes: [192, 168, 1, 6])] {
+            var n = namer()
+            XCTAssertNil(named(after: udp(from: resolver, to: destination, srcPort: 53, dstPort: 60000, answer), &n), "to \(destination.text)")
+            XCTAssertEqual(n.dnsCount, 0)
+        }
+    }
+
+    /// A site's own authoritative answer could add other services' addresses under its
+    /// question name; an address counts only when its record is for the question name or a
+    /// CNAME target reached from it.
+    func testOnlyRecordsForTheQuestionNameOrItsCNAMEChainCount() {
+        var n = namer()
+        let site = IPAddress(bytes: [203, 0, 113, 7])
+        let reply = Self.dnsMessage(question: "www.site.example", answers: [
+            cname("www.site.example", "edge.site.example"),
+            ("edge.site.example", 1, site.bytes),
+            ("ssh.other.example", 1, peer.bytes),
+            cname("unrelated.example", "www.other.example"),
+            ("www.other.example", 1, peer.bytes),
+        ])
+        XCTAssertNil(named(after: udp(from: resolver, to: me, srcPort: 53, dstPort: 60000, reply), &n), "the peer's records are not for the question")
+        XCTAssertEqual(n.dnsCount, 1, "the address the chain reached is kept")
+
+        var chain = namer()
+        let real = Self.dnsMessage(question: "WWW.Example.com", answers: [
+            cname("www.example.com", "a.cdn.example"),
+            cname("A.CDN.example", "b.cdn.example"),
+            ("b.cdn.example", 1, peer.bytes),
+        ])
+        XCTAssertEqual(named(after: udp(from: resolver, to: me, srcPort: 53, dstPort: 60000, real), &chain), .named("www.example.com", .dns),
+                       "a resolver's reply with a CNAME chain still names, case aside")
     }
 
     func testDNSMapIsOnlyConsultedOnceAndForgotten() {

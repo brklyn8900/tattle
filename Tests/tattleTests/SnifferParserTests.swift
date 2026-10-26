@@ -291,6 +291,7 @@ final class SnifferParserTests: XCTestCase {
         var bytes = Self.compressedReply
         bytes[7] = 1  // one answer
         bytes.removeSubrange(33..<47)  // drop the CNAME
+        bytes[34] = 0x0c  // so the record is the question name's, not the dropped alias's
         bytes[bytes.count - 13] = 28  // type AAAA
         bytes[bytes.count - 5] = 16
         bytes.removeLast(4)
@@ -309,6 +310,13 @@ final class SnifferParserTests: XCTestCase {
         var upper = Self.compressedReply
         upper[13] = 0x57  // "Www"
         XCTAssertEqual(DNS.parseReply(upper[...])?.name, "www.example.com")
+    }
+
+    func testDNSKeepsOnlyAddressesOwnedByTheQuestionsChain() {
+        var appended = Self.compressedReply
+        appended[7] = 3
+        appended += [1, 0x78, 0, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 17, 253, 144, 10]  // "x" A 17.253.144.10
+        XCTAssertEqual(DNS.parseReply(appended[...])?.addresses.map(\.text), ["93.184.216.34"], "x is not www.example.com or its CNAME target")
     }
 
     func testDNSIgnoresQueriesAndPointerLoops() {
@@ -371,6 +379,12 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertEqual(packet?.tcpFlags, 0x02)
         XCTAssertEqual(packet?.tcpSeq, 1)
         XCTAssertEqual(packet?.payload.count, 0)
+    }
+
+    func testAddressFromText() {
+        XCTAssertEqual(IPAddress(text: "192.168.1.1")?.bytes, [192, 168, 1, 1])
+        XCTAssertEqual(IPAddress(text: "fe80::1%en0")?.text, "fe80::1", "a resolver's zone is dropped")
+        XCTAssertNil(IPAddress(text: "resolver.example"))
     }
 
     func testLocalScope() {

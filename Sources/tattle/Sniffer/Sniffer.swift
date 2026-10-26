@@ -21,6 +21,8 @@ final class Sniffer: @unchecked Sendable {
         var hardwareAddress: @Sendable (String) -> [UInt8]? = { PacketCapture.hardwareAddress(of: $0) }
         /// Every address, or one interface's.
         var addresses: @Sendable (String?) -> Set<IPAddress> = { localAddresses(of: $0) }
+        /// The DNS servers this Mac sends queries to.
+        var resolvers: @Sendable () -> Set<IPAddress> = { systemResolvers() }
         var interfaceCheckEvery: TimeInterval = 5
     }
 
@@ -155,7 +157,7 @@ final class Sniffer: @unchecked Sendable {
     /// Reads until the interface changes, the device fails, or stop is called.
     private func captureLoop(_ capture: any CaptureSource, interface: String, direction installed: CaptureFilter.Direction, shouldStop: () -> Bool) {
         var installed = installed
-        var namer = FlowNamer(localAddresses: host.addresses(nil))
+        var namer = FlowNamer(localAddresses: host.addresses(nil), resolvers: host.resolvers())
         var lastInterfaceCheck = Date()
         var lastAddressRefresh = Date()
         while !shouldStop() {
@@ -168,6 +170,7 @@ final class Sniffer: @unchecked Sendable {
                     // goes unnamed.
                     if namer.endpointsUnknown(packet), Date().timeIntervalSince(lastAddressRefresh) >= Self.staleRefreshEvery {
                         namer.updateLocalAddresses(host.addresses(nil))
+                        namer.updateResolvers(host.resolvers())
                         lastAddressRefresh = Date()
                         Log.sniffer.debug("refreshed local addresses on an unknown packet")
                     }
@@ -182,6 +185,7 @@ final class Sniffer: @unchecked Sendable {
             if !events.isEmpty { onEvents(events) }
             if now.timeIntervalSince(lastAddressRefresh) >= Self.addressRefreshEvery {
                 namer.updateLocalAddresses(host.addresses(nil))
+                namer.updateResolvers(host.resolvers())
                 lastAddressRefresh = now
             }
             if now.timeIntervalSince(lastInterfaceCheck) >= host.interfaceCheckEvery {

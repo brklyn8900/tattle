@@ -1,9 +1,27 @@
 import Foundation
+import SystemConfiguration
 
 struct IPAddress: Hashable {
     let bytes: [UInt8]  // 4 or 16
 
     var isV4: Bool { bytes.count == 4 }
+
+    /// From the text form; a zone suffix (`fe80::1%en0`) is dropped.
+    init?(text: String) {
+        let address = text.split(separator: "%", maxSplits: 1).first.map(String.init) ?? text
+        var v4 = in_addr(), v6 = in6_addr()
+        if inet_pton(AF_INET, address, &v4) == 1 {
+            bytes = withUnsafeBytes(of: &v4) { Array($0) }
+        } else if inet_pton(AF_INET6, address, &v6) == 1 {
+            bytes = withUnsafeBytes(of: &v6) { Array($0) }
+        } else {
+            return nil
+        }
+    }
+
+    init(bytes: [UInt8]) {
+        self.bytes = bytes
+    }
 
     var text: String {
         var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
@@ -151,4 +169,12 @@ func localAddresses(of interface: String? = nil) -> Set<IPAddress> {
         cursor = entry.pointee.ifa_next
     }
     return result
+}
+
+// The DNS servers the system sends queries to, as the global DNS state lists them.
+func systemResolvers() -> Set<IPAddress> {
+    guard let store = SCDynamicStoreCreate(nil, "Tattle" as CFString, nil, nil),
+          let state = SCDynamicStoreCopyValue(store, "State:/Network/Global/DNS" as CFString) as? [String: Any],
+          let servers = state["ServerAddresses"] as? [String] else { return [] }
+    return Set(servers.compactMap(IPAddress.init(text:)))
 }
