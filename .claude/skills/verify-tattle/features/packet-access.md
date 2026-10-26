@@ -72,7 +72,7 @@ Preconditions:
   `tattle-broker-probe io.github.eladefrati.tattle.capture-broker en0`; sign copies as in
   the run below. Read the broker's lines with `/usr/bin/log show --predicate 'process
   CONTAINS "capture-broker"'`: in zsh a bare `log` is a builtin and prints nothing useful.
-- XPC broker, release build of `a4b33ed`, run 2026-10-26T132304: `Install again` (pressed by the user in the panel) replaced
+- XPC broker, release build of `470e87e`, run 2026-10-26T132304: `Install again` (pressed by the user in the panel) replaced
   the installed socket broker (link `Packet access: install again` before, `Packet
   access` after; plist with `MachServices` and `--service`, root-owned, `--uid 501`;
   installed helper's cdhash equals the bundled one; legacy socket file gone; capture
@@ -83,8 +83,8 @@ Preconditions:
   log; the hardened one with Tattle's identifier is accepted. The broker exits after a
   minute idle and launchd starts it again on the next request. Its probe copies and
   entitlements plist are in `probes/`. Not replayed: the fork-and-exec attack.
-- XPC broker after the 2026-10-26 review, release build of `5ba8b2d`, run
-  2026-10-26T164905: `Install again` replaced `a4b33ed`'s broker (helper cdhash
+- XPC broker after the 2026-10-26 review, release build of `793d03d`, run
+  2026-10-26T164905: `Install again` replaced `470e87e`'s broker (helper cdhash
   `fa7224e3...` before, the bundled `28b03956...` after; plist root-owned with `--uid 501`
   and `--service`; no stage left; capture through the broker; example.com named from
   http). Against the installed daemon: the five probes as before (four refused, the
@@ -101,7 +101,7 @@ Preconditions:
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
-- Socket broker, before the move to XPC: on the release build of `f4b89a1`, run 2026-10-25T2345-broker-final (driven with
+- Socket broker, before the move to XPC: on the release build of `69e244a`, run 2026-10-25T2345-broker-final (driven with
   `tattle-ax` by hand, before `--release` existed) proved `pa-remove`, `pa-install` and
   `pa-startup-remove` (plist, helper, socket and launchd job gone), and against the
   installed daemon: broker-probe copies signed ad hoc, by the team under another
