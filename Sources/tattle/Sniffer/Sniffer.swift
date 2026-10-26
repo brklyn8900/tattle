@@ -18,8 +18,9 @@ final class Sniffer: @unchecked Sendable {
     private let open: Opener
     private let onEvents: @Sendable ([FlowEvent]) -> Void
     private let onStatus: @Sendable (Status) -> Void
-    private let stopping = OSAllocatedUnfairLock(initialState: false)
-    private var thread: Thread?
+    /// The current run's stop flag and the signal that it has ended. Each run has its own,
+    /// so a start right after a stop cannot clear the flag the old run is still to read.
+    private var current: (stopping: OSAllocatedUnfairLock<Bool>, ended: DispatchSemaphore)?
 
     private static let retryAfter: TimeInterval = 30
     private static let interfaceCheckEvery: TimeInterval = 5
@@ -27,6 +28,9 @@ final class Sniffer: @unchecked Sendable {
     /// How often a packet from an unknown address may trigger a refresh.
     private static let staleRefreshEvery: TimeInterval = 1
     private static let readTimeout: Duration = .milliseconds(500)
+    /// Longer than a read timeout or a wait step; a run still going after it is left to end
+    /// on its own, under its own stop flag.
+    private static let stopWait = 2.0
 
     init(open: @escaping Opener = { try PacketCapture.obtain(interface: $0, timeout: Sniffer.readTimeout) },
          onEvents: @escaping @Sendable ([FlowEvent]) -> Void,
@@ -37,29 +41,36 @@ final class Sniffer: @unchecked Sendable {
     }
 
     func start() {
-        guard thread == nil else { return }
-        stopping.withLock { $0 = false }
-        let thread = Thread { [self] in run() }
+        guard current == nil else { return }
+        let stopping = OSAllocatedUnfairLock(initialState: false)
+        let ended = DispatchSemaphore(value: 0)
+        current = (stopping, ended)
+        let thread = Thread { [self] in
+            run { stopping.withLock { $0 } }
+            ended.signal()
+        }
         thread.name = "tattle.sniffer"
         thread.qualityOfService = .utility
-        self.thread = thread
         thread.start()
     }
 
-    /// Returns at once; the thread notices within one read timeout.
+    /// Waits for the run to end, which it does within one read timeout, so its capture
+    /// device is closed and its last status reported before another run can start.
     func stop() {
-        stopping.withLock { $0 = true }
-        thread = nil
+        guard let run = current else { return }
+        current = nil
+        run.stopping.withLock { $0 = true }
+        if run.ended.wait(timeout: .now() + Self.stopWait) == .timedOut {
+            Log.sniffer.error("the previous capture run did not end within \(Self.stopWait) s")
+        }
     }
 
-    private var shouldStop: Bool { stopping.withLock { $0 } }
-
-    private func run() {
+    private func run(shouldStop: () -> Bool) {
         var lastFailure: CaptureError?
-        while !shouldStop {
+        while !shouldStop() {
             guard let interface = PacketCapture.primaryInterface() else {
                 report(.unavailable(.noInterface), previous: &lastFailure)
-                wait(Self.retryAfter)
+                wait(Self.retryAfter, shouldStop: shouldStop)
                 continue
             }
             let capture: PacketCapture
@@ -67,11 +78,11 @@ final class Sniffer: @unchecked Sendable {
                 capture = try open(interface)
             } catch let error as CaptureError {
                 report(.unavailable(error), previous: &lastFailure)
-                wait(Self.retryAfter)
+                wait(Self.retryAfter, shouldStop: shouldStop)
                 continue
             } catch {
                 report(.unavailable(.open(errno: EIO)), previous: &lastFailure)
-                wait(Self.retryAfter)
+                wait(Self.retryAfter, shouldStop: shouldStop)
                 continue
             }
             lastFailure = nil
@@ -80,7 +91,7 @@ final class Sniffer: @unchecked Sendable {
             // Notice, not info: the unified log keeps notices, so a later comparison can
             // tell when capture was on.
             Log.sniffer.notice("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(CaptureBroker.isReachable ? "through the broker" : "from the device", privacy: .public)")
-            captureLoop(capture, interface: interface)
+            captureLoop(capture, interface: interface, shouldStop: shouldStop)
         }
         onStatus(.stopped)
     }
@@ -114,11 +125,11 @@ final class Sniffer: @unchecked Sendable {
     }
 
     /// Reads until the interface changes, the device fails, or stop is called.
-    private func captureLoop(_ capture: PacketCapture, interface: String) {
+    private func captureLoop(_ capture: PacketCapture, interface: String, shouldStop: () -> Bool) {
         var namer = FlowNamer(localAddresses: localAddresses())
         var lastInterfaceCheck = Date()
         var lastAddressRefresh = Date()
-        while !shouldStop {
+        while !shouldStop() {
             var events: [FlowEvent] = []
             do {
                 try capture.readPackets { timestamp, bytes in
@@ -154,9 +165,9 @@ final class Sniffer: @unchecked Sendable {
         }
     }
 
-    private func wait(_ seconds: TimeInterval) {
+    private func wait(_ seconds: TimeInterval, shouldStop: () -> Bool) {
         let deadline = Date().addingTimeInterval(seconds)
-        while !shouldStop, Date() < deadline {
+        while !shouldStop(), Date() < deadline {
             Thread.sleep(forTimeInterval: 0.5)
         }
     }
