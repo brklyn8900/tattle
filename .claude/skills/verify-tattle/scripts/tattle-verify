@@ -8,7 +8,7 @@
 #   tattle-verify tab <Network|Processes|Ports|Startup>
 #   tattle-verify save <name>             panel tree, text and screenshot into the run folder
 #   tattle-verify db "<sql>"              read-only query on the dev history database
-#   tattle-verify connect <named|garbage|silent> [--hold <seconds>]
+#   tattle-verify connect <named|garbage|silent> [--hold <seconds>] [--port <local port>]
 #   tattle-verify log [<regex>]           the run's log lines, optionally filtered
 #   tattle-verify cleanup
 set -euo pipefail
@@ -256,25 +256,38 @@ cmd_db() {
 # The address is looked up over TCP from the gateway: the capture filter keeps only UDP
 # DNS replies, so the sniffer never learns the name from the lookup, and its DNS
 # fallback cannot name the garbage and silent connections. The local port is chosen
-# here, so the history row is found by it.
+# here, so the history row is found by it; --port reuses one, and the address this run
+# last used from it to the same host, for a second connection on the same four-tuple
+# (after the first's TIME_WAIT, about 30 s after it closed).
 cmd_connect() {
-    local kind=${1:-} hold=90
+    local kind=${1:-} hold=90 lport=""
     shift || true
-    [ "${1:-}" = "--hold" ] && hold=$2
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --hold) hold=$2; shift 2 ;;
+            --port) lport=$2; shift 2 ;;
+            *) die "usage: tattle-verify connect <named|garbage|silent> [--hold <seconds>] [--port <local port>]" ;;
+        esac
+    done
     local host port payload expect
     case $kind in
         named) host=example.com; port=80; payload='GET / HTTP/1.1\r\nHost: example.com\r\n\r\n'; expect="name example.com, nameSource http" ;;
         garbage) host=github.com; port=22; payload='tattle-verify'; expect="no name, nameSource none:not-handshake" ;;
         silent) host=github.com; port=22; payload=''; expect="no name, nameSource none:timeout, 20 s after it opens" ;;
-        *) die "usage: tattle-verify connect <named|garbage|silent> [--hold <seconds>]" ;;
+        *) die "usage: tattle-verify connect <named|garbage|silent> [--hold <seconds>] [--port <local port>]" ;;
     esac
-    local gw ip run lport pid
+    local gw ip run pid
     gw=$(route -n get default 2>/dev/null | awk '/gateway:/{print $2}')
     [ -n "$gw" ] || die "no default gateway"
-    ip=$(dig +tcp +short +time=3 "$host" A @"$gw" | grep -E '^[0-9.]+$' | head -1)
-    [ -n "$ip" ] || die "could not look up $host over TCP from $gw"
     run=$(run_dir)
-    lport=$(( 50000 + RANDOM % 10000 ))
+    ip=""
+    if [ -n "$lport" ]; then
+        ip=$(grep -E "connect [a-z]+: $host [0-9.]+:$port from local port $lport," "$run/commands.txt" 2>/dev/null \
+            | tail -1 | sed -E "s/.* $host ([0-9.]+):.*/\\1/" || true)
+    fi
+    [ -n "$ip" ] || ip=$(dig +tcp +short +time=3 "$host" A @"$gw" | grep -E '^[0-9.]+$' | head -1)
+    [ -n "$ip" ] || die "could not look up $host over TCP from $gw"
+    [ -n "$lport" ] || lport=$(( 50000 + RANDOM % 10000 ))
     { printf "$payload"; sleep "$hold"; } | nc -G 5 -p "$lport" "$ip" "$port" > /dev/null 2>&1 &
     pid=$!
     echo "$pid" >> "$run/nc.pids"

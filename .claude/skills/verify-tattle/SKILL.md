@@ -81,8 +81,10 @@ To give the Network tab a connection with a known outcome:
     $V connect silent     # github.com:22, connects and sends nothing           -> none:timeout after 20 s
 
 Each opens one TCP connection with `nc`, held 90 s (`--hold <s>` to change), from a local
-port it prints with the matching `db` query. the user approved these hosts and these bytes on
-2026-10-25. Do not point it at another host or send other bytes without asking him.
+port it prints with the matching `db` query (`--port <n>` reuses one, with the address
+the run last used from it, for a second connection on the same four-tuple; wait 30 s after
+the first closes, its TIME_WAIT). the user
+approved these hosts and these bytes on 2026-10-25. Do not point it at another host or send other bytes without asking him.
 
 ## Evidence
 
