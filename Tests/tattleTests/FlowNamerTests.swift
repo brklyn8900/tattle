@@ -56,6 +56,25 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.observe(tcp(flags: 0x18, seq: 1001 + 50, Array(record.dropFirst(50))), at: t0), [], "buffering ended, even for the missing piece")
     }
 
+    /// A handshake segment cut at the snap length cannot be completed: it says so at once
+    /// instead of waiting out the timeout, and a later in-order segment is placed by the
+    /// segment's length on the wire, not by what was captured.
+    func testASegmentCutByTheSnapLengthEndsBuffering() {
+        var n = namer()
+        _ = n.observe(tcp(flags: 0x02, seq: 1000), at: t0)
+        var cut = tcp(flags: 0x18, seq: 1001, Array(clientHelloRecord.prefix(60)))
+        cut.uncaptured = clientHelloRecord.count - 60
+        XCTAssertEqual(n.observe(cut, at: t0 + 0.01), [FlowEvent(key: tcpKey, kind: .unnamed(.gap))])
+        XCTAssertEqual(n.observe(tcp(flags: 0x18, seq: 1001 + UInt32(clientHelloRecord.count), [1, 2, 3]), at: t0 + 0.02), [], "no second gap")
+        XCTAssertEqual(n.expire(now: t0 + FlowNamer.finalizeAfter), [], "already answered")
+
+        var whole = namer()
+        _ = whole.observe(tcp(flags: 0x02, seq: 1000), at: t0)
+        var tail = tcp(flags: 0x18, seq: 1001, clientHelloRecord + [0x17, 3, 3, 0, 10])
+        tail.uncaptured = 2000
+        XCTAssertEqual(whole.observe(tail, at: t0 + 0.01), [FlowEvent(key: tcpKey, kind: .named("example.com", .sni))], "the hello itself was captured whole")
+    }
+
     func testNotAHandshakeAndTimeoutAreReported() {
         var n = namer()
         _ = n.observe(tcp(port: 22, flags: 0x02, seq: 1), at: t0)

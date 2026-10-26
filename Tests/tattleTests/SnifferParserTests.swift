@@ -197,6 +197,23 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertNil(Packet.parse(frame, dlt: 99), "unknown link type")
     }
 
+    /// A capture cut at the snap length keeps the header's lengths: the payload is what was
+    /// captured, and the rest is counted, so a stream position stays right.
+    func testCountsPayloadCutOffByTheSnapLength() {
+        let tcp: [UInt8] = [0xd4, 0x31, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x18, 0xff, 0xff, 0, 0, 0, 0]
+        let captured = [UInt8](repeating: 0x16, count: 100)
+        let total = 20 + tcp.count + 3000
+        let ip: [UInt8] = [0x45, 0, UInt8(total >> 8), UInt8(total & 0xff), 0, 0, 0x40, 0, 64, 6, 0, 0,
+                           192, 168, 1, 5, 17, 253, 144, 10] + tcp + captured
+        let packet = Packet.parse([UInt8](repeating: 0xaa, count: 12) + [0x08, 0x00] + ip, dlt: PacketCapture.linkEthernet)
+        XCTAssertEqual(packet?.payload.count, 100)
+        XCTAssertEqual(packet?.uncaptured, 2900)
+
+        var v6: [UInt8] = [0x60, 0, 0, 0, UInt8((tcp.count + 3000) >> 8), UInt8((tcp.count + 3000) & 0xff), 6, 64]
+        v6 += [UInt8](repeating: 0x20, count: 32)
+        XCTAssertEqual(Packet.parse([30, 0, 0, 0] + v6 + tcp + captured, dlt: PacketCapture.linkNull)?.uncaptured, 2900)
+    }
+
     func testParsesIPv6TCPOverNullLink() {
         let tcp: [UInt8] = [0xd4, 0x31, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
         var ip: [UInt8] = [0x60, 0, 0, 0, 0, UInt8(tcp.count), 6, 64]

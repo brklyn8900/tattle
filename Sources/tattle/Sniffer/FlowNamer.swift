@@ -178,8 +178,9 @@ struct FlowNamer: Sendable {
             guard !flow.finished, !p.payload.isEmpty else { return [] }
             // Only the in-order segment extends the buffer: a retransmit (seq behind) is
             // dropped, and a gap (seq ahead) ends buffering rather than risk a shifted parse.
+            // The stream advances by the segment's length on the wire, captured or not.
             if p.tcpSeq == flow.nextSeq {
-                flow.nextSeq = flow.nextSeq &+ UInt32(p.payload.count)
+                flow.nextSeq = flow.nextSeq &+ UInt32(p.payload.count + p.uncaptured)
                 switch inspectTCP(&flow, payload: p.payload) {
                 case .named(let name, let source):
                     flow.named = true
@@ -187,7 +188,11 @@ struct FlowNamer: Sendable {
                 case .unnamed(let reason):
                     return flow.dnsNamed ? [] : [FlowEvent(key: key, kind: .unnamed(reason))]
                 case .pending:
-                    return []
+                    // Still incomplete, and the rest of this segment was cut by the snap
+                    // length: the handshake can never complete, so say so now.
+                    guard p.uncaptured > 0, flow.tlsBuffer != nil else { return [] }
+                    flow.tlsBuffer = nil
+                    return flow.dnsNamed ? [] : [FlowEvent(key: key, kind: .unnamed(.gap))]
                 }
             } else if p.tcpSeq &- flow.nextSeq < 0x8000_0000 {
                 flow.tlsBuffer = nil

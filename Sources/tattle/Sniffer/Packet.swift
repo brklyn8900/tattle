@@ -41,6 +41,8 @@ struct Packet {
     let tcpFlags: UInt8
     let tcpSeq: UInt32
     let payload: ArraySlice<UInt8>
+    /// Payload bytes the packet carried past the capture's snap length.
+    var uncaptured = 0
 
     static func parse(_ bytes: [UInt8], dlt: UInt32) -> Packet? {
         var r = ByteReader(bytes)
@@ -69,6 +71,7 @@ struct Packet {
         let proto: UInt8
         let src: IPAddress
         let dst: IPAddress
+        let declaredEnd: Int  // where the packet ends by its header, captured or not
         switch first >> 4 {
         case 4:
             let headerLength = Int(first & 0x0f) * 4
@@ -83,7 +86,8 @@ struct Packet {
             src = IPAddress(bytes: Array(try r.take(4)))
             dst = IPAddress(bytes: Array(try r.take(4)))
             r.pos = start + headerLength
-            r.end = min(r.end, start + total)
+            declaredEnd = start + total
+            r.end = min(r.end, declaredEnd)
         case 6:
             try r.skip(3)
             let payloadLength = Int(try r.u16())
@@ -91,7 +95,8 @@ struct Packet {
             try r.skip(1)
             src = IPAddress(bytes: Array(try r.take(16)))
             dst = IPAddress(bytes: Array(try r.take(16)))
-            r.end = min(r.end, start + 40 + payloadLength)
+            declaredEnd = start + 40 + payloadLength
+            r.end = min(r.end, declaredEnd)
         default:
             return nil
         }
@@ -109,7 +114,7 @@ struct Packet {
             guard transportStart + dataOffset <= r.end else { return nil }
             r.pos = transportStart + dataOffset
             return Packet(src: src, dst: dst, srcPort: sport, dstPort: dport,
-                          proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: r.rest)
+                          proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: r.rest, uncaptured: max(0, declaredEnd - r.end))
         case 17:
             let sport = try r.u16()
             let dport = try r.u16()
