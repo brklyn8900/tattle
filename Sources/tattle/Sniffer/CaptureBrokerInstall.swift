@@ -271,12 +271,14 @@ extension CaptureBroker {
         helper=\(shell(layout.helperPath))
         plist=\(shell(layout.plistPath))
         /bin/mkdir -p -m 755 \(shell(layout.helperDirectory)) \(shell(layout.daemonsDirectory))
-        /bin/rm -rf \(shell(layout.helperDirectory))/.\(label).*
+        \(purgeFunction)
+        # An old stage that cannot be deleted must not stop this install.
+        purge \(shell(layout.helperDirectory))/.\(label).* || true
         stage=$(/usr/bin/mktemp -d \(shell("\(layout.helperDirectory)/.\(label).XXXXXX")))
         replacing=0
         finish() {
             status=$?
-            /bin/rm -rf "$stage"
+            purge "$stage" || true
             if [ "$status" -ne 0 ] && [ "$replacing" -eq 1 ]; then
                 "$launchctl" bootout system/\(label) 2>/dev/null || true
                 /bin/rm -f "$plist" "$helper"
@@ -335,9 +337,19 @@ extension CaptureBroker {
         fi
         /bin/rm -f \(shell(layout.plistPath))
         /bin/rm -f \(shell(layout.helperPath)) \(shell(layout.legacySocketPath))
-        /bin/rm -rf \(shell(layout.helperDirectory))/.\(label).*
+        \(purgeFunction)
+        purge \(shell(layout.helperDirectory))/.\(label).*
         """
     }
+
+    /// Deletes stages. A file locked in Finder (uchg) is copied locked by ditto, and rm cannot
+    /// delete it until the flag is cleared.
+    private static let purgeFunction = """
+        purge() {
+            /usr/bin/chflags -R nouchg,nouappnd "$@" 2>/dev/null || true
+            /bin/rm -rf "$@"
+        }
+        """
 
     /// True once launchd no longer knows the job: bootout can return before it has exited.
     private static let stoppedFunction = """

@@ -343,4 +343,45 @@ final class CaptureBrokerScriptTests: XCTestCase {
         XCTAssertThrowsError(try remove())
         XCTAssertNotNil(contents(layout.plistPath), "a running broker keeps the file that says it is installed")
     }
+
+    // MARK: Locked files
+
+    private func setLocked(_ locked: Bool, _ url: URL) throws {
+        try FileManager.default.setAttributes([.immutable: locked], ofItemAtPath: url.path)
+    }
+
+    /// Unlocks everything under the scratch root so teardown can delete it.
+    private func unlockAllAtTeardown() {
+        addTeardownBlock { [root] in
+            let process = Process()
+            process.executableURL = URL(filePath: "/usr/bin/chflags")
+            process.arguments = ["-R", "nouchg", root!.path]
+            try? process.run()
+            process.waitUntilExit()
+        }
+    }
+
+    /// A file locked in Finder (uchg) is copied locked, and rm cannot delete it: the failed
+    /// install left its stage, and every later install stopped at the sweep of old stages.
+    func testALockedFileFailsOneInstallAndWedgesNone() throws {
+        unlockAllAtTeardown()
+        let plist = bundle.appending(path: "Contents/Info.plist")
+        try setLocked(true, plist)
+        XCTAssertThrowsError(try install())
+        XCTAssertEqual(leftoverStages, [], "the stage of the failed copy is gone")
+        try setLocked(false, plist)
+        try install()
+        XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))
+    }
+
+    func testRemoveSweepsAStageHoldingALockedFile() throws {
+        unlockAllAtTeardown()
+        let stage = URL(filePath: layout.helperDirectory).appending(path: ".\(CaptureBroker.label).crashed")
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
+        let file = stage.appending(path: "locked")
+        try Data().write(to: file)
+        try setLocked(true, file)
+        try remove()
+        XCTAssertEqual(leftoverStages, [])
+    }
 }
