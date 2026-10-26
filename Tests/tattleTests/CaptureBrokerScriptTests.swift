@@ -38,7 +38,7 @@ final class CaptureBrokerScriptTests: XCTestCase {
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launchctl.path)
         layout = CaptureBroker.Layout(helperDirectory: root.appending(path: "helpers").path, daemonsDirectory: root.appending(path: "daemons").path,
                                       service: CaptureBroker.Service(name: BrokerAgent.uniqueLabel(), privileged: false),
-                                      legacySocketPath: root.appending(path: "broker.sock").path, owner: "\(getuid()):\(getgid())", launchctl: launchctl.path)
+                                      owner: "\(getuid()):\(getgid())", launchctl: launchctl.path)
         (bundle, identity) = try makeBundle(named: "It's Tattle.app")
     }
 
@@ -272,16 +272,6 @@ final class CaptureBrokerScriptTests: XCTestCase {
         (bundle, identity) = try makeBundle(named: "Team.app", helperRequirement: #"designated => identifier "tattle-capture-broker""#)
         try install()
         XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))
-    }
-
-    /// A broker from before XPC served a socket, which launchd leaves behind when it stops the job.
-    func testInstallAndRemoveDeleteTheSocketOfABrokerFromBeforeXPC() throws {
-        FileManager.default.createFile(atPath: layout.legacySocketPath, contents: nil)
-        try install()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: layout.legacySocketPath), "install")
-        FileManager.default.createFile(atPath: layout.legacySocketPath, contents: nil)
-        try remove()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: layout.legacySocketPath), "remove")
     }
 
     // MARK: Status

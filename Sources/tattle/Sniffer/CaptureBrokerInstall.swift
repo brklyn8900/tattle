@@ -121,9 +121,6 @@ extension CaptureBroker {
         let helperDirectory: String
         let daemonsDirectory: String
         let service: Service
-        /// The socket the broker served before it moved to XPC. launchd leaves the file behind
-        /// when it stops the job, so install and remove delete it.
-        let legacySocketPath: String
         /// Who owns what is installed: "root:wheel", or a test's own account.
         let owner: String
         let launchctl: String
@@ -132,8 +129,7 @@ extension CaptureBroker {
         var plistPath: String { "\(daemonsDirectory)/\(label).plist" }
 
         static let system = Layout(helperDirectory: "/Library/PrivilegedHelperTools", daemonsDirectory: "/Library/LaunchDaemons",
-                                   service: .system, legacySocketPath: "/var/run/tattle-capture-broker.sock",
-                                   owner: "root:wheel", launchctl: "/bin/launchctl")
+                                   service: .system, owner: "root:wheel", launchctl: "/bin/launchctl")
     }
 
     // MARK: What is installed
@@ -318,7 +314,6 @@ extension CaptureBroker {
         replacing=1
         /bin/mv -f "$new" "$helper"
         /bin/mv -f "$stage/plist" "$plist"
-        /bin/rm -f \(shell(layout.legacySocketPath))
         "$launchctl" bootstrap system "$plist"
         """
     }
@@ -336,7 +331,7 @@ extension CaptureBroker {
             exit 3
         fi
         /bin/rm -f \(shell(layout.plistPath))
-        /bin/rm -f \(shell(layout.helperPath)) \(shell(layout.legacySocketPath))
+        /bin/rm -f \(shell(layout.helperPath))
         \(purgeFunction)
         purge \(shell(layout.helperDirectory))/.\(label).*
         """
