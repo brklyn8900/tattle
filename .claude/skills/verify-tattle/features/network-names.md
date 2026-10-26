@@ -75,7 +75,7 @@ Preconditions:
 - The sniffer skips local-network destinations; a connection to the router never gets a
   name or a reason.
 - The sniffer's DNS fallback names a connection from a UDP DNS reply it captured for
-  that address in the last hour, if one of the Mac's resolvers sent it to this Mac and the
+  that address in the last hour (the newest 4096 answers at most), if one of the Mac's resolvers sent it to this Mac and the
   address's record is for the question name or a CNAME target reached from it. `connect` looks example.com up over TCP so the fallback
   cannot name the garbage and silent connections; looking it up any other way first (a
   browser, `curl`, `nc example.com`) turns their outcome into `dns`.

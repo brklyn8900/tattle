@@ -303,6 +303,38 @@ final class FlowNamerTests: XCTestCase {
                        "a resolver's reply with a CNAME chain still names, case aside")
     }
 
+    /// Forged replies grew the map without bound (990k entries from 16 MB). Past the cap the
+    /// oldest answer goes, and an answer seen again counts as new.
+    func testTheDNSMapKeepsTheNewestAnswersUpToItsCapacity() {
+        var n = namer()
+        func address(_ i: Int) -> IPAddress { IPAddress(bytes: [23, 0, UInt8(i >> 8), UInt8(i & 0xff)]) }
+        func reply(_ i: Int) -> Packet {
+            udp(from: resolver, to: me, srcPort: 53, dstPort: 60000,
+                Self.dnsMessage(question: "h\(i).example", answers: [("h\(i).example", 1, address(i).bytes)]))
+        }
+        let total = FlowNamer.dnsCapacity + 10
+        for i in 0..<total {
+            _ = n.observe(reply(i), at: t0 + Double(i) / 10_000)
+            if i == FlowNamer.dnsCapacity / 2 { _ = n.observe(reply(0), at: t0 + Double(i) / 10_000) }
+        }
+        XCTAssertEqual(n.dnsCount, FlowNamer.dnsCapacity)
+        for (i, port) in [(0, UInt16(1)), (1, 2), (total - 1, 3)] {
+            _ = n.observe(Packet(src: me, dst: address(i), srcPort: port, dstPort: 443, proto: .tcp, tcpFlags: 0x02, tcpSeq: 1, payload: []), at: t0 + 1)
+        }
+        let names = Dictionary(uniqueKeysWithValues: n.expire(now: t0 + 1 + FlowNamer.dnsFallbackAfter).map { ($0.key.localPort, $0.kind) })
+        XCTAssertEqual(names[1], .named("h0.example", .dns), "seen again halfway, so not among the oldest")
+        XCTAssertNil(names[2], "among the oldest, evicted")
+        XCTAssertEqual(names[3], .named("h\(total - 1).example", .dns), "the newest is kept")
+    }
+
+    func testOneAnswerRepeatedStaysOneEntryAndIsStillForgotten() {
+        var n = namer()
+        for i in 0..<(3 * FlowNamer.dnsCapacity) { _ = n.observe(dnsReply, at: t0 + Double(i) / 10_000) }
+        XCTAssertEqual(n.dnsCount, 1)
+        _ = n.expire(now: t0 + 2 + FlowNamer.dnsRemembered)
+        XCTAssertEqual(n.dnsCount, 0)
+    }
+
     func testDNSMapIsOnlyConsultedOnceAndForgotten() {
         var n = namer()
         _ = n.observe(tcp(flags: 0x02, seq: 1), at: t0)

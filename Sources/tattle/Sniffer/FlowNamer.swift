@@ -109,6 +109,8 @@ struct FlowNamer: Sendable {
     static let idleAfter = 120.0
     /// How long a DNS answer is remembered.
     static let dnsRemembered = 3600.0
+    /// The most DNS answers remembered; the oldest goes first.
+    static let dnsCapacity = 4096
     /// The most handshake bytes buffered for one flow, TCP or QUIC.
     static let bufferLimit = 16_384
 
@@ -132,7 +134,7 @@ struct FlowNamer: Sendable {
 
     private var local: Set<IPAddress>
     private var resolvers: Set<IPAddress>
-    private var dnsMap: [IPAddress: (name: String, at: Double)] = [:]
+    private var dnsMap = DNSMap()
     private var flows: [FlowKey: Flow] = [:]
 
     init(localAddresses: Set<IPAddress>, resolvers: Set<IPAddress>) {
@@ -169,7 +171,7 @@ struct FlowNamer: Sendable {
             // Only an answer from a resolver this Mac asks, sent to this Mac, may name
             // addresses: any host on the network can broadcast a reply.
             if resolvers.contains(p.src), local.contains(p.dst), let reply = DNS.parseReply(p.payload) {
-                for address in reply.addresses { dnsMap[address] = (reply.name, ts) }
+                for address in reply.addresses { dnsMap.insert(reply.name, for: address, at: ts) }
             }
             return []
         }
@@ -325,7 +327,66 @@ struct FlowNamer: Sendable {
                 flows[key] = flow
             }
         }
-        dnsMap = dnsMap.filter { now - $0.value.at < Self.dnsRemembered }
+        dnsMap.forget(arrivedBy: now - Self.dnsRemembered)
         return events
+    }
+}
+
+/// DNS answers by address, in the order they arrived, so the oldest can go first without a
+/// sort: past `FlowNamer.dnsCapacity`, and once older than `FlowNamer.dnsRemembered`.
+private struct DNSMap {
+    private var entries: [IPAddress: (name: String, at: Double, serial: Int)] = [:]
+    /// Arrival order from `head` on. An answer seen again is appended anew; its earlier place
+    /// is left behind, recognized by its serial, and skipped.
+    private var order: [(address: IPAddress, serial: Int)] = []
+    private var head = 0
+    private var serial = 0
+
+    var count: Int { entries.count }
+
+    subscript(address: IPAddress) -> (name: String, at: Double)? {
+        entries[address].map { ($0.name, $0.at) }
+    }
+
+    mutating func insert(_ name: String, for address: IPAddress, at ts: Double) {
+        serial += 1
+        entries[address] = (name, ts, serial)
+        order.append((address, serial))
+        while entries.count > FlowNamer.dnsCapacity { dropOldest(arrivedBy: nil) }
+        // One address answered over and over leaves only stale places behind; sweep them
+        // once they outnumber the live ones.
+        if order.count - head > 2 * FlowNamer.dnsCapacity {
+            order = order[head...].filter { entries[$0.address]?.serial == $0.serial }
+            head = 0
+        }
+    }
+
+    mutating func forget(arrivedBy cutoff: Double) {
+        while dropOldest(arrivedBy: cutoff) {}
+    }
+
+    /// Removes the oldest answer, if it arrived by `cutoff` (or at all, for nil), with any
+    /// stale places ahead of it. False when nothing was removed.
+    @discardableResult
+    private mutating func dropOldest(arrivedBy cutoff: Double?) -> Bool {
+        while head < order.count {
+            let place = order[head]
+            if let entry = entries[place.address], entry.serial == place.serial {
+                if let cutoff, entry.at > cutoff { return false }
+                entries[place.address] = nil
+                advance()
+                return true
+            }
+            advance()
+        }
+        return false
+    }
+
+    private mutating func advance() {
+        head += 1
+        if head >= order.count / 2 {
+            order.removeFirst(head)
+            head = 0
+        }
     }
 }

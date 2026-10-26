@@ -42,6 +42,10 @@ final class Sniffer: @unchecked Sendable {
     /// How often a packet from an unknown address may trigger a refresh.
     private static let staleRefreshEvery: TimeInterval = 1
     private static let readTimeout: Duration = .milliseconds(500)
+    /// How often the time-driven work runs. In immediate mode every burst ends a read, so
+    /// running it per read cost a pass over every flow per burst; its deadlines are seconds
+    /// apart, and a second late changes nothing.
+    private static let expireEvery: TimeInterval = 1
     /// Longest a run can be unreachable by its stop flag: a broker request, or one read. A
     /// predecessor still going after this and a margin is wedged, and is left to end on its
     /// own, under its own stop flag.
@@ -160,6 +164,7 @@ final class Sniffer: @unchecked Sendable {
         var namer = FlowNamer(localAddresses: host.addresses(nil), resolvers: host.resolvers())
         var lastInterfaceCheck = Date()
         var lastAddressRefresh = Date()
+        var lastExpire = Date.distantPast
         while !shouldStop() {
             var events: [FlowEvent] = []
             do {
@@ -181,7 +186,10 @@ final class Sniffer: @unchecked Sendable {
                 return
             }
             let now = Date()
-            events += namer.expire(now: now.timeIntervalSince1970)
+            if now.timeIntervalSince(lastExpire) >= Self.expireEvery {
+                events += namer.expire(now: now.timeIntervalSince1970)
+                lastExpire = now
+            }
             if !events.isEmpty { onEvents(events) }
             if now.timeIntervalSince(lastAddressRefresh) >= Self.addressRefreshEvery {
                 namer.updateLocalAddresses(host.addresses(nil))
