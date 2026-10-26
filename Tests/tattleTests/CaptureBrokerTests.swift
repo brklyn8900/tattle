@@ -2,9 +2,6 @@ import Security
 import XCTest
 @testable import tattle
 
-/// SIGPIPEs this process received, counted by a handler a test installs.
-nonisolated(unsafe) private var brokenPipes = 0
-
 final class CaptureBrokerTests: XCTestCase {
     func testRequirementPrefersTeamOverHash() throws {
         let hash = Data(repeating: 0xab, count: 20)
@@ -47,7 +44,12 @@ final class CaptureBrokerTests: XCTestCase {
     func testPlistRecordsTheInstallingUser() throws {
         let plist = CaptureBroker.plist(requirement: "cdhash H\"00\"", uid: 501)
         let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
-        XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?.suffix(2), ["--uid", "501"])
+        let arguments = try XCTUnwrap(parsed?["ProgramArguments"] as? [String])
+        XCTAssertEqual(arguments.firstIndex(of: "--uid").map { arguments[$0 + 1] }, "501")
+    }
+
+    private func plistDictionary(_ plist: String) -> [String: Any]? {
+        try? PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
     }
 
     func testPlistAndScriptsQuoteWhatTheyCarry() throws {
@@ -55,7 +57,7 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.label)</string>"))
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.helperPath)</string>"))
         XCTAssertTrue(plist.contains("<string>identifier \"a\" and anchor &lt;apple&gt;</string>"))
-        XCTAssertTrue(plist.contains("<string>\(CaptureBroker.socketPath)</string>"))
+        XCTAssertEqual((plistDictionary(plist)?["MachServices"] as? [String: Bool]), [CaptureBroker.label: true])
         let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
         XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?[2], "identifier \"a\" and anchor <apple>")
 
@@ -187,11 +189,11 @@ final class CaptureBrokerTests: XCTestCase {
         return Caller(url: url, requirement: "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\"")
     }
 
-    /// Starts `caller` asking the broker at `socket` for `interface`.
-    private func start(_ caller: Caller, socket: String, interface: String = "en0", delay: Int? = nil) throws -> (Process, Pipe) {
+    /// Starts `caller` asking the broker at `service` for `interface`.
+    private func start(_ caller: Caller, service: CaptureBroker.Service, interface: String = "en0", delay: Int? = nil) throws -> (Process, Pipe) {
         let process = Process()
         process.executableURL = caller.url
-        process.arguments = [socket, interface] + (delay.map { ["--delay", String($0)] } ?? [])
+        process.arguments = [service.name, interface] + (delay.map { ["--delay", String($0)] } ?? [])
         let output = Pipe()
         process.standardOutput = output
         try process.run()
@@ -205,111 +207,73 @@ final class CaptureBrokerTests: XCTestCase {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func ask(_ caller: Caller, socket: String, interface: String = "en0") throws -> String {
-        answer(try start(caller, socket: socket, interface: interface))
+    private func ask(_ caller: Caller, service: CaptureBroker.Service, interface: String = "en0") throws -> String {
+        answer(try start(caller, service: service, interface: interface))
     }
 
     /// An accepted caller: a descriptor where the devices are readable, otherwise the broker's
     /// own open failing with EACCES, which it reaches only after accepting the caller.
     private static let accepted: Set<String> = ["accepted", "open-failed \(EACCES)"]
 
-    /// Waits for the broker to exit on its own, failing instead of hanging.
+    /// Waits for a broker run outside launchd to exit on its own, failing instead of hanging.
     private func expectExit(_ process: Process, status: Int32 = 0) {
         for _ in 0..<250 where process.isRunning { usleep(20_000) }
         if process.isRunning {
             process.terminate()
-            return XCTFail("the broker did not exit after serving")
+            return XCTFail("the broker did not exit")
         }
         XCTAssertEqual(process.terminationStatus, status)
     }
 
-    private var sockets = 0
-
-    /// A fresh socket path per broker, so a stale file never answers for a new one.
-    private func socketPath() -> String {
-        sockets += 1
-        return FileManager.default.temporaryDirectory.appending(path: "broker-\(getpid())-\(sockets).sock").path
-    }
-
-    private func runBroker(requirement: String, uid: String = String(getuid()), socket: String, once: Bool = true) throws -> Process {
-        let process = Process()
-        process.executableURL = brokerBinary
-        process.arguments = ["--requirement", requirement, "--uid", uid, "--socket", socket] + (once ? ["--once"] : [])
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        for _ in 0..<100 where !FileManager.default.fileExists(atPath: socket) { usleep(20_000) }
-        return process
-    }
-
-    /// Connects to `path` and hangs up at once, before the broker can answer. Waits while the
-    /// listen queue (8 deep) is full, which a unix socket reports as a refused connection.
-    private func connectAndHangUp(_ path: String) {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-            path.utf8CString.withUnsafeBytes { buffer.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0.prefix(buffer.count))) }
-        }
-        for _ in 0..<100 {
-            let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-            let connected = withUnsafePointer(to: &address) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-            }
-            let error = errno
-            close(fd)
-            if connected == 0 { return }
-            guard error == ECONNREFUSED else { return XCTFail(String(cString: strerror(error))) }
-            usleep(10_000)
-        }
-        XCTFail("the broker stopped accepting connections")
+    /// The broker as launchd runs it, serving a service of its own.
+    private func runBroker(requirement: String, uid: String = String(getuid())) throws -> BrokerAgent {
+        let label = BrokerAgent.uniqueLabel()
+        return try BrokerAgent(self, label: label, arguments: [brokerBinary.path, "--requirement", requirement, "--uid", uid, "--service", label])
     }
 
     /// A requirement no process satisfies: the broker refuses, which is its quickest answer.
     private let nobody = "cdhash H\"0000000000000000000000000000000000000000\""
 
-    func testBrokerSurvivesAPeerThatHangsUp() throws {
-        let socket = socketPath()
-        let broker = try runBroker(requirement: nobody, socket: socket, once: false)
-        defer { broker.terminate() }
-        // Any local account can do this: the socket is world-writable.
-        for _ in 0..<20 { connectAndHangUp(socket) }
-        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", socket: socket)) {
-            XCTAssertEqual($0 as? CaptureBroker.RequestError, .refused, "the broker still answers after peers hung up")
+    /// Callers that quit before the reply cost the broker nothing: the same process answers next.
+    func testBrokerSurvivesCallersThatQuitBeforeTheReply() throws {
+        let broker = try runBroker(requirement: nobody)
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: broker.service))
+        let pid = try XCTUnwrap(broker.pid, "launchd started the broker")
+        let hardened = try caller(.hardened)
+        for _ in 0..<20 {
+            let (process, _) = try start(hardened, service: broker.service)
+            kill(process.processIdentifier, SIGKILL)
+            waitForExit(process)
         }
-        XCTAssertTrue(broker.isRunning, broker.isRunning ? "" : "\(broker.terminationReason == .uncaughtSignal ? "killed by signal" : "exited with") \(broker.terminationStatus)")
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: broker.service)) {
+            XCTAssertEqual($0 as? CaptureBroker.RequestError, .refused, "the broker still answers")
+        }
+        XCTAssertEqual(broker.pid, pid)
     }
 
-    func testRequestSurvivesABrokerThatHangsUp() throws {
-        brokenPipes = 0
-        let previous = signal(SIGPIPE) { _ in brokenPipes += 1 }
-        defer { signal(SIGPIPE, previous) }
-        let socket = socketPath()
-        let broker = try runBroker(requirement: nobody, socket: socket)
-        defer { broker.terminate() }
-        // Far longer than any interface name, so the request is still being written when the
-        // broker refuses and hangs up.
-        XCTAssertThrowsError(try CaptureBroker.request(interface: String(repeating: "a", count: 1 << 20), socket: socket))
-        XCTAssertEqual(brokenPipes, 0, "a broker hanging up must cost Tattle an error, not a SIGPIPE")
-        expectExit(broker)
+    /// A job that never answers costs one bounded wait, not a hung sniffer.
+    func testRequestEndsWithinItsBoundWhenNothingAnswers() throws {
+        let silent = try BrokerAgent(self, arguments: ["/usr/bin/true"])
+        let began = Date()
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: silent.service)) {
+            XCTAssertEqual($0 as? CaptureBroker.RequestError, .transport(errno: ETIMEDOUT))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(began), 12)
     }
 
     func testBrokerHandsADescriptorToACallerItRecognises() throws {
         try XCTSkipUnless(access("/dev/bpf0", R_OK) == 0, "needs readable /dev/bpf* to run the broker as the user")
         let interface = try XCTUnwrap(PacketCapture.primaryInterface())
         let hardened = try caller(.hardened)
-        let socket = socketPath()
-        let broker = try runBroker(requirement: hardened.requirement, socket: socket)
-        defer { broker.terminate() }
-        XCTAssertEqual(try ask(hardened, socket: socket, interface: interface), "accepted", "a descriptor the caller can prepare and filter")
-        expectExit(broker)
+        let broker = try runBroker(requirement: hardened.requirement)
+        XCTAssertEqual(try ask(hardened, service: broker.service, interface: interface), "accepted", "a descriptor the caller can prepare and filter")
     }
 
     func testBrokerAcceptsAHardenedCaller() throws {
         let hardened = try caller(.hardened)
-        let socket = socketPath()
-        let broker = try runBroker(requirement: hardened.requirement, socket: socket)
-        defer { broker.terminate() }
-        XCTAssertTrue(Self.accepted.contains(try ask(hardened, socket: socket)))
-        expectExit(broker)
+        let broker = try runBroker(requirement: hardened.requirement)
+        XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: broker.service)))
+        XCTAssertTrue(broker.log.contains("cannot open a capture device on en0") || broker.log.contains("handed a capture device on en0"), broker.log)
     }
 
     /// Each of these callers satisfies its requirement, yet another process of the same user
@@ -317,37 +281,27 @@ final class CaptureBrokerTests: XCTestCase {
     func testBrokerRefusesCallersAnotherProcessCouldSteer() throws {
         for signing in Signing.allCases where signing != .hardened {
             let steerable = try caller(signing)
-            let socket = socketPath()
-            let broker = try runBroker(requirement: steerable.requirement, socket: socket)
-            defer { broker.terminate() }
-            XCTAssertEqual(try ask(steerable, socket: socket), "refused", "\(signing)")
-            expectExit(broker)
+            let broker = try runBroker(requirement: steerable.requirement)
+            XCTAssertEqual(try ask(steerable, service: broker.service), "refused", "\(signing)")
         }
     }
 
-    /// The socket is world-writable; the plist records which account the broker serves.
+    /// Any account can send to the service; the plist records which account the broker serves.
     func testBrokerAnswersOnlyTheInstallingUser() throws {
         let hardened = try caller(.hardened)
-        let otherSocket = socketPath()
-        let other = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1), socket: otherSocket)
-        defer { other.terminate() }
-        XCTAssertEqual(try ask(hardened, socket: otherSocket), "refused", "a caller running as another user")
-        expectExit(other)
-
-        let ownSocket = socketPath()
-        let own = try runBroker(requirement: hardened.requirement, socket: ownSocket)
-        defer { own.terminate() }
-        XCTAssertTrue(Self.accepted.contains(try ask(hardened, socket: ownSocket)))
-        expectExit(own)
+        let other = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1))
+        XCTAssertEqual(try ask(hardened, service: other.service), "refused", "a caller running as another user")
+        let own = try runBroker(requirement: hardened.requirement)
+        XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: own.service)))
     }
 
     /// A plist without a usable uid, an older one for instance, must not start a broker that
-    /// serves every account.
+    /// serves every account. The arguments are read before anything else, outside launchd too.
     func testBrokerRequiresTheInstallingUser() throws {
         for uid in [nil, "0", "-1", "abc", "501x", "4294967295", "4294967296"] {
             let process = Process()
             process.executableURL = brokerBinary
-            process.arguments = ["--requirement", nobody, "--socket", socketPath(), "--once"] + (uid.map { ["--uid", $0] } ?? [])
+            process.arguments = ["--requirement", nobody, "--service", BrokerAgent.uniqueLabel()] + (uid.map { ["--uid", $0] } ?? [])
             process.standardError = FileHandle.nullDevice
             try process.run()
             expectExit(process, status: 2)
@@ -358,7 +312,7 @@ final class CaptureBrokerTests: XCTestCase {
     private func running(_ caller: Caller) throws -> (Process, SecCode) {
         let process = Process()
         process.executableURL = caller.url
-        process.arguments = ["/nonexistent/broker.sock", "en0", "--delay", "30"]
+        process.arguments = ["io.github.eladefrati.tattle.test.nonexistent", "en0", "--delay", "30"]
         process.standardOutput = FileHandle.nullDevice
         try process.run()
         addTeardownBlock { process.terminate() }
@@ -402,42 +356,38 @@ final class CaptureBrokerTests: XCTestCase {
     func testBrokerRefusesACallerReplacedOnDiskAfterLaunch() throws {
         let impostor = try caller(.hardened)
         let genuine = try caller(.hardened)
-        let socket = socketPath()
-        let broker = try runBroker(requirement: genuine.requirement, socket: socket)
-        defer { broker.terminate() }
-        let started = try start(impostor, socket: socket, delay: 1)
+        let broker = try runBroker(requirement: genuine.requirement)
+        let started = try start(impostor, service: broker.service, delay: 1)
         XCTAssertEqual(rename(genuine.url.path, impostor.url.path), 0)
         XCTAssertEqual(answer(started), "refused")
-        expectExit(broker)
     }
 
     func testBrokerRefusesOtherCallersAndBadInterfaces() throws {
-        let strangerSocket = socketPath()
-        let stranger = try runBroker(requirement: nobody, socket: strangerSocket)
-        defer { stranger.terminate() }
-        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", socket: strangerSocket)) {
+        let stranger = try runBroker(requirement: nobody)
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: stranger.service)) {
             XCTAssertEqual($0 as? CaptureBroker.RequestError, .refused)
         }
-        expectExit(stranger)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: strangerSocket), "the broker removes its socket on exit")
 
         let hardened = try caller(.hardened)
-        let pickySocket = socketPath()
-        let picky = try runBroker(requirement: hardened.requirement, socket: pickySocket)
-        defer { picky.terminate() }
-        XCTAssertEqual(try ask(hardened, socket: pickySocket, interface: "en0;rm"), "bad-request")
-        expectExit(picky)
-
+        let picky = try runBroker(requirement: hardened.requirement)
+        XCTAssertEqual(try ask(hardened, service: picky.service, interface: "en0;rm"), "bad-request")
+        XCTAssertEqual(try ask(hardened, service: picky.service, interface: String(repeating: "a", count: 1 << 16)), "bad-request")
         if access("/dev/bpf0", R_OK) == 0 {
-            let missingSocket = socketPath()
-            let missing = try runBroker(requirement: hardened.requirement, socket: missingSocket)
-            defer { missing.terminate() }
-            XCTAssertTrue(try ask(hardened, socket: missingSocket, interface: "nosuch9").hasPrefix("open-failed"))
-            expectExit(missing)
+            XCTAssertTrue(try ask(hardened, service: picky.service, interface: "nosuch9").hasPrefix("open-failed"))
         }
 
-        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", socket: "/nonexistent/broker.sock")) {
-            guard case .transport = $0 as? CaptureBroker.RequestError else { return XCTFail("\($0)") }
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: CaptureBroker.Service(name: BrokerAgent.uniqueLabel(), privileged: false))) {
+            XCTAssertEqual($0 as? CaptureBroker.RequestError, .transport(errno: ECONNREFUSED), "no job serves the name")
         }
+    }
+
+    /// Only root registers names in the system domain; an agent of the user's with the broker's
+    /// name is not what the app reaches.
+    func testTheAppLooksTheBrokerUpWhereOnlyRootRegisters() throws {
+        let agent = try runBroker(requirement: nobody)
+        XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: CaptureBroker.Service(name: agent.label, privileged: true))) {
+            XCTAssertEqual($0 as? CaptureBroker.RequestError, .transport(errno: ECONNREFUSED))
+        }
+        XCTAssertTrue(CaptureBroker.isRegistered(agent.service))
     }
 }

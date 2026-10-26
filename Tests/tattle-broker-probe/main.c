@@ -3,9 +3,10 @@
 // exactly the kind of caller the broker refuses, so the daemon tests copy this program, sign
 // the copy the way the case needs, and run it.
 //
-//   tattle-broker-probe <socket> <interface> [--delay <seconds>]
+//   tattle-broker-probe <service> <interface> [--delay <seconds>]
 //
-// --delay waits before asking, so a test can replace the file on disk after launch. Prints
+// <service> is a test agent's Mach service in the user's launchd domain. --delay waits before
+// asking, so a test can replace the file on disk after launch. Prints
 // one line: accepted | refused | bad-request | open-failed <errno> | transport <errno>.
 // "accepted" means a descriptor this process could prepare and filter, so it appears only
 // where the capture devices are readable; with root-only devices an accepted caller prints
@@ -21,12 +22,12 @@
 
 int main(int argc, char **argv) {
     if (argc != 3 && !(argc == 5 && strcmp(argv[3], "--delay") == 0)) {
-        fprintf(stderr, "usage: tattle-broker-probe <socket> <interface> [--delay <seconds>]\n");
+        fprintf(stderr, "usage: tattle-broker-probe <service> <interface> [--delay <seconds>]\n");
         return 2;
     }
     if (argc == 5) sleep((unsigned)atoi(argv[4]));
     int status = 0, err = 0;
-    int fd = tattle_broker_request(argv[1], argv[2], &status, &err);
+    int fd = tattle_broker_request(argv[1], 0, argv[2], &status, &err);
     if (fd >= 0) {
         unsigned int length = 0, link = 0;
         tattle_filter_insn accept_all = { 0x06, 0, 0, 0xffff };  // BPF_RET|BPF_K

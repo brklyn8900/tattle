@@ -1,5 +1,9 @@
 #include "packet_capture.h"
 
+#include <dispatch/dispatch.h>
+#include <mach/mach.h>
+#include <servers/bootstrap.h>
+#include <xpc/xpc.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
@@ -11,7 +15,6 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 int tattle_capture_open(const char *ifname) {
@@ -87,53 +90,66 @@ int tattle_interface_mac(const char *ifname, uint8_t mac[6]) {
     return found;
 }
 
-int tattle_broker_request(const char *socket_path, const char *ifname, int *status, int *err) {
+// One request on a fresh connection, answered by `deadline` or abandoned. Sets *interrupted when
+// the broker went away before answering, which an idle exit racing the request also does.
+static int broker_request_once(const char *service, int privileged, const char *ifname, dispatch_time_t deadline,
+                               int *status, int *err, int *interrupted) {
     *status = -1;
     *err = 0;
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) { *err = errno; return -1; }
-    // A broker that hangs up mid-request must be an error return, not SIGPIPE in the app.
-    int on = 1;
-    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof addr);
-    addr.sun_family = AF_UNIX;
-    if (strlen(socket_path) >= sizeof addr.sun_path) { close(fd); *err = ENAMETOOLONG; return -1; }
-    strlcpy(addr.sun_path, socket_path, sizeof addr.sun_path);
-    if (connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0) { *err = errno; close(fd); return -1; }
-
-    struct timeval tv = { 5, 0 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-
-    size_t length = strlen(ifname);
-    if (write(fd, ifname, length) != (ssize_t)length || write(fd, "\n", 1) != 1) { *err = errno; close(fd); return -1; }
-
-    unsigned char reply = 0;
-    struct iovec iov = { .iov_base = &reply, .iov_len = 1 };
-    char control[CMSG_SPACE(sizeof(int))];
-    memset(control, 0, sizeof control);
-    struct msghdr msg;
-    memset(&msg, 0, sizeof msg);
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control;
-    msg.msg_controllen = sizeof control;
-    ssize_t n = recvmsg(fd, &msg, 0);
-    if (n != 1) { *err = n < 0 ? errno : ECONNRESET; close(fd); return -1; }
-    *status = reply;
-    int result = -1;
-    if (reply == 0) {
-        for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-            if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS && cmsg->cmsg_len == CMSG_LEN(sizeof(int))) {
-                memcpy(&result, CMSG_DATA(cmsg), sizeof(int));
-            }
+    *interrupted = 0;
+    xpc_connection_t connection = xpc_connection_create_mach_service(service, NULL, privileged ? XPC_CONNECTION_MACH_SERVICE_PRIVILEGED : 0);
+    xpc_connection_set_event_handler(connection, ^(xpc_object_t event) { (void)event; });
+    xpc_connection_activate(connection);
+    xpc_object_t request = xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(request, "interface", ifname);
+    dispatch_semaphore_t answered = dispatch_semaphore_create(0);
+    __block xpc_object_t reply = NULL;
+    xpc_connection_send_message_with_reply(connection, request, NULL, ^(xpc_object_t object) {
+        reply = xpc_retain(object);
+        dispatch_semaphore_signal(answered);
+    });
+    xpc_release(request);
+    int fd = -1;
+    if (dispatch_semaphore_wait(answered, deadline) != 0) {
+        // Cancelling delivers the reply handler its error at once, so this wait is short.
+        xpc_connection_cancel(connection);
+        dispatch_semaphore_wait(answered, DISPATCH_TIME_FOREVER);
+        *err = ETIMEDOUT;
+    } else if (xpc_get_type(reply) == XPC_TYPE_ERROR) {
+        if (reply == XPC_ERROR_CONNECTION_INTERRUPTED) {
+            *interrupted = 1;
+            *err = ECONNRESET;
+        } else {
+            *err = ECONNREFUSED;  // no job serves the name
         }
-        if (result < 0) { *status = -1; *err = EPROTO; }
-    } else if (reply == 3) {
-        int code = 0;
-        if (read(fd, &code, sizeof code) == (ssize_t)sizeof code) *err = code;
+    } else {
+        *status = (int)xpc_dictionary_get_int64(reply, "status");
+        if (*status == 0) {
+            fd = xpc_dictionary_dup_fd(reply, "descriptor");
+            if (fd < 0) { *status = -1; *err = EPROTO; }
+        } else if (*status == 3) {
+            *err = (int)xpc_dictionary_get_int64(reply, "errno");
+        }
     }
-    close(fd);
-    return result;
+    if (reply != NULL) xpc_release(reply);
+    dispatch_release(answered);
+    xpc_connection_cancel(connection);
+    xpc_release(connection);
+    return fd;
+}
+
+int tattle_broker_request(const char *service, int privileged, const char *ifname, int *status, int *err) {
+    // One deadline for both attempts, so a retry never doubles the wait a caller plans for.
+    dispatch_time_t deadline = dispatch_time(DISPATCH_TIME_NOW, (int64_t)TATTLE_BROKER_TIMEOUT_MS * NSEC_PER_MSEC);
+    int interrupted = 0;
+    int fd = broker_request_once(service, privileged, ifname, deadline, status, err, &interrupted);
+    if (fd < 0 && interrupted) fd = broker_request_once(service, privileged, ifname, deadline, status, err, &interrupted);
+    return fd;
+}
+
+int tattle_broker_is_registered(const char *service) {
+    mach_port_t port = MACH_PORT_NULL;
+    if (bootstrap_look_up(bootstrap_port, service, &port) != KERN_SUCCESS) return 0;
+    mach_port_deallocate(mach_task_self(), port);
+    return 1;
 }

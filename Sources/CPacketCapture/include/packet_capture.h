@@ -35,11 +35,18 @@ int tattle_capture_set_filter(int fd, const tattle_filter_insn *insns, unsigned 
 int tattle_capture_next(const void *buf, size_t len, size_t offset, double *timestamp,
                         size_t *data_offset, unsigned int *caplen, size_t *next_offset);
 
-// Asks the broker (ADR-0003) listening at `socket_path` for a capture descriptor bound to
-// `ifname`. Returns the descriptor, or -1 with `status` set to the broker's reply (1
-// refused, 2 bad request, 3 open failed with `err` the broker's errno) or to -1 for a
-// transport failure with `err` this side's errno.
-int tattle_broker_request(const char *socket_path, const char *ifname, int *status, int *err);
+// Asks the broker (ADR-0003) serving the Mach service `service` for a capture descriptor bound
+// to `ifname`. `privileged` looks the name up in launchd's system domain, where only root can
+// register one; the app passes 1, tests 0 for an agent in the user's domain. Returns the
+// descriptor, or -1 with `status` set to the broker's reply (1 refused, 2 bad request, 3 open
+// failed with `err` the broker's errno) or to -1 for a transport failure with `err`
+// ECONNREFUSED (no job serves the name), ECONNRESET (the broker went away twice) or
+// ETIMEDOUT (no answer within TATTLE_BROKER_TIMEOUT_MS).
+#define TATTLE_BROKER_TIMEOUT_MS 5000
+int tattle_broker_request(const char *service, int privileged, const char *ifname, int *status, int *err);
+
+// Whether launchd holds a job for the Mach service `service`, without starting it.
+int tattle_broker_is_registered(const char *service);
 
 // The hardware address of an interface. Returns 0 and fills `mac`, or -1 when the
 // interface has none (a tunnel, for instance).

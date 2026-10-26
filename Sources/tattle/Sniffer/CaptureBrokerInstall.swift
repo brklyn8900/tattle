@@ -120,7 +120,10 @@ extension CaptureBroker {
     struct Layout: Sendable {
         let helperDirectory: String
         let daemonsDirectory: String
-        let socketPath: String
+        let service: Service
+        /// The socket the broker served before it moved to XPC. launchd leaves the file behind
+        /// when it stops the job, so install and remove delete it.
+        let legacySocketPath: String
         /// Who owns what is installed: "root:wheel", or a test's own account.
         let owner: String
         let launchctl: String
@@ -129,7 +132,8 @@ extension CaptureBroker {
         var plistPath: String { "\(daemonsDirectory)/\(label).plist" }
 
         static let system = Layout(helperDirectory: "/Library/PrivilegedHelperTools", daemonsDirectory: "/Library/LaunchDaemons",
-                                   socketPath: CaptureBroker.socketPath, owner: "root:wheel", launchctl: "/bin/launchctl")
+                                   service: .system, legacySocketPath: "/var/run/tattle-capture-broker.sock",
+                                   owner: "root:wheel", launchctl: "/bin/launchctl")
     }
 
     // MARK: What is installed
@@ -156,7 +160,7 @@ extension CaptureBroker {
     enum Staleness: Equatable, Sendable {
         /// Only one of the plist and the broker is there: an install or removal was cut short.
         case incomplete
-        /// This build's, but launchd has no socket for it.
+        /// This build's, but launchd holds no job for it.
         case notLoaded
         /// Installed for another account, which the broker answers instead of this one.
         case otherUser(uid_t)
@@ -187,7 +191,7 @@ extension CaptureBroker {
         } else if (installed == nil || (try? proposed.get()) == nil), let hash = cdhash(atPath: layout.helperPath), hash == cdhash(atPath: bundled) {
             // Code hash, not bytes: re-signing the same code changes the bytes but not the hash.
             // When this build cannot say what it would install, the broker alone is compared.
-            installation = FileManager.default.fileExists(atPath: layout.socketPath) ? .current : .stale(.notLoaded)
+            installation = isRegistered(layout.service) ? .current : .stale(.notLoaded)
         } else {
             installation = .stale(.otherBuild)
         }
@@ -230,16 +234,13 @@ extension CaptureBroker {
                 <string>\(escapeXML(requirement))</string>
                 <string>--uid</string>
                 <string>\(uid)</string>
+                <string>--service</string>
+                <string>\(layout.service.name)</string>
             </array>
-            <key>Sockets</key>
+            <key>MachServices</key>
             <dict>
-                <key>Listener</key>
-                <dict>
-                    <key>SockPathName</key>
-                    <string>\(layout.socketPath)</string>
-                    <key>SockPathMode</key>
-                    <integer>438</integer>
-                </dict>
+                <key>\(layout.service.name)</key>
+                <true/>
             </dict>
         </dict>
         </plist>
@@ -308,6 +309,7 @@ extension CaptureBroker {
         replacing=1
         /bin/mv -f "$new" "$helper"
         /bin/mv -f "$stage/plist" "$plist"
+        /bin/rm -f \(shell(layout.legacySocketPath))
         "$launchctl" bootstrap system "$plist"
         """
     }
@@ -325,7 +327,7 @@ extension CaptureBroker {
             exit 3
         fi
         /bin/rm -f \(shell(layout.plistPath))
-        /bin/rm -f \(shell(layout.helperPath)) \(shell(layout.socketPath))
+        /bin/rm -f \(shell(layout.helperPath)) \(shell(layout.legacySocketPath))
         /bin/rm -rf \(shell(layout.helperDirectory))/.\(label).*
         """
     }

@@ -37,7 +37,8 @@ final class CaptureBrokerScriptTests: XCTestCase {
             """.write(to: launchctl, atomically: true, encoding: .utf8)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launchctl.path)
         layout = CaptureBroker.Layout(helperDirectory: root.appending(path: "helpers").path, daemonsDirectory: root.appending(path: "daemons").path,
-                                      socketPath: root.appending(path: "broker.sock").path, owner: "\(getuid()):\(getgid())", launchctl: launchctl.path)
+                                      service: CaptureBroker.Service(name: BrokerAgent.uniqueLabel(), privileged: false),
+                                      legacySocketPath: root.appending(path: "broker.sock").path, owner: "\(getuid()):\(getgid())", launchctl: launchctl.path)
         (bundle, identity) = try makeBundle(named: "It's Tattle.app")
     }
 
@@ -252,6 +253,16 @@ final class CaptureBrokerScriptTests: XCTestCase {
         XCTAssertNil(contents(layout.plistPath))
     }
 
+    /// A broker from before XPC served a socket, which launchd leaves behind when it stops the job.
+    func testInstallAndRemoveDeleteTheSocketOfABrokerFromBeforeXPC() throws {
+        FileManager.default.createFile(atPath: layout.legacySocketPath, contents: nil)
+        try install()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: layout.legacySocketPath), "install")
+        FileManager.default.createFile(atPath: layout.legacySocketPath, contents: nil)
+        try remove()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: layout.legacySocketPath), "remove")
+    }
+
     // MARK: Status
 
     private func status() -> CaptureBroker.Status {
@@ -272,8 +283,8 @@ final class CaptureBrokerScriptTests: XCTestCase {
         let shown = status()
         XCTAssertEqual(shown.proposed, .success(expectedPlist), "Packet access shows what install writes")
         try install()
-        XCTAssertEqual(status().installation, .stale(.notLoaded), "no socket: launchd is not running it")
-        FileManager.default.createFile(atPath: layout.socketPath, contents: nil)
+        XCTAssertEqual(status().installation, .stale(.notLoaded), "launchd holds no job for it")
+        _ = try BrokerAgent(self, label: layout.service.name, arguments: ["/usr/bin/true"])
         XCTAssertEqual(status().installation, .current)
         XCTAssertNil(status().installed, "nothing different to show")
 

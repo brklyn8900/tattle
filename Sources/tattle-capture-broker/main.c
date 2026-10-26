@@ -1,40 +1,34 @@
-// The packet-access broker (ADR-0003): a root launch daemon that, on request over a local
-// socket, opens one BPF device read-only, binds it to the requested interface, and hands
-// the descriptor to the caller. It answers only a caller whose code satisfies the
-// requirement given on its command line, runs as the user who installed it, and that no
-// other process of its user can steer, identified by the socket peer's audit token.
-// It parses nothing and keeps nothing between requests.
+// The packet-access broker (ADR-0003): a root launch daemon that, on request over XPC, opens one
+// BPF device read-only, binds it to the requested interface, and hands the descriptor back in
+// the reply to that request. It answers only a sender that runs as the user who installed it,
+// whose code satisfies the requirement given on its command line, and that no other process of
+// its user can steer, judged from the request's own audit token. It parses nothing and keeps
+// nothing between requests.
 //
-//   tattle-capture-broker --requirement <code requirement> --uid <uid>
-//       Serves the launchd socket named "Listener" and exits after a minute idle;
-//       launchd starts it again on the next connection.
-//   tattle-capture-broker --requirement <code requirement> --uid <uid> --socket <path> [--once]
-//       Serves a socket it binds itself, for tests. --once answers one request and exits.
+//   tattle-capture-broker --requirement <code requirement> --uid <uid> --service <name>
+//       Serves the Mach service launchd holds under <name> and exits after a minute idle;
+//       launchd starts it again on the next message. Tests run it the same way, as an agent in
+//       the user's own launchd domain.
 //
-// Protocol: the client sends the interface name and a newline. The broker replies with
-// one status byte, then, for status 0, the descriptor as ancillary data; for status 3,
-// four bytes of errno in host order.
+// Protocol: a dictionary whose "interface" is a string. The reply's "status" is 0 to 3; for 0
+// it carries the descriptor under "descriptor", for 3 the errno under "errno".
 
 #include "code_policy.h"
 
 #include <CoreFoundation/CoreFoundation.h>
-#include <bsm/libbsm.h>
 #include <Security/Security.h>
+#include <dispatch/dispatch.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <launch.h>
 #include <net/bpf.h>
 #include <net/if.h>
-#include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <xpc/xpc.h>
 
 enum {
     STATUS_OK = 0,
@@ -44,32 +38,23 @@ enum {
 };
 
 static const int idle_seconds = 60;
-static const int request_timeout_ms = 2000;
 
-// Whether the process at the other end of `fd` runs as `uid`, satisfies `requirement`, and
-// cannot be steered by another process of its user (code_policy.h).
-static bool peer_is_allowed(int fd, uid_t uid, SecRequirementRef requirement) {
-    audit_token_t token;
-    socklen_t length = sizeof token;
-    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) != 0 || length != sizeof token) {
-        syslog(LOG_WARNING, "no audit token for peer: %s", strerror(errno));
+// Whether `request`'s sender runs as `uid`, satisfies `requirement`, and cannot be steered by
+// another process of its user (code_policy.h). The code is the request's own sender: Security
+// resolves the message's audit token, whose pid version changes at exec, so a request sent before
+// an exec does not resolve to the program exec'd. The uid is the connection's, from when it was
+// made; only code that passes the code check can receive a descriptor, and that code sends only
+// on connections it opened itself.
+static bool sender_is_allowed(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
+    uid_t euid = xpc_connection_get_euid(peer);
+    if (euid != uid) {
+        syslog(LOG_NOTICE, "refused a caller running as user %u", euid);
         return false;
     }
-    if (audit_token_to_euid(token) != uid) {
-        syslog(LOG_NOTICE, "refused a caller running as user %u", audit_token_to_euid(token));
-        return false;
-    }
-    CFDataRef token_data = CFDataCreate(NULL, (const UInt8 *)&token, sizeof token);
-    const void *keys[] = { kSecGuestAttributeAudit };
-    const void *values[] = { token_data };
-    CFDictionaryRef attributes = CFDictionaryCreate(NULL, keys, values, 1,
-                                                    &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     SecCodeRef code = NULL;
-    OSStatus status = SecCodeCopyGuestWithAttributes(NULL, attributes, kSecCSDefaultFlags, &code);
-    CFRelease(attributes);
-    CFRelease(token_data);
+    OSStatus status = SecCodeCreateWithXPCMessage(request, kSecCSDefaultFlags, &code);
     if (status != errSecSuccess) {
-        syslog(LOG_WARNING, "cannot identify peer: %d", (int)status);
+        syslog(LOG_NOTICE, "refused a caller that cannot be identified: %d", (int)status);
         return false;
     }
     status = SecCodeCheckValidity(code, kSecCSDefaultFlags, requirement);
@@ -80,28 +65,22 @@ static bool peer_is_allowed(int fd, uid_t uid, SecRequirementRef requirement) {
         return false;
     }
     if (status != errSecSuccess) {
-        syslog(LOG_NOTICE, "refused a caller that does not satisfy the requirement");
+        syslog(LOG_NOTICE, "refused a caller that does not satisfy the requirement: %d", (int)status);
         return false;
     }
     return true;
 }
 
-// Reads the interface name: up to IFNAMSIZ-1 letters and digits, then a newline.
-static bool read_interface(int fd, char *name, size_t size) {
-    size_t length = 0;
-    while (true) {
-        struct pollfd pfd = { .fd = fd, .events = POLLIN };
-        if (poll(&pfd, 1, request_timeout_ms) <= 0) return false;
-        char c;
-        ssize_t n = read(fd, &c, 1);
-        if (n != 1) return false;
-        if (c == '\n') break;
-        bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-        if (!ok || length + 1 >= size) return false;
-        name[length++] = c;
+// 1 to IFNAMSIZ-1 letters and digits.
+static bool is_interface_name(const char *name) {
+    if (name == NULL) return false;
+    size_t length = strnlen(name, IFNAMSIZ);
+    if (length == 0 || length >= IFNAMSIZ) return false;
+    for (size_t i = 0; i < length; i++) {
+        char c = name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
     }
-    name[length] = 0;
-    return length > 0;
+    return true;
 }
 
 static int open_bpf(const char *ifname) {
@@ -129,75 +108,39 @@ static int open_bpf(const char *ifname) {
     return fd;
 }
 
-static void reply(int fd, unsigned char status, int bpf, int err) {
-    struct iovec iov = { .iov_base = &status, .iov_len = 1 };
-    struct msghdr msg;
-    memset(&msg, 0, sizeof msg);
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    char control[CMSG_SPACE(sizeof(int))];
-    if (status == STATUS_OK) {
-        memset(control, 0, sizeof control);
-        msg.msg_control = control;
-        msg.msg_controllen = sizeof control;
-        struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-        cmsg->cmsg_level = SOL_SOCKET;
-        cmsg->cmsg_type = SCM_RIGHTS;
-        cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-        memcpy(CMSG_DATA(cmsg), &bpf, sizeof(int));
+// The reply goes to the reply port of `request`, which belongs to the process that sent it: the
+// one just checked. The connection is closed after its one request, so the uid it reports, fixed
+// when it was made, is the uid of the request answered; a client asking again gets a new one.
+static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
+    xpc_object_t reply = xpc_dictionary_create_reply(request);
+    if (reply == NULL) return;  // sent without asking for a reply: no one to answer
+    int64_t status = STATUS_REFUSED;
+    if (sender_is_allowed(peer, request, uid, requirement)) {
+        const char *ifname = xpc_dictionary_get_string(request, "interface");
+        if (!is_interface_name(ifname)) {
+            status = STATUS_BAD_REQUEST;
+        } else {
+            int bpf = open_bpf(ifname);
+            if (bpf < 0) {
+                syslog(LOG_NOTICE, "cannot open a capture device on %s: %s", ifname, strerror(errno));
+                status = STATUS_OPEN_FAILED;
+                xpc_dictionary_set_int64(reply, "errno", errno);
+            } else {
+                status = STATUS_OK;
+                xpc_dictionary_set_fd(reply, "descriptor", bpf);
+                close(bpf);
+                syslog(LOG_NOTICE, "handed a capture device on %s to pid %d", ifname, xpc_connection_get_pid(peer));
+            }
+        }
     }
-    if (sendmsg(fd, &msg, 0) < 0) {
-        syslog(LOG_WARNING, "reply failed: %s", strerror(errno));
-        return;
-    }
-    if (status == STATUS_OPEN_FAILED) {
-        (void)write(fd, &err, sizeof err);
-    }
-}
-
-static void serve(int fd, uid_t uid, SecRequirementRef requirement) {
-    if (!peer_is_allowed(fd, uid, requirement)) {
-        reply(fd, STATUS_REFUSED, -1, 0);
-        return;
-    }
-    char ifname[IFNAMSIZ];
-    if (!read_interface(fd, ifname, sizeof ifname)) {
-        reply(fd, STATUS_BAD_REQUEST, -1, 0);
-        return;
-    }
-    int bpf = open_bpf(ifname);
-    if (bpf < 0) {
-        syslog(LOG_NOTICE, "cannot open a capture device on %s: %s", ifname, strerror(errno));
-        reply(fd, STATUS_OPEN_FAILED, -1, errno);
-        return;
-    }
-    reply(fd, STATUS_OK, bpf, 0);
-    close(bpf);
-}
-
-// Binds under a temporary name and renames once listening, so the socket at `path`
-// never exists before it accepts connections.
-static int listen_on(const char *path) {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return -1;
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof addr);
-    addr.sun_family = AF_UNIX;
-    if (strlen(path) + 4 >= sizeof addr.sun_path) { close(fd); errno = ENAMETOOLONG; return -1; }
-    snprintf(addr.sun_path, sizeof addr.sun_path, "%s.tmp", path);
-    unlink(addr.sun_path);
-    if (bind(fd, (struct sockaddr *)&addr, sizeof addr) < 0 || listen(fd, 8) < 0 || rename(addr.sun_path, path) < 0) {
-        int saved = errno;
-        unlink(addr.sun_path);
-        close(fd);
-        errno = saved;
-        return -1;
-    }
-    return fd;
+    xpc_dictionary_set_int64(reply, "status", status);
+    xpc_connection_send_message(peer, reply);
+    xpc_release(reply);
+    xpc_connection_cancel(peer);
 }
 
 static void usage(void) {
-    fprintf(stderr, "usage: tattle-capture-broker --requirement <code requirement> --uid <uid> [--socket <path>] [--once]\n");
+    fprintf(stderr, "usage: tattle-capture-broker --requirement <code requirement> --uid <uid> --service <name>\n");
     exit(2);
 }
 
@@ -216,24 +159,20 @@ static bool parse_uid(const char *text, uid_t *uid) {
 
 int main(int argc, char **argv) {
     const char *requirement_text = NULL;
-    const char *socket_path = NULL;
-    bool once = false;
+    const char *service = NULL;
     uid_t uid = 0;
     bool has_uid = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--requirement") == 0 && i + 1 < argc) requirement_text = argv[++i];
-        else if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) socket_path = argv[++i];
         else if (strcmp(argv[i], "--uid") == 0 && i + 1 < argc) has_uid = parse_uid(argv[++i], &uid);
-        else if (strcmp(argv[i], "--once") == 0) once = true;
+        else if (strcmp(argv[i], "--service") == 0 && i + 1 < argc) service = argv[++i];
         else usage();
     }
     // Required: a plist from before the uid existed must not start a broker for every account.
-    if (requirement_text == NULL || !has_uid) usage();
+    if (requirement_text == NULL || service == NULL || !has_uid) usage();
 
-    // A peer that hangs up before the reply must cost one failed send, not the daemon: the
-    // socket is world-writable, and launchd's respawn would meet the next dead peer the same way.
-    signal(SIGPIPE, SIG_IGN);
-    openlog("tattle-capture-broker", LOG_PID, LOG_DAEMON);
+    // LOG_PERROR: a test's agent reads the same lines from stderr; a daemon's stderr goes nowhere.
+    openlog("tattle-capture-broker", LOG_PID | LOG_PERROR, LOG_DAEMON);
     CFStringRef requirement_string = CFStringCreateWithCString(NULL, requirement_text, kCFStringEncodingUTF8);
     SecRequirementRef requirement = NULL;
     if (requirement_string == NULL
@@ -242,42 +181,27 @@ int main(int argc, char **argv) {
         return 2;
     }
 
-    int listener = -1;
-    if (socket_path != NULL) {
-        listener = listen_on(socket_path);
-        if (listener < 0) {
-            fprintf(stderr, "tattle-capture-broker: cannot listen on %s: %s\n", socket_path, strerror(errno));
-            return 1;
-        }
-    } else {
-        int *fds = NULL;
-        size_t count = 0;
-        if (launch_activate_socket("Listener", &fds, &count) != 0 || count < 1) {
-            syslog(LOG_ERR, "no launchd socket named Listener");
-            return 1;
-        }
-        listener = fds[0];
-        free(fds);
-    }
+    // One serial queue for the listener, every peer and the idle timer, so the timer never fires
+    // while a request is being served. A request that libxpc has taken off the port when the
+    // timer fires is lost with the process; the client sees the connection interrupted and asks
+    // once more, which launchd answers by starting the broker again.
+    dispatch_queue_t queue = dispatch_get_main_queue();
+    dispatch_source_t idle = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+    dispatch_source_set_event_handler(idle, ^{ exit(0); });
+    dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
+    dispatch_resume(idle);
 
-    while (true) {
-        struct pollfd pfd = { .fd = listener, .events = POLLIN };
-        int ready = poll(&pfd, 1, once ? -1 : idle_seconds * 1000);
-        if (ready == 0) break;  // idle: launchd starts us again on the next connection
-        if (ready < 0) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        int client = accept(listener, NULL, NULL);
-        if (client < 0) continue;
-        int on = 1;
-        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-        serve(client, uid, requirement);
-        close(client);
-        if (once) break;
-    }
-    if (socket_path != NULL) unlink(socket_path);
-    CFRelease(requirement);
-    CFRelease(requirement_string);
-    return 0;
+    xpc_connection_t listener = xpc_connection_create_mach_service(service, queue, XPC_CONNECTION_MACH_SERVICE_LISTENER);
+    xpc_connection_set_event_handler(listener, ^(xpc_object_t peer) {
+        if (xpc_get_type(peer) != XPC_TYPE_CONNECTION) return;
+        xpc_connection_set_target_queue(peer, queue);
+        xpc_connection_set_event_handler(peer, ^(xpc_object_t message) {
+            if (xpc_get_type(message) != XPC_TYPE_DICTIONARY) return;
+            dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
+            serve(peer, message, uid, requirement);
+        });
+        xpc_connection_activate(peer);
+    });
+    xpc_connection_activate(listener);
+    dispatch_main();
 }

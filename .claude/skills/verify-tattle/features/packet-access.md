@@ -67,6 +67,11 @@ Preconditions:
 - After `pa-startup-remove` the broker's row under "Allowed in the background" stays until
   the Startup tab's `Refresh`: macOS rewrites its background-items file about a minute
   after the removal, later than the tab's own refresh (backlog).
+- The proofs below are of the socket broker, before the move to XPC (ADR-0003). The XPC
+  broker is proven by the test suite as a launchd agent in the user's domain only; none of
+  the steps above has run against it as the installed daemon yet. The broker probe now
+  takes a Mach service name and looks it up in the user's domain, so it cannot reach the
+  installed daemon as it stands.
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
