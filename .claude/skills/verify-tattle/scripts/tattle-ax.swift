@@ -177,15 +177,22 @@ case "wait":
     guard ok, let found else { fail("no \"\(args[2])\" in the panel after \(Int(seconds)) s") }
     print(found)
 case "scroll":
-    let action = args.count > 2 && args[2] == "up" ? "AXScrollUpByPage" : "AXScrollDownByPage"
-    var area: AXUIElement?
+    // The scroll bar's page button, as a click in the track would: SwiftUI's scroll views
+    // accept AXScrollDownByPage and do not move.
+    let page = args.count > 2 && args[2] == "up" ? "AXDecrementPage" : "AXIncrementPage"
+    var button: AXUIElement?
+    var bar: AXUIElement?
     _ = walk(requirePanel()) { e, _ in
-        if string(e, "AXRole") == "AXScrollArea" { area = e; return true }
+        if string(e, "AXRole") == "AXScrollBar" { bar = e }
+        if string(e, "AXSubrole") == page { button = e; return true }
         return false
     }
-    guard let area else { fail("no scroll area in the panel") }
-    AXUIElementPerformAction(area, action as CFString)
-    print("scrolled")
+    guard let button, let bar else { fail("no scroll bar in the panel: everything is already on screen") }
+    let before = string(bar, "AXValue")
+    AXUIElementPerformAction(button, "AXPress" as CFString)
+    usleep(300_000)
+    let after = string(bar, "AXValue")
+    print(before == after ? "at the end" : "scrolled")
 default:
     fail("unknown command \(args[1])")
 }
