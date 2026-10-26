@@ -73,10 +73,14 @@ logs to a third-party log intake.
    name exists, and it is marked as "from DNS" when shown, because an address-keyed map
    disagreed with the wire name 40% of the time here. How much it covers on a Mac without
    Private Relay is unmeasured.
-3. A server name that is a known relay ingress (`mask*.icloud.com`, `apple-relay.*`,
-   `ohttp-relay*`) is shown as "relayed", and a known Encrypted Client Hello cover name
-   (`cloudflare-ech.com`) as "name hidden". Neither is ever shown as the destination. The
-   lists live in the seed knowledge base so they can grow without a code change.
+3. A server name that is a known relay ingress (`mask*.icloud.com` and the Apple relay
+   hosts Apple lists for enterprise networks, each anchored to its operator's domain) is
+   shown as "relayed", and a known Encrypted Client Hello cover name (`cloudflare-ech.com`)
+   as "name hidden". Neither is ever shown as the destination. The lists live in the seed
+   knowledge base so they can grow without a code change; a pattern never leaves the
+   registrable domain open, since anyone can register `apple-relay.example`. A name that
+   came only from the DNS fallback is never classified this way: it stays a destination
+   marked "from DNS", whatever the knowledge base says of it.
 4. Whether a connection existed before Tattle started looking is decided from the socket
    table, which the app holds, not from the sniffer; the spike's pre-existing bucket was a
    measurement rule only.
