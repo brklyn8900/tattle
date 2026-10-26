@@ -390,4 +390,45 @@ final class CaptureBrokerTests: XCTestCase {
         }
         XCTAssertTrue(CaptureBroker.isRegistered(agent.service))
     }
+
+    /// Whoever launches Tattle chooses the task exception ports it inherits, and a trap would
+    /// hand that process Tattle's task, which the broker cannot see. A caller drops them before
+    /// it asks, whatever the answer.
+    func testACallerDropsTheExceptionPortsItInheritedBeforeItAsks() throws {
+        let hardened = try caller(.hardened)
+        let process = Process()
+        process.executableURL = hardened.url
+        process.arguments = [BrokerAgent.uniqueLabel(), "en0", "--exception-ports"]
+        let output = Pipe()
+        process.standardOutput = output
+        try withInheritedExceptionPort { try process.run() }
+        waitForExit(process)
+        let lines = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n")
+        XCTAssertEqual(lines.first, "transport \(ECONNREFUSED)", "no job serves the name")
+        XCTAssertEqual(lines.last, "exception-ports 0")
+    }
+
+    /// Runs `body` with a port of this process's own as its bad-access exception port, which a
+    /// process started inside inherits, then puts back the ports it had.
+    private func withInheritedExceptionPort(_ body: () throws -> Void) throws {
+        let task = mach_task_self_
+        var port = mach_port_t(MACH_PORT_NULL)
+        XCTAssertEqual(mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &port), KERN_SUCCESS)
+        XCTAssertEqual(mach_port_insert_right(task, port, port, mach_msg_type_name_t(MACH_MSG_TYPE_MAKE_SEND)), KERN_SUCCESS)
+        defer { mach_port_mod_refs(task, port, MACH_PORT_RIGHT_RECEIVE, -1) }
+        let capacity = Int(EXC_TYPES_COUNT)
+        var masks = [exception_mask_t](repeating: 0, count: capacity)
+        var ports = [mach_port_t](repeating: mach_port_t(MACH_PORT_NULL), count: capacity)
+        var behaviors = [exception_behavior_t](repeating: 0, count: capacity)
+        var flavors = [thread_state_flavor_t](repeating: 0, count: capacity)
+        var count = mach_msg_type_number_t(capacity)
+        XCTAssertEqual(task_swap_exception_ports(task, exception_mask_t(1 << EXC_BAD_ACCESS), port, EXCEPTION_DEFAULT, THREAD_STATE_NONE,
+                                                 &masks, &count, &ports, &behaviors, &flavors), KERN_SUCCESS)
+        defer {
+            for i in 0..<Int(count) {
+                task_set_exception_ports(task, masks[i], ports[i], behaviors[i], flavors[i])
+            }
+        }
+        try body()
+    }
 }

@@ -139,6 +139,14 @@ static int broker_request_once(const char *service, int privileged, const char *
 }
 
 int tattle_broker_request(const char *service, int privileged, const char *ifname, int *status, int *err) {
+    // Whoever launched this process chose the task exception ports it inherited, and a trap
+    // would hand them its task, and with it the descriptor. The broker cannot see them
+    // (ADR-0003), so they go before any request.
+    if (task_set_exception_ports(mach_task_self(), EXC_MASK_ALL, MACH_PORT_NULL, EXCEPTION_DEFAULT, THREAD_STATE_NONE) != KERN_SUCCESS) {
+        *status = -1;
+        *err = EPERM;
+        return -1;
+    }
     // One deadline for both attempts, so a retry never doubles the wait a caller plans for.
     dispatch_time_t deadline = dispatch_time(DISPATCH_TIME_NOW, (int64_t)TATTLE_BROKER_TIMEOUT_MS * NSEC_PER_MSEC);
     int interrupted = 0;
