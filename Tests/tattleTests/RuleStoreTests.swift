@@ -39,6 +39,14 @@ final class RuleStoreTests: XCTestCase {
         XCTAssertNil(try store.lookup(kind: .process, key: "/usr/bin/foo"), "process keys stay case-sensitive")
     }
 
+    func testHostNormalizationLowercasesAsciiOnly() throws {
+        // U+212A KELVIN SIGN lowercases to ASCII "k" under Unicode rules; a different
+        // host must not fold onto slack.com.
+        XCTAssertEqual(Rule.normalize("slac\u{212A}.COM..", for: .host), "slac\u{212A}.com")
+        XCTAssertNotEqual(Rule.normalize("slac\u{212A}.com", for: .host), "slack.com")
+        XCTAssertEqual(Rule.normalize("Slack.COM.", for: .host), "slack.com")
+    }
+
     func testSourcePrecedence() throws {
         for source in Rule.Source.allCases {
             try store.save(rule("a.example", source: source, purpose: source.rawValue))

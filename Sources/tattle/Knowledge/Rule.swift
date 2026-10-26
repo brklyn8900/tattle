@@ -72,11 +72,15 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
             && now.timeIntervalSince(created) > Self.unconfirmedLLMLifetime
     }
 
-    /// Hosts compare case-insensitively and without a trailing dot; everything else is
-    /// taken as-is (process paths and launch item labels are case-sensitive).
+    /// Hosts compare case-insensitively (ASCII only: Unicode folding would map the Kelvin
+    /// sign onto "k" and let a look-alike name hit a rule for another host) and without a
+    /// trailing dot; everything else is taken as-is (process paths and launch item labels
+    /// are case-sensitive).
     static func normalize(_ key: String, for kind: Kind) -> String {
         guard kind == .host else { return key }
-        var host = key.lowercased()
+        var host = String(String.UnicodeScalarView(key.unicodeScalars.map { scalar in
+            (0x41...0x5A).contains(scalar.value) ? Unicode.Scalar(scalar.value + 0x20)! : scalar
+        }))
         while host.hasSuffix(".") { host.removeLast() }
         return host
     }
