@@ -40,19 +40,27 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
 ## Decision
 
 1. `/dev/bpf*` stays root-only. Build order step 5c is a descriptor broker, not a
-   ChmodBPF-style daemon: a small root launch daemon that, on request over a local
-   socket, opens one BPF device read-only, binds it to the requested interface, passes
-   the descriptor to the caller with `SCM_RIGHTS`, and keeps nothing. It is written in
-   C, does no parsing, and holds no state between requests.
-2. The broker answers a caller only when three things hold, each judged from the socket
-   peer's audit token, never from a pid, and checked before it reads a byte of the
-   request. The caller runs as the user who installed the broker, whose uid is recorded in
-   the plist. Its code satisfies the requirement recorded at install time: the app's team
-   and its identifier or the dev copy's (the same identifier with `.dev` appended, which
-   `make run` builds) when it is signed with an Apple identity, its code hash when it is
-   ad-hoc signed; the running code must still match its file. And no other process of
-   that user can steer it: the kernel reports it valid, under the hardened runtime and not
-   debugged, and it carries no get-task-allow and no entitlement that re-enables dyld
+   ChmodBPF-style daemon: a small root launch daemon that, on request over XPC, opens one
+   BPF device read-only, binds it to the requested interface, returns the descriptor in
+   the reply to that request, and keeps nothing. launchd holds its Mach service in the
+   system domain, where only root can register a name, starts it on the first request,
+   and starts it again after it exits a minute idle. It is written in C, does no parsing,
+   and holds no state between requests.
+2. The broker answers a request only when three things hold of the process that sent it,
+   never judged from a pid, and checked before it reads anything in the request. Its code
+   is judged from that request's own audit token (`SecCodeCreateWithXPCMessage`, macOS
+   11), which names the sending process as it was when it sent: after an exec it names no
+   code at all. Its uid is the connection's (`xpc_connection_get_euid`), fixed when the
+   connection is made; the broker answers one request per connection and then closes it,
+   so that is the uid of the request it answers. The reply, and with it the descriptor,
+   goes to that request's reply port, which belongs to its sender; a forked child inherits
+   no XPC connection. The caller runs as the user who installed the broker, whose uid is
+   recorded in the plist. Its code satisfies the requirement recorded at install time: the app's
+   team and its identifier or the dev copy's (the same identifier with `.dev` appended,
+   which `make run` builds) when it is signed with an Apple identity, its code hash when
+   it is ad-hoc signed; the running code must still match its file. And no other process
+   of that user can steer it: the kernel reports it valid, under the hardened runtime and
+   not debugged, and it carries no get-task-allow and no entitlement that re-enables dyld
    environment variables or unsigned libraries. Every build of Tattle and of the broker,
    ad hoc included, is signed with the hardened runtime. An ad-hoc build changes hash on
    every rebuild and must reinstall the broker; the app says when the installed broker is
@@ -68,8 +76,10 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
    against the code the kernel loaded rather than the file on disk. Root reads nothing a
    process of the user can write without verifying it first: it copies the app bundle
    into a directory only root can enter, refuses a copy holding links or special files,
-   checks the copy against that code hash with `codesign --deep` (the hash seals the
-   bundled broker), and installs the broker from the copy. It stops the old broker and
+   checks the copy against that code hash with `codesign --deep`, checks the copy's broker
+   against the code hash the copy's sealed `CodeResources` records for it (`--deep` checks
+   nested code only against the requirement recorded beside it, which with a team names
+   no hash), and installs the broker from the copy. It stops the old broker and
    waits for it to exit before replacing its files, and a failed install removes what it
    put in place. The dialog's shell gets a fixed environment, not Tattle's. Tattle
    refuses to install from a build the broker would refuse.
@@ -93,13 +103,23 @@ as root.
   software that makes `/dev/bpf*` readable (Wireshark's ChmodBPF, for one), or about an app
   replaced before the user first opened it, which is the user installing someone else's
   app.
-- Install pins the exact running build in both signing modes, so swapping the bundle
-  during the dialog, for an altered build or an older signed one, installs nothing.
+- Install pins the exact running build, and through its seal the exact bundled broker, in
+  both signing modes, so swapping the bundle or the broker inside it during the dialog,
+  for an altered build or an older signed one, installs nothing.
 - Install has root parse the user's bundle (`ditto`, `codesign --verify`) before the
   verdict; the alternative was running its broker unchecked.
 - The broker must be installed again when its code or its plist changes, and for another
   account; the Packet access screen says which. A build the broker refuses, such as the
-  test runner, cannot use it, so tests call it through a signed fixture.
+  test runner, cannot use it, so tests call it through a signed fixture, and run the
+  broker as an agent in the user's own launchd domain, which takes the same XPC path
+  without root.
+- The checks need macOS 11, under the app's macOS 14 floor. The broker does not use XPC's
+  own peer requirements: a peer they refuse sees only an interrupted connection, which the
+  app could not tell from a crashed broker, and their lightweight form cannot say "no
+  get-task-allow".
+- A broker installed before the move to XPC served a socket. Tattle no longer speaks to
+  it; it reads as another build's, and Install again replaces it under the same label and
+  deletes the socket file it left, which launchd does not remove when it stops the job.
 - The sniffer code is the same as planned; it receives a descriptor instead of opening
   the file. Until the broker exists, testing uses a one-off `chmod o+r /dev/bpf*`
   reverted with `chmod o-r` afterwards; neither survives a reboot.
@@ -112,6 +132,10 @@ as root.
 
 ## Alternatives
 
+- A local socket whose peer is checked through `LOCAL_PEERTOKEN`, as first built.
+  Rejected: the token describes whatever program the connecting pid runs when the broker
+  asks, not the process that wrote the request, so the identity it checks need not be
+  the one that receives the descriptor. Re-reading it later does not help.
 - ChmodBPF-style readable devices, as proposed. Same install cost, strictly more
   exposure. Rejected once caller verification turned out to be available for free.
 - A root helper that captures and parses, handing names to the app. Puts the parsers in
