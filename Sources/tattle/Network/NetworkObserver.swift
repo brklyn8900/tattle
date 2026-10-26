@@ -119,24 +119,13 @@ final class NetworkObserver {
     // MARK: Sniffer events
 
     private func handle(_ events: [FlowEvent]) {
-        let now = Date()
-        var opened = false
-        for event in events {
-            switch event.kind {
-            case .opened:
-                opened = true
-            case .named(let text, let source):
-                let outcome = NameOutcome.named(ConnectionName(name: text, source: source, kind: kind(of: text)))
-                names.set(outcome, for: event.key.text, at: now)
-                attach(outcome, to: event.key)
-            case .unnamed(let reason):
-                Log.sniffer.debug("no name for \(event.key.text, privacy: .public): \(String(describing: reason), privacy: .public)")
-                let outcome = NameOutcome.unnamed(reason)
-                names.set(outcome, for: event.key.text, at: now)
-                attach(outcome, to: event.key)
+        for (flow, outcome) in names.apply(events, at: Date(), kind: kind(of:)) {
+            if let reason = outcome.reason {
+                Log.sniffer.debug("no name for \(flow.text, privacy: .public): \(String(describing: reason), privacy: .public)")
             }
+            attach(outcome, to: flow)
         }
-        if opened { schedulePromptPoll() }
+        if events.contains(where: { $0.kind == .opened }) { schedulePromptPoll() }
     }
 
     private func kind(of name: String) -> ConnectionName.Kind {

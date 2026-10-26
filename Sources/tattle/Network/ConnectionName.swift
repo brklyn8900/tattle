@@ -61,6 +61,28 @@ struct PendingNames: Equatable, Sendable {
 
     func outcome(for flowKey: String) -> NameOutcome? { names[flowKey]?.outcome }
 
+    /// Takes in the sniffer's events and returns the outcomes among them, in order, for the
+    /// caller to put on rows and history. `kind` says what a name is. An opened flow drops
+    /// what its key held: that was an earlier connection on a reused local port.
+    mutating func apply(_ events: [FlowEvent], at date: Date, kind: (String) -> ConnectionName.Kind) -> [(flow: FlowKey, outcome: NameOutcome)] {
+        var outcomes: [(flow: FlowKey, outcome: NameOutcome)] = []
+        for event in events {
+            let outcome: NameOutcome
+            switch event.kind {
+            case .opened:
+                names[event.key.text] = nil
+                continue
+            case .named(let text, let source):
+                outcome = .named(ConnectionName(name: text, source: source, kind: kind(text)))
+            case .unnamed(let reason):
+                outcome = .unnamed(reason)
+            }
+            set(outcome, for: event.key.text, at: date)
+            outcomes.append((event.key, outcome))
+        }
+        return outcomes
+    }
+
     /// Forgets names older than `keepFor`, except those of flows still open.
     mutating func prune(now: Date, keeping open: Set<String>) {
         names = names.filter { open.contains($0.key) || now.timeIntervalSince($0.value.at) < Self.keepFor }

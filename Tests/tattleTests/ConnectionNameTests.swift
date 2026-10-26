@@ -87,6 +87,22 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(table.outcome(for: "k")?.name?.name, "later.apple.com", "the latest outcome wins")
     }
 
+    /// Local ports are reused: a connection that opens on the four-tuple of one that closed a
+    /// minute ago is a different connection and must not show the old one's name.
+    func testAnOpenedFlowStartsWithoutThePreviousConnectionsOutcome() {
+        var table = PendingNames()
+        let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        let destination: (String) -> ConnectionName.Kind = { _ in .destination }
+        let attached = table.apply([FlowEvent(key: key, kind: .named("old.example.com", .sni))], at: t0, kind: destination)
+        XCTAssertEqual(attached.map(\.outcome.name?.name), ["old.example.com"])
+
+        XCTAssertTrue(table.apply([FlowEvent(key: key, kind: .opened)], at: t0 + 60, kind: destination).isEmpty)
+        XCTAssertNil(table.outcome(for: key.text), "the new connection waits for its own outcome")
+
+        _ = table.apply([FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("new.example.com", .quic))], at: t0 + 120, kind: destination)
+        XCTAssertEqual(table.outcome(for: key.text)?.name?.name, "new.example.com", "an outcome in the same batch as the open is kept")
+    }
+
     func testUnnamedReasonOnTheRowAndInHistoryCodes() {
         let owner = ConnectionOwner(processName: "RCMservice")
         let silent = LiveConnection(connection: connection("40.82.255.130", port: 80), owner: owner, isNew: false, outcome: .unnamed(.timeout))
