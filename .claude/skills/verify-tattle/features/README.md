@@ -42,7 +42,7 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Network names and unnamed reasons](./network-names.md): who each connection goes to, or
   why Tattle could not tell. Proven 2026-10-25.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
-  sniffer packets; the password step is the user's.
+  sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
   Proven 2026-10-25.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and

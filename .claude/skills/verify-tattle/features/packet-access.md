@@ -62,4 +62,7 @@ Preconditions:
 - The dev copy is signed with the team identity, so a rebuild keeps the broker's
   acceptance; an ad-hoc build is recognised by code hash and shows `install again` after
   every rebuild.
-- Not yet proven with this skill.
+- `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
+  and reinstalled the broker from the dev copy with the user's password, with every check above
+  (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
+  Cancel, `Install again`, `Install for this account` and `pa-startup-remove` are not.
