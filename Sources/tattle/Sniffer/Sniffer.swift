@@ -13,9 +13,19 @@ final class Sniffer: @unchecked Sendable {
 
     /// How the capture is obtained for an interface: the device directly for now, the
     /// broker's descriptor later.
-    typealias Opener = @Sendable (String) throws -> PacketCapture
+    typealias Opener = @Sendable (String) throws -> any CaptureSource
+
+    /// What the loop reads about the machine's interfaces; tests change it underneath.
+    struct Host: Sendable {
+        var primaryInterface: @Sendable () -> String? = { PacketCapture.primaryInterface() }
+        var hardwareAddress: @Sendable (String) -> [UInt8]? = { PacketCapture.hardwareAddress(of: $0) }
+        /// Every address, or one interface's.
+        var addresses: @Sendable (String?) -> Set<IPAddress> = { localAddresses(of: $0) }
+        var interfaceCheckEvery: TimeInterval = 5
+    }
 
     private let open: Opener
+    private let host: Host
     private let onEvents: @Sendable ([FlowEvent]) -> Void
     private let onStatus: @Sendable (Status) -> Void
     /// The current run's stop flag and the signal that it has ended. Each run has its own,
@@ -23,7 +33,6 @@ final class Sniffer: @unchecked Sendable {
     private var current: (stopping: OSAllocatedUnfairLock<Bool>, ended: DispatchSemaphore)?
 
     private static let retryAfter: TimeInterval = 30
-    private static let interfaceCheckEvery: TimeInterval = 5
     private static let addressRefreshEvery: TimeInterval = 60
     /// How often a packet from an unknown address may trigger a refresh.
     private static let staleRefreshEvery: TimeInterval = 1
@@ -33,9 +42,11 @@ final class Sniffer: @unchecked Sendable {
     private static let stopWait = 2.0
 
     init(open: @escaping Opener = { try PacketCapture.obtain(interface: $0, timeout: Sniffer.readTimeout) },
+         host: Host = Host(),
          onEvents: @escaping @Sendable ([FlowEvent]) -> Void,
          onStatus: @escaping @Sendable (Status) -> Void) {
         self.open = open
+        self.host = host
         self.onEvents = onEvents
         self.onStatus = onStatus
     }
@@ -68,12 +79,12 @@ final class Sniffer: @unchecked Sendable {
     private func run(shouldStop: () -> Bool) {
         var lastFailure: CaptureError?
         while !shouldStop() {
-            guard let interface = PacketCapture.primaryInterface() else {
+            guard let interface = host.primaryInterface() else {
                 report(.unavailable(.noInterface), previous: &lastFailure)
                 wait(Self.retryAfter, shouldStop: shouldStop)
                 continue
             }
-            let capture: PacketCapture
+            let capture: any CaptureSource
             do {
                 capture = try open(interface)
             } catch let error as CaptureError {
@@ -86,12 +97,13 @@ final class Sniffer: @unchecked Sendable {
                 continue
             }
             lastFailure = nil
-            installFilter(on: capture, interface: interface)
+            let direction = direction(for: capture, interface: interface)
+            installFilter(on: capture, direction: direction, interface: interface)
             onStatus(.capturing(interface: interface))
             // Notice, not info: the unified log keeps notices, so a later comparison can
             // tell when capture was on.
             Log.sniffer.notice("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(CaptureBroker.isReachable ? "through the broker" : "from the device", privacy: .public)")
-            captureLoop(capture, interface: interface, shouldStop: shouldStop)
+            captureLoop(capture, interface: interface, direction: direction, shouldStop: shouldStop)
         }
         onStatus(.stopped)
     }
@@ -106,15 +118,17 @@ final class Sniffer: @unchecked Sendable {
         previous = error
     }
 
-    private func installFilter(on capture: PacketCapture, interface: String) {
-        let direction: CaptureFilter.Direction
-        if capture.dataLinkType == PacketCapture.linkEthernet, let mac = PacketCapture.hardwareAddress(of: interface) {
-            direction = .hardwareAddress(mac)
-        } else {
-            // Only this interface's: every address costs instructions, and a packet
-            // captured here leaves from one of them.
-            direction = .sourceAddresses(localAddresses(of: interface).map(\.bytes))
+    /// How the kernel filter tells this interface's outbound packets, as the interface is now.
+    private func direction(for capture: any CaptureSource, interface: String) -> CaptureFilter.Direction {
+        if capture.dataLinkType == PacketCapture.linkEthernet, let mac = host.hardwareAddress(interface) {
+            return .hardwareAddress(mac)
         }
+        // Only this interface's: every address costs instructions, and a packet captured
+        // here leaves from one of them. Sorted, so an unchanged set compares equal.
+        return .sourceAddresses(host.addresses(interface).map(\.bytes).sorted { $0.lexicographicallyPrecedes($1) })
+    }
+
+    private func installFilter(on capture: any CaptureSource, direction: CaptureFilter.Direction, interface: String) {
         guard let filter = CaptureFilter.program(linkType: capture.dataLinkType, direction: direction) else {
             Log.sniffer.notice("no kernel filter for link type \(capture.dataLinkType) on \(interface, privacy: .public); copying every packet")
             return
@@ -127,8 +141,9 @@ final class Sniffer: @unchecked Sendable {
     }
 
     /// Reads until the interface changes, the device fails, or stop is called.
-    private func captureLoop(_ capture: PacketCapture, interface: String, shouldStop: () -> Bool) {
-        var namer = FlowNamer(localAddresses: localAddresses())
+    private func captureLoop(_ capture: any CaptureSource, interface: String, direction installed: CaptureFilter.Direction, shouldStop: () -> Bool) {
+        var installed = installed
+        var namer = FlowNamer(localAddresses: host.addresses(nil))
         var lastInterfaceCheck = Date()
         var lastAddressRefresh = Date()
         while !shouldStop() {
@@ -140,7 +155,7 @@ final class Sniffer: @unchecked Sendable {
                     // refresh now rather than at the next timer, or every flow until then
                     // goes unnamed.
                     if namer.endpointsUnknown(packet), Date().timeIntervalSince(lastAddressRefresh) >= Self.staleRefreshEvery {
-                        namer.updateLocalAddresses(localAddresses())
+                        namer.updateLocalAddresses(host.addresses(nil))
                         lastAddressRefresh = Date()
                         Log.sniffer.debug("refreshed local addresses on an unknown packet")
                     }
@@ -154,14 +169,22 @@ final class Sniffer: @unchecked Sendable {
             events += namer.expire(now: now.timeIntervalSince1970)
             if !events.isEmpty { onEvents(events) }
             if now.timeIntervalSince(lastAddressRefresh) >= Self.addressRefreshEvery {
-                namer.updateLocalAddresses(localAddresses())
+                namer.updateLocalAddresses(host.addresses(nil))
                 lastAddressRefresh = now
             }
-            if now.timeIntervalSince(lastInterfaceCheck) >= Self.interfaceCheckEvery {
+            if now.timeIntervalSince(lastInterfaceCheck) >= host.interfaceCheckEvery {
                 lastInterfaceCheck = now
-                if let current = PacketCapture.primaryInterface(), current != interface {
+                if let current = host.primaryInterface(), current != interface {
                     Log.sniffer.info("default route moved to \(current, privacy: .public); reopening")
                     return
+                }
+                // A rotated private Wi-Fi address or a renumbered tunnel would make the
+                // filter class every outbound packet as inbound and drop it.
+                let direction = direction(for: capture, interface: interface)
+                if direction != installed {
+                    Log.sniffer.notice("\(interface, privacy: .public) changed its addresses; rebuilding the kernel filter")
+                    installFilter(on: capture, direction: direction, interface: interface)
+                    installed = direction
                 }
             }
         }

@@ -27,10 +27,18 @@ enum CaptureError: Error, Equatable {
     private static func describe(_ code: Int32) -> String { String(cString: strerror(code)) }
 }
 
+/// What the sniffer's loop uses of a capture: a PacketCapture, or a stand-in in tests.
+protocol CaptureSource: AnyObject {
+    var dataLinkType: UInt32 { get }
+    func install(_ filter: CaptureFilter) throws
+    /// One read; `handle` gets each packet's capture timestamp and bytes.
+    func readPackets(_ handle: (Double, [UInt8]) -> Void) throws
+}
+
 /// One BPF descriptor, bound to an interface and read in a loop. Takes the descriptor as
 /// input so the broker can supply it; opening the device directly is for readable
 /// devices only.
-final class PacketCapture {
+final class PacketCapture: CaptureSource {
     let fd: Int32
     let bufferLength: Int
     let dataLinkType: UInt32
