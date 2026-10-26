@@ -297,6 +297,13 @@ extension CaptureBroker {
         fi
         new="$stage/Tattle.app/\(helperInBundle)"
         /bin/test -f "$new"
+        # --deep checked the broker only against the requirement the seal records beside it, which
+        # with a team names no hash; the seal also records the broker's own code hash.
+        sealed=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).cdhash")) raw -o - "$stage/Tattle.app/Contents/_CodeSignature/CodeResources" 2>/dev/null | /usr/bin/base64 -D | /usr/bin/od -An -v -tx1 | /usr/bin/tr -d ' \\n')
+        if [ ${#sealed} -ne 40 ] || ! /usr/bin/codesign --verify --strict -R="cdhash H\\"$sealed\\"" "$new" 2>/dev/null; then
+            echo 'The broker inside Tattle is not the one this build of Tattle was sealed with. Download or build Tattle again. Nothing was installed.' >&2
+            exit 3
+        fi
         /bin/chmod 755 "$new"
         /usr/bin/printf '%s' \(shell(plist(requirement: identity.callerRequirement, uid: uid, layout: layout))) > "$stage/plist"
         /usr/bin/plutil -lint -s "$stage/plist"

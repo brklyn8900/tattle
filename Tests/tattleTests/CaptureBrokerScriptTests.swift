@@ -56,7 +56,7 @@ final class CaptureBrokerScriptTests: XCTestCase {
     /// Builds and signs, ad hoc with the hardened runtime, a bundle holding a copy of the probe as
     /// its main executable and the built broker as its helper. A quote and a space in the name
     /// exercise the script's quoting.
-    private func makeBundle(named name: String) throws -> (URL, CaptureBroker.BuildIdentity) {
+    private func makeBundle(named name: String, helperRequirement: String? = nil) throws -> (URL, CaptureBroker.BuildIdentity) {
         let fm = FileManager.default
         let app = root.appending(path: name)
         let macOS = app.appending(path: "Contents/MacOS")
@@ -65,7 +65,8 @@ final class CaptureBrokerScriptTests: XCTestCase {
         try fm.copyItem(at: products.appending(path: "tattle-capture-broker"), to: macOS.appending(path: "tattle-capture-broker"))
         let info: [String: Any] = ["CFBundleExecutable": "tattle", "CFBundleIdentifier": "io.github.eladefrati.tattle.fixture", "CFBundlePackageType": "APPL"]
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: app.appending(path: "Contents/Info.plist"))
-        try run(["/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-", macOS.appending(path: "tattle-capture-broker").path])
+        let helperOptions = helperRequirement.map { ["--identifier", "tattle-capture-broker", "-r=\($0)"] } ?? []
+        try run(["/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-"] + helperOptions + [macOS.appending(path: "tattle-capture-broker").path])
         try run(["/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-", app.path])
         return (app, try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: try cdhash(app), identifier: "io.github.eladefrati.tattle.fixture", team: nil)))
     }
@@ -251,6 +252,26 @@ final class CaptureBrokerScriptTests: XCTestCase {
         try remove()
         XCTAssertNil(contents(layout.helperPath))
         XCTAssertNil(contents(layout.plistPath))
+    }
+
+    /// With an Apple identity the bundled broker's designated requirement names the team and an
+    /// identifier, not a hash, and `codesign --deep` checks nested code only against the
+    /// requirement the seal records beside it: another broker meeting it passed. Ad hoc with such
+    /// a requirement shows the same.
+    func testRootRefusesAHelperThatOnlyMeetsTheSealedRequirement() throws {
+        (bundle, identity) = try makeBundle(named: "Team.app", helperRequirement: #"designated => identifier "tattle-capture-broker""#)
+        let impostor = try signedImpostor()
+        XCTAssertThrowsError(try install { _ in
+            try FileManager.default.removeItem(at: self.bundledHelper)
+            try FileManager.default.copyItem(at: impostor, to: self.bundledHelper)
+        })
+        assertNothingInstalled("a helper meeting the sealed requirement but not the sealed hash")
+    }
+
+    func testAHelperWhoseRequirementNamesNoHashStillInstalls() throws {
+        (bundle, identity) = try makeBundle(named: "Team.app", helperRequirement: #"designated => identifier "tattle-capture-broker""#)
+        try install()
+        XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))
     }
 
     /// A broker from before XPC served a socket, which launchd leaves behind when it stops the job.
