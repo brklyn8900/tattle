@@ -119,7 +119,7 @@ final class NetworkObserver {
     // MARK: Sniffer events
 
     private func handle(_ events: [FlowEvent]) {
-        for (flow, outcome, openedAt) in names.apply(events, at: Date(), kind: kind(of:)) {
+        for (flow, outcome, openedAt) in names.apply(events, at: Date(), kind: { kind(of: $0, source: $1) }) {
             if let reason = outcome.reason {
                 Log.sniffer.debug("no name for \(flow.text, privacy: .public): \(String(describing: reason), privacy: .public)")
             }
@@ -128,7 +128,10 @@ final class NetworkObserver {
         if events.contains(where: { $0.kind == .opened }) { schedulePromptPoll() }
     }
 
-    private func kind(of name: String) -> ConnectionName.Kind {
+    /// A name from a DNS reply is only a guess about the address and is attacker-influenced,
+    /// so it is never a relay or cover name, whatever the knowledge base says of it.
+    func kind(of name: String, source: NameSource) -> ConnectionName.Kind {
+        if source == .dns { return .destination }
         if let kind = kinds[name] { return kind }
         let kind = ConnectionName.kind(forCategory: (try? rules.lookup(kind: .host, key: name))?.category)
         kinds[name] = kind

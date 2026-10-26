@@ -14,8 +14,28 @@
     },
     {
       "kind": "host",
-      "match": "glob",
-      "pattern": "apple-relay.*",
+      "match": "exact",
+      "pattern": "apple-relay.apple.com",
+      "owner": "Apple",
+      "purpose": "Apple relay ingress (Private Relay and Oblivious HTTP). The real destination is hidden inside it.",
+      "category": "relay",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "host",
+      "match": "exact",
+      "pattern": "apple-relay.cloudflare.com",
+      "owner": "Apple",
+      "purpose": "Apple relay ingress (Private Relay and Oblivious HTTP). The real destination is hidden inside it.",
+      "category": "relay",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "host",
+      "match": "exact",
+      "pattern": "apple-relay.fastly-edge.com",
       "owner": "Apple",
       "purpose": "Apple relay ingress (Private Relay and Oblivious HTTP). The real destination is hidden inside it.",
       "category": "relay",
@@ -25,7 +45,17 @@
     {
       "kind": "host",
       "match": "glob",
-      "pattern": "ohttp-relay*",
+      "pattern": "ohttp-relay*.cloudflare.com",
+      "owner": "Apple",
+      "purpose": "Oblivious HTTP relay used by Apple services. The real destination is hidden inside it.",
+      "category": "relay",
+      "risk": "low",
+      "confidence": "high"
+    },
+    {
+      "kind": "host",
+      "match": "glob",
+      "pattern": "ohttp-relay*.fastly-edge.com",
       "owner": "Apple",
       "purpose": "Oblivious HTTP relay used by Apple services. The real destination is hidden inside it.",
       "category": "relay",

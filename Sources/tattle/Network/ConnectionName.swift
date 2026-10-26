@@ -66,9 +66,9 @@ struct PendingNames: Equatable, Sendable {
 
     /// Takes in the sniffer's events and returns the outcomes among them, in order, with when
     /// their flow opened, for the caller to put on rows and history. `kind` says what a name
-    /// is. An opened flow drops what its key held: that was an earlier connection on a
-    /// reused local port.
-    mutating func apply(_ events: [FlowEvent], at date: Date, kind: (String) -> ConnectionName.Kind) -> [(flow: FlowKey, outcome: NameOutcome, openedAt: Date)] {
+    /// from a given source is. An opened flow drops what its key held: that was an earlier
+    /// connection on a reused local port.
+    mutating func apply(_ events: [FlowEvent], at date: Date, kind: (String, NameSource) -> ConnectionName.Kind) -> [(flow: FlowKey, outcome: NameOutcome, openedAt: Date)] {
         var outcomes: [(flow: FlowKey, outcome: NameOutcome, openedAt: Date)] = []
         for event in events {
             let outcome: NameOutcome
@@ -78,7 +78,7 @@ struct PendingNames: Equatable, Sendable {
                 opened[event.key.text] = date
                 continue
             case .named(let text, let source):
-                outcome = .named(ConnectionName(name: text, source: source, kind: kind(text)))
+                outcome = .named(ConnectionName(name: text, source: source, kind: kind(text, source)))
             case .unnamed(let reason):
                 outcome = .unnamed(reason)
             }

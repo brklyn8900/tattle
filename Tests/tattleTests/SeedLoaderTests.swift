@@ -28,6 +28,24 @@ final class SeedLoaderTests: XCTestCase {
         XCTAssertTrue(try rules.rules().allSatisfy { $0.source == .builtin }, "the other seed files are empty")
     }
 
+    /// A relay or cover rule makes a row read "relayed" or "name hidden", so a name that only
+    /// starts like an operator's host must not reach it.
+    func testRelayAndCoverRulesAreAnchoredToTheOperatorsDomains() throws {
+        _ = loader.load(from: repoSeeds)
+        for host in ["apple-relay.cloudflare.com", "apple-relay.fastly-edge.com", "ohttp-relay-a.cloudflare.com", "ohttp-relay.fastly-edge.com"] {
+            XCTAssertEqual(try rules.lookup(kind: .host, key: host)?.category, "relay", host)
+        }
+        for host in [
+            "mask.evil.example", "mask.icloud.com.evil.example", "mask.icloud.com.evil.net",
+            "apple-relay.c2.example", "apple-relay.apple.com.evil.example",
+            "apple-relay.cloudflare.com.evil.example", "apple-relay.fastly-edge.com.evil.example",
+            "ohttp-relay.evil.example", "ohttp-relay.cloudflare.com.evil.example",
+            "ohttp-relay.fastly-edge.com.evil.example", "cloudflare-ech.com.evil.example",
+        ] {
+            XCTAssertNil(try rules.lookup(kind: .host, key: host), host)
+        }
+    }
+
     func testUnchangedFileIsNotReapplied() throws {
         XCTAssertEqual(loader.load(from: repoSeeds).count, 3)
         XCTAssertEqual(loader.load(from: repoSeeds), [])

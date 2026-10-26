@@ -98,7 +98,7 @@ final class ConnectionNameTests: XCTestCase {
     func testAnOpenedFlowStartsWithoutThePreviousConnectionsOutcome() {
         var table = PendingNames()
         let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
-        let destination: (String) -> ConnectionName.Kind = { _ in .destination }
+        let destination: (String, NameSource) -> ConnectionName.Kind = { _, _ in .destination }
         let attached = table.apply([FlowEvent(key: key, kind: .named("old.example.com", .sni))], at: t0, kind: destination)
         XCTAssertEqual(attached.map(\.outcome.name?.name), ["old.example.com"])
 
@@ -109,6 +109,43 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(table.outcome(for: key.text)?.name?.name, "new.example.com", "an outcome in the same batch as the open is kept")
         let later = table.apply([FlowEvent(key: key, kind: .unnamed(.timeout))], at: t0 + 140, kind: destination)
         XCTAssertEqual(later.map(\.openedAt), [t0 + 120], "history is told when the flow opened, so older rows are left alone")
+    }
+
+    func testPendingNamesTellsTheKindClosureWhereTheNameCameFrom() {
+        var table = PendingNames()
+        let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        var seen: [NameSource] = []
+        _ = table.apply([FlowEvent(key: key, kind: .named("a.example", .dns))], at: t0) { _, source in
+            seen.append(source)
+            return .destination
+        }
+        XCTAssertEqual(seen, [.dns])
+    }
+
+    /// A DNS reply names an address, not a connection, and may be an attacker's: it can say
+    /// where a row goes only as a marked guess, never that the row is hidden (ADR-0001, 2).
+    @MainActor
+    func testADnsNameIsNeverClassifiedAsRelayOrHidden() throws {
+        let database = try AppDatabase.inMemory()
+        let rules = RuleStore(database: database)
+        try rules.save(Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin))
+        try rules.save(Rule(kind: .host, pattern: "cover.example", purpose: "p", category: "ech-cover", source: .builtin))
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: rules,
+                                       settings: try AppSettings(store: SettingsStore(database: database)))
+        XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay)
+        XCTAssertEqual(observer.kind(of: "cover.example", source: .quic), .hidden)
+        XCTAssertEqual(observer.kind(of: "relay.example", source: .dns), .destination)
+        XCTAssertEqual(observer.kind(of: "cover.example", source: .dns), .destination)
+        XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay, "a DNS lookup does not poison the memo")
+    }
+
+    func testEveryDnsNameIsMarkedWhateverItsKind() {
+        let owner = ConnectionOwner(processName: "Safari")
+        for kind in [ConnectionName.Kind.destination, .relay, .hidden] {
+            let row = LiveConnection(connection: connection("17.253.144.10"), owner: owner, isNew: false,
+                                     outcome: .named(ConnectionName(name: "x.example", source: .dns, kind: kind)))
+            XCTAssertTrue(row.isFromDNS, "\(kind)")
+        }
     }
 
     func testUnnamedReasonOnTheRowAndInHistoryCodes() {

@@ -72,7 +72,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
 
     /// The destination name came only from a DNS reply for the address, which may serve
     /// many names: shown marked (ADR-0001 decision 2).
-    var isFromDNS: Bool { name?.kind == .destination && name?.source == .dns }
+    var isFromDNS: Bool { name?.source == .dns }
 
     /// Knowledge-base key: the name once the sniffer supplies one, the address until then.
     /// A relay or cover name is still the right key: the rule for it says what it is.
