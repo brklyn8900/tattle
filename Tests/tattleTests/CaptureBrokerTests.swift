@@ -8,8 +8,11 @@ nonisolated(unsafe) private var brokenPipes = 0
 final class CaptureBrokerTests: XCTestCase {
     func testRequirementPrefersTeamOverHash() throws {
         let hash = Data(repeating: 0xab, count: 20)
-        XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345")?.callerRequirement,
-                       "anchor apple generic and identifier \"io.github.eladefrati.tattle\" and certificate leaf[subject.OU] = \"ABCDE12345\"")
+        let both = "anchor apple generic and (identifier \"io.github.eladefrati.tattle\" or identifier \"io.github.eladefrati.tattle.dev\")"
+            + " and certificate leaf[subject.OU] = \"ABCDE12345\""
+        XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345")?.callerRequirement, both)
+        XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle.dev", team: "ABCDE12345")?.callerRequirement, both,
+                       "the dev copy installs what the release app would, so neither reads the other's install as stale")
         XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "x", team: nil)?.callerRequirement, "cdhash H\"\(String(repeating: "ab", count: 20))\"")
         XCTAssertThrowsError(try CaptureBroker.BuildIdentity.running(), "the test runner has get-task-allow") {
             XCTAssertEqual($0 as? CaptureBroker.InstallError, .notHardened)
@@ -28,8 +31,9 @@ final class CaptureBrokerTests: XCTestCase {
     func testRequirementsCompileAndCannotBeWidened() {
         let hash = Data(repeating: 0xab, count: 20)
         let team = CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: "ABCDE12345")
+        let dev = CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle.dev", team: "ABCDE12345")
         let adHoc = CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle", team: nil)
-        for identity in [team, adHoc] {
+        for identity in [team, dev, adHoc] {
             XCTAssertTrue(compiles(identity?.callerRequirement))
             XCTAssertTrue(compiles(identity?.buildRequirement))
         }

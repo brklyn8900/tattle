@@ -46,7 +46,7 @@ as well. Without it the Network tab shows addresses
 instead of names. Design and reasoning in [ADR-0003](docs/adr/0003-bpf-descriptor-broker.md).
 
 With an Apple Development identity the broker recognises Tattle by team and bundle
-identifier, which survive rebuilds. An ad-hoc build is recognised by its code hash, which
+identifier, the release app's or the dev copy's, which survive rebuilds. An ad-hoc build is recognised by its code hash, which
 changes with every rebuild; Packet access then says the installed broker is from another
 build and installs it again in one dialog.
 

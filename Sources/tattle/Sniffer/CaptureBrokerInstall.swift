@@ -59,13 +59,21 @@ extension CaptureBroker {
         }
 
         /// What the broker checks callers against (ADR-0003). With a team: the team and the
-        /// identifier, which survive rebuilds and certificate renewal. Ad hoc: this build.
+        /// identifier, which survive rebuilds and certificate renewal, admitting the release
+        /// app and its dev copy alike. Both builds produce the same text, so neither reads the
+        /// other's install as stale. Ad hoc: this build.
         var callerRequirement: String {
             if let team {
-                return "anchor apple generic and identifier \"\(identifier)\" and certificate leaf[subject.OU] = \"\(team)\""
+                let release = identifier.hasSuffix(Self.devSuffix) && identifier.count > Self.devSuffix.count
+                    ? String(identifier.dropLast(Self.devSuffix.count)) : identifier
+                return "anchor apple generic and (identifier \"\(release)\" or identifier \"\(release)\(Self.devSuffix)\")"
+                    + " and certificate leaf[subject.OU] = \"\(team)\""
             }
             return buildRequirement
         }
+
+        /// What `make run` appends to the bundle identifier for the dev copy.
+        static let devSuffix = ".dev"
 
         /// This exact build, in either signing mode.
         var buildRequirement: String { "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\"" }
