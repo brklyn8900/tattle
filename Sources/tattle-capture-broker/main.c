@@ -121,9 +121,10 @@ static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecReq
         } else {
             int bpf = open_bpf(ifname);
             if (bpf < 0) {
-                syslog(LOG_NOTICE, "cannot open a capture device on %s: %s", ifname, strerror(errno));
+                int error = errno;  // before syslog, which may change it
+                syslog(LOG_NOTICE, "cannot open a capture device on %s: %s", ifname, strerror(error));
                 status = STATUS_OPEN_FAILED;
-                xpc_dictionary_set_int64(reply, "errno", errno);
+                xpc_dictionary_set_int64(reply, "errno", error);
             } else {
                 status = STATUS_OK;
                 xpc_dictionary_set_fd(reply, "descriptor", bpf);
