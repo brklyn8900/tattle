@@ -47,7 +47,8 @@ let package = Package(
             name: "tattleTests",
             // The executables are dependencies so a test run always has them built.
             dependencies: ["tattle", "tattle-capture-broker", "tattle-broker-probe"],
-            path: "Tests/tattleTests"
+            path: "Tests/tattleTests",
+            resources: [.copy("Fixtures/forged-signatures")]
         ),
     ]
 )

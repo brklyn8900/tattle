@@ -20,7 +20,9 @@ struct CodeSignature: Equatable, Sendable {
         case script
         /// Signed, but the signature does not match the binary.
         case invalid(String)
-        /// Some other certificate.
+        /// Signed with a certificate Apple did not issue. Anyone can make one, with any name.
+        case notIssuedByApple
+        /// Some other certificate Apple issued.
         case other(String)
     }
 
@@ -39,6 +41,7 @@ struct CodeSignature: Equatable, Sendable {
         case .unsigned: "unsigned"
         case .script: "script, not signed"
         case .invalid: "invalid signature"
+        case .notIssuedByApple: "certificate not issued by Apple"
         }
     }
 
@@ -60,6 +63,10 @@ struct CodeSignature: Equatable, Sendable {
 
     /// Reads and validates the signature at `path`. Resources are not validated: that
     /// takes seconds on a large app and the question here is who signed it.
+    ///
+    /// A certificate's subject is whatever its maker wrote, so the kind it names counts only
+    /// when the chain proves it: Apple's own code chains to Apple (`anchor apple`), every
+    /// other kind to a certificate Apple issued (`anchor apple generic`).
     static func read(path: String) -> CodeSignature {
         var staticCode: SecStaticCode?
         let url = URL(fileURLWithPath: path) as CFURL
@@ -88,8 +95,17 @@ struct CodeSignature: Equatable, Sendable {
         if flags & SecCodeSignatureFlags.adhoc.rawValue != 0 || certificates.isEmpty {
             return CodeSignature(signer: .adHoc, identifier: identifier, teamIdentifier: team)
         }
-        let leaf = (SecCertificateCopySubjectSummary(certificates[0]) as String?) ?? ""
-        return CodeSignature(signer: classify(leaf), identifier: identifier, teamIdentifier: team)
+        let signer = classify((SecCertificateCopySubjectSummary(certificates[0]) as String?) ?? "")
+        guard satisfies(code, signer == .apple ? "anchor apple" : "anchor apple generic") else {
+            return CodeSignature(signer: .notIssuedByApple, identifier: identifier)
+        }
+        return CodeSignature(signer: signer, identifier: identifier, teamIdentifier: team)
+    }
+
+    private static func satisfies(_ code: SecStaticCode, _ requirement: String) -> Bool {
+        var compiled: SecRequirement?
+        guard SecRequirementCreateWithString(requirement as CFString, [], &compiled) == errSecSuccess, let compiled else { return false }
+        return SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), compiled) == errSecSuccess
     }
 
     /// Maps the leaf certificate's subject to a signer kind. A Developer ID subject ends in a

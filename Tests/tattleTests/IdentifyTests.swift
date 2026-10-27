@@ -46,6 +46,16 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(CodeSignature.read(path: dir.appending(path: "missing").path).signer, .unsigned)
     }
 
+    func testACertificateNotIssuedByAppleClaimsNothing() throws {
+        let fixtures = try XCTUnwrap(Bundle.module.url(forResource: "forged-signatures", withExtension: nil))
+        for name in ["forged-software-signing", "forged-developer-id"] {
+            let signature = CodeSignature.read(path: fixtures.appending(path: name).path)
+            XCTAssertEqual(signature.summary, "certificate not issued by Apple", name)
+            XCTAssertNotEqual(signature.signer, .apple, name)
+            XCTAssertNil(signature.teamIdentifier, name)
+        }
+    }
+
     func testClassify() {
         XCTAssertEqual(CodeSignature.classify("Developer ID Application: PACE Anti-Piracy, Inc. (TFZ8226T6X)"), .developerID(name: "PACE Anti-Piracy, Inc."))
         XCTAssertEqual(CodeSignature.classify("Apple Development: someone@example.com (ABCDE12345)"), .development)
