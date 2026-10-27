@@ -70,7 +70,10 @@ struct ShellProvider: ExplainProvider {
         let deadline = DispatchWorkItem { watchdog.fire { _ = killpg(pid, SIGKILL) } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: deadline)
 
-        stdin.fileHandleForWriting.write(Data(input.utf8))
+        // A command may answer without reading all of its input. The write then fails with
+        // EPIPE rather than raising SIGPIPE, which would end the app, and the answer counts.
+        _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+        try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8))
         try? stdin.fileHandleForWriting.close()
 
         // Drain stderr on its own queue so a chatty command cannot block on a full pipe.

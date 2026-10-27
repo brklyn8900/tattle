@@ -371,6 +371,13 @@ final class ShellProviderTests: XCTestCase {
         XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
     }
 
+    /// A command may answer without reading its input. Writing the rest of a prompt larger
+    /// than the pipe then failed with SIGPIPE, which killed the app.
+    func testACommandThatDoesNotReadThePromptStillAnswers() async throws {
+        let output = try await ShellProvider(command: "echo done").explain(String(repeating: "x", count: 1_000_000))
+        XCTAssertEqual(output, "done\n")
+    }
+
     func testEmptyCommandIsNotConfigured() async {
         do {
             _ = try await ShellProvider(command: "  ").explain("")
