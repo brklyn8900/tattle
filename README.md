@@ -12,7 +12,12 @@ you already have, through a command you configured. Design in the
 
 ## Status
 
-Early. Nothing to use yet.
+The four tabs (Network, Processes, Ports, Startup) and the explain path are complete as
+proposed. There are no binaries: build from source with the steps below, on macOS 14 or
+later. Ad-hoc signed builds need the first-launch allowance under Privacy & Security.
+
+Not there yet: a LAN tab, per-page browser attribution, a search bar, a "started by"
+filter on processes, and any kind of blocking (by design the last; see the proposal).
 
 ## Build
 
