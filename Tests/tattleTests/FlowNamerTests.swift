@@ -172,6 +172,34 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertLessThanOrEqual(offset, FlowNamer.bufferLimit + piece, "given up at the cap")
     }
 
+    private func sealedHello(_ sni: String, dcid: [UInt8]) -> [UInt8] {
+        let hello = SnifferParserTests.clientHello(sni: Array(sni.utf8))
+        return SnifferParserTests.sealInitial([0x06, 0x00, 0x40 | UInt8(hello.count >> 8), UInt8(hello.count & 0xff)] + hello, dcid: dcid)
+    }
+
+    /// A client that reuses a local port for a new QUIC connection sends a first Initial with a
+    /// new destination connection id: like a SYN over TCP, it starts a new flow. Later Initials
+    /// of the same connection carry the id the server chose, which the keys derived from it do
+    /// not open, so they do not.
+    func testANewInitialOnAFinishedQUICFlowStartsANewFlow() {
+        var n = namer()
+        _ = n.observe(udp(SnifferParserTests.rfcInitial), at: t0)
+        let next = sealedHello("example.org", dcid: [1, 2, 3, 4, 5, 6, 7, 8])
+        XCTAssertEqual(n.observe(udp(next), at: t0 + 30),
+                       [FlowEvent(key: udpKey, kind: .opened), FlowEvent(key: udpKey, kind: .named("example.org", .quic))], "after a named flow")
+        XCTAssertEqual(n.observe(udp(next), at: t0 + 30.1), [], "the same Initial again")
+        var serverChosen = next
+        serverChosen[6] ^= 0xff
+        XCTAssertEqual(n.observe(udp(serverChosen), at: t0 + 30.2), [], "an Initial its own id does not open")
+        XCTAssertEqual(n.flowCount, 1)
+
+        var timedOut = namer()
+        _ = timedOut.observe(udp(serverChosen), at: t0)
+        _ = timedOut.expire(now: t0 + FlowNamer.finalizeAfter)
+        XCTAssertEqual(timedOut.observe(udp(next), at: t0 + 30),
+                       [FlowEvent(key: udpKey, kind: .opened), FlowEvent(key: udpKey, kind: .named("example.org", .quic))], "after a flow given up on")
+    }
+
     func testShortHeaderDoesNotStartAFlow() {
         var n = namer()
         XCTAssertEqual(n.observe(udp([0x41, 1, 2, 3]), at: t0), [], "a connection open before capture started")

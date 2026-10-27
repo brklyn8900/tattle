@@ -127,6 +127,8 @@ struct FlowNamer: Sendable {
         var nextSeq: UInt32 = 0
         var quicAssembly = QUICAssembly()
         var quicDone = false
+        /// The destination connection id of the latest Initial that decrypted.
+        var quicDCID: [UInt8]?
 
         /// Nothing more can come of this flow; packets only refresh lastSeen.
         var finished: Bool { named || (tlsBuffer == nil && quicDone) }
@@ -217,7 +219,7 @@ struct FlowNamer: Sendable {
             guard p.dstPort != 53 else { return [] }
             let datagram = Array(p.payload)
             var events: [FlowEvent] = []
-            if var flow = flows[key] {
+            if var flow = flows[key], !(flow.finished && Self.startsNewConnection(datagram, after: flow)) {
                 flow.lastSeen = ts
                 flows[key] = flow
             } else {
@@ -273,11 +275,21 @@ struct FlowNamer: Sendable {
         }
     }
 
+    /// A client Initial that opens under its own connection id, a different one from the
+    /// flow's: a new connection on a reused port, as a SYN is over TCP. The client's later
+    /// Initials carry the id the server chose, which the keys do not derive from.
+    private static func startsNewConnection(_ datagram: [UInt8], after flow: Flow) -> Bool {
+        guard QUIC.mayBeClientInitial(datagram),
+              case .success(let initial) = QUIC.parseInitial(datagram, at: 0) else { return false }
+        return initial.dcid != flow.quicDCID
+    }
+
     private func inspectUDP(_ flow: inout Flow, datagram: [UInt8]) -> Inspection {
         var offset = 0
         while offset < datagram.count, datagram[offset] & 0x80 != 0 {
             switch QUIC.parseInitial(datagram, at: offset) {
             case .success(let initial):
+                flow.quicDCID = initial.dcid
                 flow.quicAssembly.add(initial.chunks)
                 offset = initial.nextOffset
                 if flow.quicAssembly.overLimit {

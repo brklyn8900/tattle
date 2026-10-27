@@ -20,6 +20,8 @@ enum QUIC {
     }
 
     struct Initial {
+        /// The destination connection id the keys came from.
+        let dcid: [UInt8]
         let chunks: [Chunk]
         let nextOffset: Int
     }
@@ -89,7 +91,7 @@ enum QUIC {
                 return .failure(.decryptFailed)
             }
             let chunks = try cryptoFrames(Array(plaintext))
-            return .success(Initial(chunks: chunks, nextOffset: start + pnOffset + length))
+            return .success(Initial(dcid: dcid, chunks: chunks, nextOffset: start + pnOffset + length))
         } catch {
             return .failure(.malformed)
         }
