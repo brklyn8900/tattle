@@ -111,6 +111,8 @@ struct FlowNamer: Sendable {
     static let dnsRemembered = 3600.0
     /// The most DNS answers remembered; the oldest goes first.
     static let dnsCapacity = 4096
+    /// The most flows tracked; the one that started first goes.
+    static let flowCapacity = 4096
     /// The most handshake bytes buffered for one flow, TCP or QUIC.
     static let bufferLimit = 16_384
 
@@ -129,6 +131,8 @@ struct FlowNamer: Sendable {
         var quicDone = false
         /// The destination connection id of the latest Initial that decrypted.
         var quicDCID: [UInt8]?
+        /// Its place in `flowOrder`.
+        var serial = 0
 
         /// Nothing more can come of this flow; packets only refresh lastSeen.
         var finished: Bool { named || (tlsBuffer == nil && quicDone) }
@@ -138,6 +142,7 @@ struct FlowNamer: Sendable {
     private var resolvers: Set<IPAddress>
     private var dnsMap = DNSMap()
     private var flows: [FlowKey: Flow] = [:]
+    private var flowOrder = ArrivalOrder<FlowKey>()
 
     init(localAddresses: Set<IPAddress>, resolvers: Set<IPAddress>) {
         local = localAddresses
@@ -184,7 +189,7 @@ struct FlowNamer: Sendable {
         case .tcp:
             let syn = p.tcpFlags & 0x02 != 0 && p.tcpFlags & 0x10 == 0
             if syn {
-                flows[key] = Flow(start: ts, lastSeen: ts, nextSeq: p.tcpSeq &+ 1, quicDone: true)
+                start(Flow(start: ts, lastSeen: ts, nextSeq: p.tcpSeq &+ 1, quicDone: true), for: key)
                 return [FlowEvent(key: key, kind: .opened)]
             }
             guard var flow = flows[key] else { return [] }
@@ -226,7 +231,7 @@ struct FlowNamer: Sendable {
                 // Only a client Initial starts a flow: a QUIC connection whose first packet
                 // seen is a short one was open before capture began and has no ClientHello left.
                 guard QUIC.mayBeClientInitial(datagram) else { return [] }
-                flows[key] = Flow(start: ts, lastSeen: ts, tlsBuffer: nil)
+                start(Flow(start: ts, lastSeen: ts, tlsBuffer: nil), for: key)
                 events.append(FlowEvent(key: key, kind: .opened))
             }
             guard var flow = flows[key], !flow.finished, QUIC.mayBeClientInitial(datagram) else { return events }
@@ -242,6 +247,19 @@ struct FlowNamer: Sendable {
             flows[key] = flow
             return events
         }
+    }
+
+    /// Tracks a new flow, or a new connection on a key, past `flowCapacity` at the cost of
+    /// the flow that started first.
+    private mutating func start(_ flow: Flow, for key: FlowKey) {
+        var flow = flow
+        flow.serial = flowOrder.append(key)
+        flows[key] = flow
+        while flows.count > Self.flowCapacity, let oldest = flowOrder.oldest(in: flows, serial: { $0.serial }) {
+            flows[oldest] = nil
+            flowOrder.removeOldest()
+        }
+        flowOrder.sweep(capacity: Self.flowCapacity, in: flows, serial: { $0.serial })
     }
 
     private enum Inspection {
@@ -344,15 +362,11 @@ struct FlowNamer: Sendable {
     }
 }
 
-/// DNS answers by address, in the order they arrived, so the oldest can go first without a
-/// sort: past `FlowNamer.dnsCapacity`, and once older than `FlowNamer.dnsRemembered`.
+/// DNS answers by address, kept past `FlowNamer.dnsCapacity` and until older than
+/// `FlowNamer.dnsRemembered`, the oldest going first.
 private struct DNSMap {
     private var entries: [IPAddress: (name: String, at: Double, serial: Int)] = [:]
-    /// Arrival order from `head` on. An answer seen again is appended anew; its earlier place
-    /// is left behind, recognized by its serial, and skipped.
-    private var order: [(address: IPAddress, serial: Int)] = []
-    private var head = 0
-    private var serial = 0
+    private var order = ArrivalOrder<IPAddress>()
 
     var count: Int { entries.count }
 
@@ -361,43 +375,69 @@ private struct DNSMap {
     }
 
     mutating func insert(_ name: String, for address: IPAddress, at ts: Double) {
-        serial += 1
-        entries[address] = (name, ts, serial)
-        order.append((address, serial))
+        entries[address] = (name, ts, order.append(address))
         while entries.count > FlowNamer.dnsCapacity { dropOldest(arrivedBy: nil) }
-        // One address answered over and over leaves only stale places behind; sweep them
-        // once they outnumber the live ones.
-        if order.count - head > 2 * FlowNamer.dnsCapacity {
-            order = order[head...].filter { entries[$0.address]?.serial == $0.serial }
-            head = 0
-        }
+        order.sweep(capacity: FlowNamer.dnsCapacity, in: entries, serial: { $0.serial })
     }
 
     mutating func forget(arrivedBy cutoff: Double) {
         while dropOldest(arrivedBy: cutoff) {}
     }
 
-    /// Removes the oldest answer, if it arrived by `cutoff` (or at all, for nil), with any
-    /// stale places ahead of it. False when nothing was removed.
+    /// Removes the oldest answer, if it arrived by `cutoff` (or at all, for nil). False when
+    /// nothing was removed.
     @discardableResult
     private mutating func dropOldest(arrivedBy cutoff: Double?) -> Bool {
-        while head < order.count {
-            let place = order[head]
-            if let entry = entries[place.address], entry.serial == place.serial {
-                if let cutoff, entry.at > cutoff { return false }
-                entries[place.address] = nil
-                advance()
-                return true
-            }
+        guard let address = order.oldest(in: entries, serial: { $0.serial }) else { return false }
+        if let cutoff, entries[address]!.at > cutoff { return false }
+        entries[address] = nil
+        order.removeOldest()
+        return true
+    }
+}
+
+/// Keys in the order they arrived, so the oldest can go first without a sort. A key that
+/// arrives again is appended anew; its earlier place is left behind, recognized by the
+/// serial its owner keeps with the entry, and skipped.
+private struct ArrivalOrder<Key: Hashable & Sendable>: Sendable {
+    private var places: [(key: Key, serial: Int)] = []
+    private var head = 0
+    private var serial = 0
+
+    /// Appends `key`, returning the serial for the owner to keep with its entry.
+    mutating func append(_ key: Key) -> Int {
+        serial += 1
+        places.append((key, serial))
+        return serial
+    }
+
+    /// One key arriving over and over leaves only stale places behind; sweeps them once
+    /// they outnumber the capacity twice over.
+    mutating func sweep<Value>(capacity: Int, in entries: [Key: Value], serial: (Value) -> Int) {
+        guard places.count - head > 2 * capacity else { return }
+        places = places[head...].filter { place in entries[place.key].map(serial) == place.serial }
+        head = 0
+    }
+
+    /// The oldest key still in `entries`, skipping stale places on the way.
+    mutating func oldest<Value>(in entries: [Key: Value], serial: (Value) -> Int) -> Key? {
+        while head < places.count {
+            let place = places[head]
+            if entries[place.key].map(serial) == place.serial { return place.key }
             advance()
         }
-        return false
+        return nil
+    }
+
+    /// Drops the place `oldest` returned.
+    mutating func removeOldest() {
+        advance()
     }
 
     private mutating func advance() {
         head += 1
-        if head >= order.count / 2 {
-            order.removeFirst(head)
+        if head >= places.count / 2 {
+            places.removeFirst(head)
             head = 0
         }
     }

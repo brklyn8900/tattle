@@ -355,6 +355,30 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(names[3], .named("h\(total - 1).example", .dns), "the newest is kept")
     }
 
+    /// Any local process can open flows faster than they go idle, and every SYN to a new port
+    /// grew the table. Past the cap the flow that started first goes: by then it has almost
+    /// always finished. A restarted flow counts as new.
+    func testTheFlowTableKeepsTheNewestFlowsUpToItsCapacity() {
+        var n = namer()
+        func packet(_ i: Int, flags: UInt8, seq: UInt32, _ payload: [UInt8] = []) -> Packet {
+            Packet(src: me, dst: peer, srcPort: UInt16(1000 + i), dstPort: 443, proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: payload[...])
+        }
+        let total = FlowNamer.flowCapacity + 10
+        for i in 0..<total {
+            _ = n.observe(packet(i, flags: 0x02, seq: 1), at: t0 + Double(i) / 10_000)
+            if i == FlowNamer.flowCapacity / 2 { _ = n.observe(packet(0, flags: 0x02, seq: 1), at: t0 + Double(i) / 10_000) }
+        }
+        XCTAssertEqual(n.flowCount, FlowNamer.flowCapacity)
+        let named = FlowEvent.Kind.named("example.com", .sni)
+        XCTAssertEqual(n.observe(packet(0, flags: 0x18, seq: 2, clientHelloRecord), at: t0 + 1).first?.kind, named, "restarted halfway, so not among the oldest")
+        XCTAssertEqual(n.observe(packet(1, flags: 0x18, seq: 2, clientHelloRecord), at: t0 + 1), [], "among the oldest, evicted")
+        XCTAssertEqual(n.observe(packet(total - 1, flags: 0x18, seq: 2, clientHelloRecord), at: t0 + 1).first?.kind, named, "the newest is kept")
+
+        var restarted = namer()
+        for i in 0..<(3 * FlowNamer.flowCapacity) { _ = restarted.observe(packet(0, flags: 0x02, seq: 1), at: t0 + Double(i) / 10_000) }
+        XCTAssertEqual(restarted.flowCount, 1)
+    }
+
     func testOneAnswerRepeatedStaysOneEntryAndIsStillForgotten() {
         var n = namer()
         for i in 0..<(3 * FlowNamer.dnsCapacity) { _ = n.observe(dnsReply, at: t0 + Double(i) / 10_000) }
