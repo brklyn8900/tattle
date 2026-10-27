@@ -10,8 +10,9 @@ struct CodeSignature: Equatable, Sendable {
         case appStore
         /// Developer ID: the name on the certificate is the publisher.
         case developerID(name: String)
-        /// A development certificate: built locally by a developer.
-        case development(name: String)
+        /// A development certificate: built locally by a developer. Its name is the
+        /// developer's Apple account, usually an email address, so it is not kept.
+        case development
         /// Signed without any certificate.
         case adHoc
         case unsigned
@@ -32,19 +33,13 @@ struct CodeSignature: Equatable, Sendable {
         switch signer {
         case .apple: "Apple"
         case .appStore: "App Store"
-        case .developerID(let name), .development(let name), .other(let name): name
+        case .developerID(let name), .other(let name): name
+        case .development: teamIdentifier.map { "Apple Development (\($0))" } ?? "Apple Development"
         case .adHoc: "ad hoc signed"
         case .unsigned: "unsigned"
         case .script: "script, not signed"
         case .invalid: "invalid signature"
         }
-    }
-
-    /// `summary` for text that leaves the machine: a development certificate is named after
-    /// the developer, so only its kind is given.
-    var promptSummary: String {
-        if case .development = signer { return "Apple Development" }
-        return summary
     }
 
     /// Interpreters whose signature says nothing about what they run.
@@ -97,9 +92,9 @@ struct CodeSignature: Equatable, Sendable {
         return CodeSignature(signer: classify(leaf), identifier: identifier, teamIdentifier: team)
     }
 
-    /// Maps the leaf certificate's subject to a signer kind. Developer ID and development
-    /// subjects end in a parenthesised id, which is dropped: the team comes from the
-    /// signing information, where it is authoritative.
+    /// Maps the leaf certificate's subject to a signer kind. A Developer ID subject ends in a
+    /// parenthesised id, which is dropped: the team comes from the signing information,
+    /// where it is authoritative.
     static func classify(_ subject: String) -> Signer {
         if subject == "Software Signing" { return .apple }
         if subject == "Apple Mac OS Application Signing" { return .appStore }
@@ -107,7 +102,7 @@ struct CodeSignature: Equatable, Sendable {
             return .developerID(name: stripId(subject.dropFirst(prefix.count)))
         }
         for prefix in ["Apple Development: ", "Mac Developer: ", "iPhone Developer: "] where subject.hasPrefix(prefix) {
-            return .development(name: stripId(subject.dropFirst(prefix.count)))
+            return .development
         }
         return .other(subject)
     }

@@ -35,10 +35,8 @@ struct Fact: Equatable, Sendable {
         self.inPrompt = inPrompt
     }
 
-    /// Who signed it. A development certificate is named after the developer, so the model
-    /// is told the kind of certificate, not the name.
     static func signedBy(_ signature: CodeSignature, as name: String = "Signed by") -> Fact {
-        Fact(name: name, value: signature.summary, promptValue: signature.promptSummary)
+        Fact(name: name, value: signature.summary)
     }
 
     /// The account a process runs as; the model is not told the login name.

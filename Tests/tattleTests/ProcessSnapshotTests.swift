@@ -169,10 +169,10 @@ final class ProcessSnapshotTests: XCTestCase {
         let entries = [entry(900, 1, "/Users/\(login)/dev/build/Mine.app/Contents/MacOS/Mine", uid: getuid(), cwd: "/Users/\(login)/dev/client-acme")]
         let snapshot = ProcessSnapshot.build(
             entries: entries, previous: nil,
-            signature: { _ in CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345") }, takenAt: epoch)
+            signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") }, takenAt: epoch)
         let item = try XCTUnwrap(snapshot.item(pid: 900))
         let shown = Dictionary(item.facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
-        XCTAssertEqual(shown["Signed by"], "Username Doe", "the panel is unchanged")
+        XCTAssertEqual(shown["Signed by"], "Apple Development (ABCDE12345)")
         XCTAssertEqual(shown["Runs as"], "you (\(login))")
         XCTAssertNotNil(shown["Working in"])
 

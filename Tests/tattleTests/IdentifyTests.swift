@@ -48,19 +48,17 @@ final class CodeSignatureTests: XCTestCase {
 
     func testClassify() {
         XCTAssertEqual(CodeSignature.classify("Developer ID Application: PACE Anti-Piracy, Inc. (TFZ8226T6X)"), .developerID(name: "PACE Anti-Piracy, Inc."))
-        XCTAssertEqual(CodeSignature.classify("Apple Development: someone@example.com (ABCDE12345)"), .development(name: "someone@example.com"))
+        XCTAssertEqual(CodeSignature.classify("Apple Development: someone@example.com (ABCDE12345)"), .development)
         XCTAssertEqual(CodeSignature.classify("Apple Mac OS Application Signing"), .appStore)
         XCTAssertEqual(CodeSignature.classify("Apple Distribution: Acme (X)"), .other("Apple Distribution: Acme (X)"))
     }
 
-    func testPromptSummaryKeepsTheKindOfADevelopmentCertificateNotItsName() {
-        let development = CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345")
-        XCTAssertEqual(development.summary, "Username Doe", "the panel still names it")
-        XCTAssertEqual(development.promptSummary, "Apple Development")
-        for signer in [CodeSignature.Signer.apple, .appStore, .developerID(name: "Slack Technologies"), .adHoc, .unsigned, .script, .invalid("x")] {
-            let signature = CodeSignature(signer: signer)
-            XCTAssertEqual(signature.promptSummary, signature.summary, "\(signer)")
-        }
+    /// A development certificate is named after the developer's Apple account, usually an
+    /// email address: the panel shows the kind and the team, which a screenshot may carry.
+    func testADevelopmentCertificateShowsItsKindAndTeamNotItsName() {
+        let development = CodeSignature(signer: .development, teamIdentifier: "ABCDE12345")
+        XCTAssertEqual(development.summary, "Apple Development (ABCDE12345)")
+        XCTAssertEqual(CodeSignature(signer: .development).summary, "Apple Development")
     }
 
     func testInterpreterSignsTheScriptNotItself() throws {

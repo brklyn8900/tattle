@@ -31,8 +31,8 @@ final class NetworkSnapshotTests: XCTestCase {
     /// named after the developer, and the user's account after their login.
     private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
         let signed = facts.first { $0.name == "Signed by" }
-        XCTAssertEqual(signed?.value, "Username Doe", file: file, line: line)
-        XCTAssertEqual(signed?.promptValue, "Apple Development", file: file, line: line)
+        XCTAssertEqual(signed?.value, "Apple Development (ABCDE12345)", file: file, line: line)
+        XCTAssertNil(signed?.promptValue, "the panel's value carries no name, so the model gets it too", file: file, line: line)
         guard runsAs else { return }
         let login = String(cString: getpwuid(getuid()).pointee.pw_name)
         let account = facts.first { $0.name == "Runs as" }
@@ -41,7 +41,7 @@ final class NetworkSnapshotTests: XCTestCase {
     }
 
     func testProcessGroupFactsKeepTheCertificateNameOutOfTheirPromptValue() throws {
-        let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345"))
+        let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
         let snapshot = NetworkSnapshot(connections: [
             LiveConnection(connection: connection(100, "52.1.1.1"), owner: owner, isNew: false),
         ], takenAt: t0)
@@ -51,7 +51,7 @@ final class NetworkSnapshotTests: XCTestCase {
     func testConnectionFactsKeepTheLoginOutOfTheirPromptValue() throws {
         var mine = connection(100, "52.1.1.1")
         mine.uid = getuid()
-        let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345"))
+        let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
         let row = LiveConnection(connection: mine, owner: owner, isNew: false)
         assertPromptValuesDiffer(row.facts(now: t0), runsAs: true)
     }

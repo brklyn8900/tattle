@@ -85,8 +85,8 @@ final class StartupSnapshotTests: XCTestCase {
     /// named after the developer, and the user's account after their login.
     private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
         let signed = facts.first { $0.name == "Signed by" }
-        XCTAssertEqual(signed?.value, "Username Doe", file: file, line: line)
-        XCTAssertEqual(signed?.promptValue, "Apple Development", file: file, line: line)
+        XCTAssertEqual(signed?.value, "Apple Development (ABCDE12345)", file: file, line: line)
+        XCTAssertNil(signed?.promptValue, "the panel's value carries no name, so the model gets it too", file: file, line: line)
         guard runsAs else { return }
         let login = String(cString: getpwuid(getuid()).pointee.pw_name)
         let account = facts.first { $0.name == "Runs as" }
@@ -98,7 +98,7 @@ final class StartupSnapshotTests: XCTestCase {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
             loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
-            signature: { _ in CodeSignature(signer: .development(name: "Username Doe"), teamIdentifier: "ABCDE12345") })
+            signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") })
         assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: false)
     }
 
