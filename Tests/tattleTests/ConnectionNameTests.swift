@@ -208,7 +208,7 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(silent.facts(now: t0).first { $0.name == "No name" }?.value, "the connection sent nothing in its first 20 seconds")
         XCTAssertNil(LiveConnection(connection: connection("1.1.1.1"), owner: owner, isNew: false).facts(now: t0).first { $0.name == "No name" }, "nothing to say until the sniffer gives up")
 
-        for reason in [FlowEvent.Reason.notHandshake, .gap, .noServerName, .quic(.unsupportedVersion), .quic(.decryptFailed), .timeout] {
+        for reason in [FlowEvent.Reason.notHandshake, .gap, .noServerName, .quic(.unsupportedVersion), .quic(.decryptFailed), .timeout, .evicted] {
             XCTAssertTrue(reason.code.hasPrefix("none:"), "a reason is never mistaken for a source")
             XCTAssertEqual(FlowEvent.Reason(code: reason.code), reason)
         }

@@ -54,6 +54,9 @@ struct FlowEvent: Equatable, Sendable {
         case quic(QUIC.Failure)
         /// No handshake within the window: no payload, or one that never completed.
         case timeout
+        /// Too many newer flows opened before this one's handshake was read, and it was
+        /// dropped to stay within `flowCapacity`.
+        case evicted
 
         /// Stored in history as the name source of an unnamed connection.
         static let codePrefix = "none:"
@@ -65,6 +68,7 @@ struct FlowEvent: Equatable, Sendable {
             case .noServerName: Self.codePrefix + "no-server-name"
             case .quic(let failure): Self.codePrefix + "quic-" + failure.rawValue
             case .timeout: Self.codePrefix + "timeout"
+            case .evicted: Self.codePrefix + "evicted"
             }
         }
 
@@ -74,6 +78,7 @@ struct FlowEvent: Equatable, Sendable {
             case Self.codePrefix + "gap": self = .gap
             case Self.codePrefix + "no-server-name": self = .noServerName
             case Self.codePrefix + "timeout": self = .timeout
+            case Self.codePrefix + "evicted": self = .evicted
             default:
                 guard code.hasPrefix(Self.codePrefix + "quic-"),
                       let failure = QUIC.Failure(rawValue: String(code.dropFirst(Self.codePrefix.count + 5))) else { return nil }
@@ -89,6 +94,7 @@ struct FlowEvent: Equatable, Sendable {
             case .quic(.unsupportedVersion): "a QUIC version Tattle cannot read"
             case .quic: "the QUIC handshake could not be read"
             case .timeout: "the connection sent nothing in its first \(Int(FlowNamer.finalizeAfter)) seconds"
+            case .evicted: "too many connections opened at once for Tattle to follow this one"
             }
         }
     }
@@ -189,8 +195,8 @@ struct FlowNamer: Sendable {
         case .tcp:
             let syn = p.tcpFlags & 0x02 != 0 && p.tcpFlags & 0x10 == 0
             if syn {
-                start(Flow(start: ts, lastSeen: ts, nextSeq: p.tcpSeq &+ 1, quicDone: true), for: key)
-                return [FlowEvent(key: key, kind: .opened)]
+                return start(Flow(start: ts, lastSeen: ts, nextSeq: p.tcpSeq &+ 1, quicDone: true), for: key)
+                    + [FlowEvent(key: key, kind: .opened)]
             }
             guard var flow = flows[key] else { return [] }
             flow.lastSeen = ts
@@ -231,7 +237,7 @@ struct FlowNamer: Sendable {
                 // Only a client Initial starts a flow: a QUIC connection whose first packet
                 // seen is a short one was open before capture began and has no ClientHello left.
                 guard QUIC.mayBeClientInitial(datagram) else { return [] }
-                start(Flow(start: ts, lastSeen: ts, tlsBuffer: nil), for: key)
+                events = start(Flow(start: ts, lastSeen: ts, tlsBuffer: nil), for: key)
                 events.append(FlowEvent(key: key, kind: .opened))
             }
             guard var flow = flows[key], !flow.finished, QUIC.mayBeClientInitial(datagram) else { return events }
@@ -251,15 +257,20 @@ struct FlowNamer: Sendable {
 
     /// Tracks a new flow, or a new connection on a key, past `flowCapacity` at the cost of
     /// the flow that started first.
-    private mutating func start(_ flow: Flow, for key: FlowKey) {
+    private mutating func start(_ flow: Flow, for key: FlowKey) -> [FlowEvent] {
         var flow = flow
         flow.serial = flowOrder.append(key)
         flows[key] = flow
+        var events: [FlowEvent] = []
         while flows.count > Self.flowCapacity, let oldest = flowOrder.oldest(in: flows, serial: { $0.serial }) {
+            if var evicted = flows[oldest], !evicted.finished, let event = giveUp(on: &evicted, at: oldest, reason: .evicted) {
+                events.append(event)
+            }
             flows[oldest] = nil
             flowOrder.removeOldest()
         }
         flowOrder.sweep(capacity: Self.flowCapacity, in: flows, serial: { $0.serial })
+        return events
     }
 
     private enum Inspection {
@@ -345,11 +356,9 @@ struct FlowNamer: Sendable {
                     events.append(FlowEvent(key: key, kind: .named(entry.name, .dns)))
                 }
             }
-            if !flow.named, !flow.finished, now - flow.start >= Self.finalizeAfter {
-                flow.tlsBuffer = nil
-                flow.quicDone = true
-                flow.quicAssembly = QUICAssembly()
-                if !flow.dnsNamed { events.append(FlowEvent(key: key, kind: .unnamed(.timeout))) }
+            if !flow.named, !flow.finished, now - flow.start >= Self.finalizeAfter,
+               let event = giveUp(on: &flow, at: key, reason: .timeout) {
+                events.append(event)
             }
             if now - flow.lastSeen >= Self.idleAfter {
                 flows[key] = nil
@@ -359,6 +368,18 @@ struct FlowNamer: Sendable {
         }
         dnsMap.forget(arrivedBy: now - Self.dnsRemembered)
         return events
+    }
+
+    private func giveUp(on flow: inout Flow, at key: FlowKey, reason: FlowEvent.Reason) -> FlowEvent? {
+        flow.tlsBuffer = nil
+        flow.quicDone = true
+        flow.quicAssembly = QUICAssembly()
+        if !flow.dnsTried, let entry = dnsMap[key.remote] {
+            flow.dnsTried = true
+            flow.dnsNamed = true
+            return FlowEvent(key: key, kind: .named(entry.name, .dns))
+        }
+        return flow.dnsNamed ? nil : FlowEvent(key: key, kind: .unnamed(reason))
     }
 }
 

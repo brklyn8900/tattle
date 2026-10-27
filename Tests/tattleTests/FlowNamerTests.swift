@@ -379,6 +379,29 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(restarted.flowCount, 1)
     }
 
+    func testAFlowEvictedBeforeItWasNamedIsGivenUpOn() {
+        var n = namer()
+        let unknown = IPAddress(bytes: [203, 0, 113, 7])
+        func packet(_ port: UInt16, to dst: IPAddress, flags: UInt8 = 0x02, seq: UInt32 = 1, _ payload: [UInt8] = []) -> Packet {
+            Packet(src: me, dst: dst, srcPort: port, dstPort: 443, proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: payload[...])
+        }
+        _ = n.observe(dnsReply, at: t0)
+        _ = n.observe(packet(1000, to: peer), at: t0)
+        _ = n.observe(packet(1001, to: unknown), at: t0)
+        _ = n.observe(packet(1002, to: unknown), at: t0)
+        _ = n.observe(packet(1002, to: unknown, flags: 0x18, seq: 2, Array("SSH-2.0-OpenSSH\r\n".utf8)), at: t0)
+        for i in 0..<(FlowNamer.flowCapacity - 3) { _ = n.observe(packet(UInt16(2000 + i), to: unknown), at: t0 + 0.5) }
+
+        var events: [FlowEvent] = []
+        for i in 0..<3 { events += n.observe(packet(UInt16(9000 + i), to: unknown), at: t0 + 1) }
+        XCTAssertEqual(events.filter { $0.kind != .opened }, [
+            FlowEvent(key: FlowKey(proto: .tcp, localPort: 1000, remote: peer, remotePort: 443), kind: .named("cdn.example.net", .dns)),
+            FlowEvent(key: FlowKey(proto: .tcp, localPort: 1001, remote: unknown, remotePort: 443), kind: .unnamed(.evicted)),
+        ], "the DNS map's name, else a reason; nothing for the finished one")
+        XCTAssertEqual(events.filter { $0.kind == .opened }.count, 3)
+        XCTAssertEqual(n.flowCount, FlowNamer.flowCapacity)
+    }
+
     func testOneAnswerRepeatedStaysOneEntryAndIsStillForgotten() {
         var n = namer()
         for i in 0..<(3 * FlowNamer.dnsCapacity) { _ = n.observe(dnsReply, at: t0 + Double(i) / 10_000) }
