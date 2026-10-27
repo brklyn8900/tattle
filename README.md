@@ -12,12 +12,12 @@ you already have, through a command you configured. Design in the
 
 ## Status
 
-The four tabs (Network, Processes, Ports, Startup) and the explain path are complete as
-proposed. There are no binaries: build from source with the steps below, on macOS 14 or
-later. Ad-hoc signed builds need the first-launch allowance under Privacy & Security.
+The four tabs (Network, Processes, Ports, Startup) and the explain path are built. There
+are no binaries: build from source with the steps below.
 
-Not there yet: a LAN tab, per-page browser attribution, a search bar, a "started by"
-filter on processes, and any kind of blocking (by design the last; see the proposal).
+Not there yet: cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
+attribution, a search bar, a "started by" filter on processes, and any kind of blocking
+(by design the last; see the proposal).
 
 ## Build
 
@@ -35,9 +35,8 @@ The dev copy is a separate app, "Tattle Dev" (`io.github.eladefrati.tattle.dev`)
 its own data in `~/Library/Application Support/Tattle Dev/` and its own permission
 grants, so `make run` never replaces or quits a release build that is running.
 
-Releases are ad-hoc signed, so macOS blocks the first launch; allow it under System
-Settings, Privacy & Security. With an Apple Development identity in your keychain, `make
-app` signs with it instead, which keeps permission grants across rebuilds.
+`make app` signs ad hoc. With an Apple Development identity in your keychain, it signs
+with that identity instead, which keeps permission grants across rebuilds.
 
 ## Packet access
 
