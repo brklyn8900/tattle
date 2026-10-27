@@ -183,4 +183,16 @@ struct NetworkSnapshot: Equatable, Sendable {
 
     func connection(id: String) -> LiveConnection? { connections.first { $0.id == id } }
     func group(id: String) -> ConnectionGroup? { groups.first { $0.id == id } }
+
+    /// Puts the sniffer's outcome on the flow's row. Returns false when no row is the flow's
+    /// yet.
+    mutating func attach(_ outcome: NameOutcome, to flow: FlowKey, openedAt: Date) -> Bool {
+        guard let index = connections.firstIndex(where: {
+            $0.connection.flowKey == flow.text
+                && ConnectionStore.isConnection(of: flow, firstSeen: $0.connection.firstSeen, isOpen: $0.connection.isOpen, openedAt: openedAt)
+        }) else { return false }
+        connections[index].name = outcome.name
+        connections[index].unnamedReason = outcome.reason
+        return true
+    }
 }

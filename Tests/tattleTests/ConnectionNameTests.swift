@@ -111,6 +111,74 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(later.map(\.openedAt), [t0 + 120], "history is told when the flow opened, so older rows are left alone")
     }
 
+    /// A client may keep its UDP socket, or bind a new one to the same port, for a second
+    /// QUIC connection to the same server. The socket table then shows one connection all
+    /// along. The namer restarts the flow on the second connection's first Initial, and the
+    /// row, live and in history, takes the second connection's outcome.
+    func testAQUICRestartOnAReusedPortRenamesItsRow() throws {
+        let store = ConnectionStore(database: try AppDatabase.inMemory())
+        let me = IPAddress(bytes: [192, 168, 1, 5])
+        let peer = IPAddress(bytes: [17, 253, 144, 10])
+        let row = connection(peer.text, proto: .udp)
+        var snapshot = NetworkSnapshot(connections: [LiveConnection(connection: row, owner: ConnectionOwner(processName: "Safari"), isNew: true)], takenAt: t0)
+        try store.open(ConnectionRecord(row, processName: "Safari"))
+        var namer = FlowNamer(localAddresses: [me], resolvers: [])
+        var names = PendingNames()
+        func send(_ datagram: [UInt8], at date: Date) throws {
+            let packet = Packet(src: me, dst: peer, srcPort: 50000, dstPort: 443, proto: .udp, tcpFlags: 0, tcpSeq: 0, payload: datagram[...])
+            for (flow, outcome, openedAt) in names.apply(namer.observe(packet, at: date.timeIntervalSince1970), at: date, kind: { _, _ in .destination }) {
+                _ = snapshot.attach(outcome, to: flow, openedAt: openedAt)
+                try store.record(outcome, flow: flow, openedAt: openedAt)
+            }
+        }
+        func initial(sni: String, dcid: [UInt8]) -> [UInt8] {
+            let hello = SnifferParserTests.clientHello(sni: Array(sni.utf8))
+            return SnifferParserTests.sealInitial([0x06, 0x00, 0x40 | UInt8(hello.count >> 8), UInt8(hello.count & 0xff)] + hello, dcid: dcid)
+        }
+
+        try send(SnifferParserTests.rfcInitial, at: t0)
+        XCTAssertEqual(snapshot.connections[0].name?.name, "example.com", "the first connection")
+        XCTAssertEqual(try store.history(remoteAddress: peer.text).map(\.name), ["example.com"])
+
+        try send(initial(sni: "example.org", dcid: [1, 2, 3, 4, 5, 6, 7, 8]), at: t0 + 30)
+        XCTAssertEqual(snapshot.connections[0].name?.name, "example.org", "the second connection, on the same live row")
+        XCTAssertEqual(snapshot.connections[0].connection.firstSeen, t0, "which keeps its duration")
+        XCTAssertTrue(snapshot.connections[0].isNew)
+        XCTAssertEqual(try store.history(remoteAddress: peer.text).map(\.name), ["example.org"], "history keeps only the latest name")
+
+        try send(initial(sni: "", dcid: [9, 9, 9, 9, 9, 9, 9, 9]), at: t0 + 60)
+        XCTAssertNil(snapshot.connections[0].name)
+        XCTAssertEqual(snapshot.connections[0].unnamedReason, .noServerName, "a third connection's reason replaces the name")
+        XCTAssertEqual(try store.history(remoteAddress: peer.text).map(\.nameSource), ["none:no-server-name"])
+
+        try store.close(key: row.id, lastSeen: t0 + 70, ended: t0 + 72)
+        try send(initial(sni: "example.net", dcid: [7, 7, 7, 7, 7, 7, 7, 7]), at: t0 + 90)
+        XCTAssertEqual(try store.history(remoteAddress: peer.text).map(\.nameSource), ["none:no-server-name"],
+                       "a closed row is not the new connection's: its own row takes the name when the poll adds it")
+    }
+
+    func testATCPFlowLeavesAnOlderOpenRowAlone() throws {
+        let store = ConnectionStore(database: try AppDatabase.inMemory())
+        let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        let old = NameOutcome.named(ConnectionName(name: "old.example.com", source: .sni, kind: .destination))
+        let row = connection(key.remote.text)
+        var snapshot = NetworkSnapshot(connections: [LiveConnection(connection: row, owner: ConnectionOwner(processName: "Safari"), isNew: false, outcome: old)], takenAt: t0)
+        var record = ConnectionRecord(row, processName: "Safari")
+        record.name = "old.example.com"
+        record.nameSource = "sni"
+        try store.open(record)
+
+        var names = PendingNames()
+        let events = [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("new.example.com", .sni))]
+        for (flow, outcome, openedAt) in names.apply(events, at: t0 + 60, kind: { _, _ in .destination }) {
+            XCTAssertFalse(snapshot.attach(outcome, to: flow, openedAt: openedAt), "the new connection waits for its own row")
+            try store.record(outcome, flow: flow, openedAt: openedAt)
+        }
+        XCTAssertEqual(snapshot.connections[0].name?.name, "old.example.com")
+        XCTAssertEqual(try store.history(remoteAddress: key.remote.text).map(\.name), ["old.example.com"])
+        XCTAssertEqual(names.outcome(for: key.text)?.name?.name, "new.example.com", "kept for the row the next poll adds")
+    }
+
     func testPendingNamesTellsTheKindClosureWhereTheNameCameFrom() {
         var table = PendingNames()
         let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)

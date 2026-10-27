@@ -152,13 +152,9 @@ final class NetworkObserver {
     }
 
     /// Puts the outcome on the live row, if the socket table has shown the connection
-    /// yet, and on its history record, which may already be closed. A row first seen before
-    /// the flow opened is an older connection on the same four-tuple, not yet seen closed.
+    /// yet, and on its history record, which may already be closed.
     private func attach(_ outcome: NameOutcome, to flow: FlowKey, openedAt: Date) {
-        let since = openedAt.addingTimeInterval(-ConnectionStore.openedSlack)
-        if var snapshot, let index = snapshot.connections.firstIndex(where: { $0.connection.flowKey == flow.text && $0.connection.firstSeen >= since }) {
-            snapshot.connections[index].name = outcome.name
-            snapshot.connections[index].unnamedReason = outcome.reason
+        if var snapshot, snapshot.attach(outcome, to: flow, openedAt: openedAt) {
             self.snapshot = snapshot
         } else {
             Log.sniffer.debug("outcome for \(flow.text, privacy: .public) arrived with no live connection")

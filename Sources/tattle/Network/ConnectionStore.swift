@@ -84,11 +84,20 @@ struct ConnectionStore: Sendable {
     /// earlier than the open; an older connection on the same four-tuple ended long before.
     static let openedSlack: TimeInterval = 3
 
+    /// Whether a connection, live row or history row, is the one a flow that opened at
+    /// `openedAt` belongs to. One first seen earlier is an older connection on the same
+    /// four-tuple that the socket table has not yet shown closed. The exception is a UDP
+    /// socket still open. A second QUIC connection on a kept port is the same socket table
+    /// entry, so its outcome renames the row.
+    static func isConnection(of flow: FlowKey, firstSeen: Date, isOpen: Bool, openedAt: Date) -> Bool {
+        firstSeen >= openedAt.addingTimeInterval(-openedSlack) || (flow.proto == .udp && isOpen)
+    }
+
     /// Records the sniffer's outcome on the newest row of the flow, open or not: a short
-    /// connection may have closed by the time its name arrives. Only a row first seen since
-    /// the flow opened is the flow's: an outcome that arrives before the poll adds the row
-    /// waits in PendingNames instead of landing on an older connection's row. An unnamed
-    /// outcome keeps its reason in the name source column, prefixed so it is never read as a
+    /// connection may have closed by the time its name arrives. Only a row `isConnection`
+    /// accepts is the flow's: an outcome that arrives before the poll adds the row waits in
+    /// PendingNames instead of landing on an older connection's row. An unnamed outcome
+    /// keeps its reason in the name source column, prefixed so it is never read as a
     /// source. An IPv6 socket talking IPv4 recorded a mapped address; the flow carries the
     /// plain one.
     func record(_ outcome: NameOutcome, flow: FlowKey, openedAt: Date) throws {
@@ -103,16 +112,19 @@ struct ConnectionStore: Sendable {
             source = reason.code
         }
         try database.writer.write { db in
-            try db.execute(
+            let rows = try ConnectionRecord.fetchAll(
+                db,
                 sql: """
-                    UPDATE connection SET name = ?, nameSource = ?
-                    WHERE id = (SELECT MAX(id) FROM connection
-                                WHERE proto = ? AND localPort = ? AND remotePort = ?
-                                  AND (remoteAddress = ? OR remoteAddress = '::ffff:' || ?)
-                                  AND firstSeen >= ?)
+                    SELECT * FROM connection
+                    WHERE proto = ? AND localPort = ? AND remotePort = ?
+                      AND (remoteAddress = ? OR remoteAddress = '::ffff:' || ?)
+                    ORDER BY id DESC
                     """,
-                arguments: [name, source, flow.proto == .tcp ? "tcp" : "udp", flow.localPort, flow.remotePort,
-                            flow.remote.text, flow.remote.text, openedAt.addingTimeInterval(-Self.openedSlack)])
+                arguments: [flow.proto == .tcp ? "tcp" : "udp", flow.localPort, flow.remotePort, flow.remote.text, flow.remote.text])
+            guard let id = rows.first(where: {
+                Self.isConnection(of: flow, firstSeen: $0.firstSeen, isOpen: $0.ended == nil, openedAt: openedAt)
+            })?.id else { return }
+            try db.execute(sql: "UPDATE connection SET name = ?, nameSource = ? WHERE id = ?", arguments: [name, source, id])
         }
     }
 
