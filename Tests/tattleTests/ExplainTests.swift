@@ -315,6 +315,25 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 
+    /// An agent CLI starts children of its own. The timeout ends them all: a child left
+    /// holding stdout kept the read waiting after the shell was killed.
+    func testTimeoutKillsTheCommandsChildren() async throws {
+        let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-child-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let start = Date()
+        do {
+            _ = try await ShellProvider(command: "sleep 10 & echo $! > '\(pidFile.path)'; wait", timeout: 0.5).explain("")
+            XCTFail("expected timeout")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .timedOut)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5, "returned at the timeout")
+        let child = try XCTUnwrap(Int32(String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+        let deadline = Date().addingTimeInterval(2)
+        while kill(child, 0) == 0, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
+    }
+
     func testEmptyCommandIsNotConfigured() async {
         do {
             _ = try await ShellProvider(command: "  ").explain("")
