@@ -58,6 +58,9 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(updater.runs, "/usr/bin/x --run")
         XCTAssertEqual(updater.trigger, "at login")
         XCTAssertEqual(updater.facts.map(\.name), ["Runs", "When", "State", "Signed by", "Team", "Developer", "Plist"])
+        let prompt = Prompt.build(instructions: "", request: ExplainRequest(kind: .launchItem, key: updater.explainKey, facts: updater.facts))
+        XCTAssertTrue(prompt.contains(#"{"name":"Runs","value":"/usr/bin/x (1 argument, not sent)"}"#),
+                      "arguments can carry tokens and addresses: only the program goes out")
         XCTAssertFalse(snapshot.items.contains { $0.id == "8.com.acme.updater" }, "joined, not duplicated")
 
         XCTAssertEqual(snapshot.items(in: .daemons).first?.state, .idle(lastExitStatus: 1))

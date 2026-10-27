@@ -20,16 +20,17 @@ enum Prompt {
 
     /// The item and facts go out as one JSON line between two markers. JSON escapes line
     /// breaks and quotes inside a value, so a value cannot pass for a fact or for the end
-    /// of the block. Slashes stay unescaped so the redactor can still match paths.
-    static func build(instructions: String, request: ExplainRequest) -> String {
+    /// of the block. `redact` applies to the instructions and the fact values, never to the
+    /// key: rewritten, the key names another item ("mail.google.com" as "<user>.google.com").
+    static func build(instructions: String, request: ExplainRequest, redact: (String) -> String = { $0 }) -> String {
         let captured: [String: Any] = [
             "item": ["kind": label(for: request.kind), "key": request.key],
-            "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": $0.promptValue ?? $0.value] },
+            "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": redact($0.promptValue ?? $0.value)] },
         ]
         // The input is only strings, so serialization cannot fail.
         let json = try! JSONSerialization.data(withJSONObject: captured, options: [.sortedKeys, .withoutEscapingSlashes])
         return [
-            instructions.trimmingCharacters(in: .whitespacesAndNewlines),
+            redact(instructions.trimmingCharacters(in: .whitespacesAndNewlines)),
             "",
             dataBegin,
             String(decoding: json, as: UTF8.self),

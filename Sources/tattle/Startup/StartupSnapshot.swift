@@ -62,8 +62,9 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     var id: String
     var group: Group
     var name: String
-    /// What runs: the program and its arguments, or the app.
-    var runs: String?
+    /// What runs: the program, or the app.
+    var program: String?
+    var arguments: [String] = []
     var trigger: String
     var state: State
     var signature: CodeSignature?
@@ -76,13 +77,20 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     var isLoginItem: Bool
     var launchdScope: LaunchdItem.Scope?
 
+    /// The program and its arguments.
+    var runs: String? { program.map { ([$0] + arguments).joined(separator: " ") } }
+
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
     /// Deterministic facts sent with an explain request and shown in the detail view.
     var facts: [Fact] {
         var facts: [Fact] = []
-        if let runs { facts.append(Fact(name: "Runs", value: runs)) }
+        if let program, let runs {
+            // Arguments can carry tokens, addresses and paths: the model gets only their count.
+            let count = arguments.count == 1 ? "1 argument" : "\(arguments.count) arguments"
+            facts.append(Fact(name: "Runs", value: runs, promptValue: arguments.isEmpty ? nil : "\(program) (\(count), not sent)"))
+        }
         facts.append(Fact(name: "When", value: trigger))
         facts.append(Fact(name: "State", value: state.text))
         if let signature {
@@ -130,12 +138,12 @@ struct StartupSnapshot: Equatable, Sendable {
         for job in launchd.items {
             let registered = byPlistPath[job.plistURL.path]
             if let registered { joined.insert(registered.identifier) }
-            let runs = job.program.map { ([$0] + job.arguments).joined(separator: " ") }
             items.append(StartupItem(
                 id: job.label,
                 group: group(for: job.scope),
                 name: registered?.name ?? job.label,
-                runs: runs,
+                program: job.program,
+                arguments: job.program == nil ? [] : job.arguments,
                 trigger: job.isPlaceholder ? "never" : job.triggers.map { $0.description(scope: job.scope) }.joined(separator: ", "),
                 state: launchdState(job, state: state),
                 signature: job.program.flatMap { CodeSignature.read(program: $0, arguments: job.arguments, reading: signature) },
@@ -158,7 +166,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 id: item.bundleIdentifier ?? item.identifier,
                 group: item.isExtension ? .extensions : item.kind == .app ? .loginItems : .background,
                 name: item.name,
-                runs: path,
+                program: path,
                 trigger: trigger(for: item),
                 state: loginItemState(item, state: state),
                 signature: path.flatMap(signature),

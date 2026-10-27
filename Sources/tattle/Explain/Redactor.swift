@@ -9,9 +9,14 @@ struct Redactor: Sendable {
 
     static var current: Redactor {
         let host = Host.current()
-        let names = ([host.localizedName, host.name] + host.names)
+        var names = ([host.localizedName, host.name] + host.names)
             .compactMap { $0 }
             .filter { !$0.isEmpty && $0 != "localhost" }
+        // The router's DNS knows the Bonjour name bare and as name.lan; Host gives only name.local.
+        for name in names where name.hasSuffix(".local") {
+            let bare = String(name.dropLast(".local".count))
+            names += [bare, bare + ".lan"]
+        }
         return Redactor(
             home: NSHomeDirectory(),
             username: NSUserName(),
