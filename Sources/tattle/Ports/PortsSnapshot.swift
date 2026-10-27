@@ -58,6 +58,8 @@ struct PortItem: Equatable, Sendable, Identifiable {
 
     var processName: String { process?.name ?? "pid \(pid)" }
 
+    var isApplesProgram: Bool { ApplesProgram.isNamed(processName, path: process?.path, signature: signature) }
+
     /// Knowledge-base key: the process and the port, so "ControlCenter:tcp/*" can be a rule.
     var explainKey: String { "\(processName):\(proto.rawValue)/\(port)" }
 

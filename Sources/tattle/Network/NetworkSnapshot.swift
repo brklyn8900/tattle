@@ -10,6 +10,7 @@ struct ConnectionOwner: Equatable, Sendable {
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
+    var isApplesProgram: Bool { ApplesProgram.isNamed(displayName, path: path, signature: signature) }
 
     static let unknown = ConnectionOwner(processName: "unknown process")
 
@@ -137,6 +138,11 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
     var signature: CodeSignature?
     /// Newest first.
     var connections: [LiveConnection]
+
+    /// Apple's own program by the group's name when every connection's owner is. A process
+    /// that took the name shares the row, so the newest connection's signature alone would
+    /// pass that process too.
+    var isApplesProgram: Bool { connections.allSatisfy(\.owner.isApplesProgram) }
 
     var newCount: Int { connections.filter(\.isNew).count }
     var remoteCount: Int { connections.filter { $0.connection.scope == .remote }.count }

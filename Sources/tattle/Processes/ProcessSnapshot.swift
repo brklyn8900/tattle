@@ -46,7 +46,8 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
     /// Part of macOS: signed by Apple's software signing certificate, or the kernel. A
     /// script is not, whoever signed its interpreter.
-    var isApple: Bool { pid == 0 || (interpreter == nil && signature?.signer == .apple) }
+    var isPartOfMacOS: Bool { pid == 0 || (interpreter == nil && signature?.signer == .apple) }
+    var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 
     /// What the row says after the name: "node script", the signer, or that the
     /// executable has been deleted since the process started (an upgraded tool).
@@ -140,13 +141,10 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
         return readings.isEmpty ? nil : readings.reduce(0, +)
     }
 
-    /// Part of macOS: the app by its bundle's signer, a program as its leader is.
-    var isApple: Bool {
-        switch kind {
-        case .app: signature?.signer == .apple
-        case .process: leader?.isApple ?? false
-        case .system: true
-        }
+    /// Apple's own program by the group's name, which every member must be: an app's
+    /// helpers go by other names, and macOS is not one program.
+    var isApplesProgram: Bool {
+        kind != .system && members.allSatisfy { ApplesProgram.isNamed(name, path: $0.path, signature: $0.signature) }
     }
 
     /// The group explains as its one process, or as the app; macOS is not one thing.
@@ -321,7 +319,7 @@ struct ProcessSnapshot: Equatable, Sendable {
         var cursor: ProcessItem? = item.pid > 0 ? item : nil
         var seen = Set<Int32>()
         while let current = cursor, seen.insert(current.pid).inserted {
-            if !current.isApple { root = current }
+            if !current.isPartOfMacOS { root = current }
             cursor = current.parentPid > 1 ? byPid[current.parentPid] : nil
         }
         if let root { return GroupKey(id: "pid:\(root.pid)", kind: .process, name: root.name, root: root) }

@@ -254,18 +254,18 @@ final class ExplainerTests: XCTestCase {
             .appending(path: "Resources/knowledge")
         SeedLoader(rules: store, settings: SettingsStore(database: store.database)).load(from: repoSeeds)
         let explainer = explainer(FakeProvider(output: ""))
-        func lookup(_ kind: Rule.Kind, _ key: String, isApple: Bool) throws -> Rule? {
-            try explainer.lookup(ExplainRequest(kind: kind, key: key, isApple: isApple))
+        func lookup(_ kind: Rule.Kind, _ key: String, isApplesProgram: Bool) throws -> Rule? {
+            try explainer.lookup(ExplainRequest(kind: kind, key: key, isApplesProgram: isApplesProgram))
         }
 
-        XCTAssertEqual(try lookup(.process, "mDNSResponder", isApple: true)?.category, "system")
-        XCTAssertNil(try lookup(.process, "mDNSResponder", isApple: false))
-        XCTAssertEqual(try lookup(.port, "ControlCenter:tcp/5000", isApple: true)?.category, "sharing")
-        XCTAssertNil(try lookup(.port, "ControlCenter:tcp/5000", isApple: false))
-        XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApple: true)?.purpose.prefix(8), "The macO")
-        XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApple: false)?.purpose.prefix(7), "Bonjour",
+        XCTAssertEqual(try lookup(.process, "mDNSResponder", isApplesProgram: true)?.category, "system")
+        XCTAssertNil(try lookup(.process, "mDNSResponder", isApplesProgram: false))
+        XCTAssertEqual(try lookup(.port, "ControlCenter:tcp/5000", isApplesProgram: true)?.category, "sharing")
+        XCTAssertNil(try lookup(.port, "ControlCenter:tcp/5000", isApplesProgram: false))
+        XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApplesProgram: true)?.purpose.prefix(8), "The macO")
+        XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApplesProgram: false)?.purpose.prefix(7), "Bonjour",
                        "the port-wide rule, not the resolver's")
-        XCTAssertEqual(try lookup(.process, "claude", isApple: false)?.owner, "Anthropic")
+        XCTAssertEqual(try lookup(.process, "claude", isApplesProgram: false)?.owner, "Anthropic")
     }
 
     func testTheItemKeyIsNotRewrittenByName() async throws {
