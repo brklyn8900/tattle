@@ -49,3 +49,6 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   Proven 2026-10-25.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
   CPU, and Quit. Proven 2026-10-25.
+- [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
+  shipped rules, and what the prompt sends, through a local fake provider. Proven
+  2026-10-27.

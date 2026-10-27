@@ -1,0 +1,12 @@
+#!/bin/zsh
+# A provider command for verify runs: records each prompt in the folder given as its one
+# argument and answers with a fixed explanation, so nothing leaves the Mac.
+#
+#   fake-provider <folder>    # writes <folder>/prompt-0.txt, prompt-1.txt, ...
+
+dir=$1
+[ -n "$dir" ] || { print -u2 "usage: fake-provider <folder>"; exit 2; }
+mkdir -p "$dir"
+n=$(ls "$dir" | wc -l | tr -d ' ')
+cat > "$dir/prompt-$n.txt"
+print -r -- '{"owner":"Verify","purpose":"fake answer for the verify run","category":"test","risk":"low","confidence":"low"}'
