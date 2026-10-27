@@ -65,7 +65,7 @@ struct ShellProvider: ExplainProvider {
         let pid = try spawn(shell, ["-l", "-c", command], in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
 
         // The command leads a process group of its own, so the timeout ends whatever it
-        // started: a child left holding stdout would keep the read below waiting.
+        // started: a child left holding stdout or stderr would keep the reads below waiting.
         let watchdog = Watchdog()
         let deadline = DispatchWorkItem { watchdog.fire { _ = killpg(pid, SIGKILL) } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: deadline)
@@ -85,8 +85,10 @@ struct ShellProvider: ExplainProvider {
             group.leave()
         }
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
-        let terminationStatus = waitForExit(pid) { deadline.cancel(); return watchdog.disarm() }
+        // Joined before the disarm, so the timeout also ends a child holding only stderr,
+        // and before the reap, so the group id still names the command's group.
         group.wait()
+        let terminationStatus = waitForExit(pid) { deadline.cancel(); return watchdog.disarm() }
 
         if terminationStatus.timedOut { throw ProviderError.timedOut }
         guard terminationStatus.status == 0 else {

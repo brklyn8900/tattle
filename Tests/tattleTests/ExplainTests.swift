@@ -371,6 +371,25 @@ final class ShellProviderTests: XCTestCase {
         XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
     }
 
+    /// A child left holding only stderr outlived the command, and the wait for stderr's end
+    /// ran after the timeout was disarmed, so it lasted as long as the child.
+    func testTimeoutKillsAChildHoldingOnlyStderr() async throws {
+        let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-child-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let start = Date()
+        do {
+            _ = try await ShellProvider(command: "sleep 10 >/dev/null & echo $! > '\(pidFile.path)'; echo hi", timeout: 0.5).explain("")
+            XCTFail("expected timeout")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .timedOut)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5, "returned at the timeout")
+        let child = try XCTUnwrap(Int32(String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+        let deadline = Date().addingTimeInterval(2)
+        while kill(child, 0) == 0, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
+    }
+
     /// A command may answer without reading its input. Writing the rest of a prompt larger
     /// than the pipe then failed with SIGPIPE, which killed the app.
     func testACommandThatDoesNotReadThePromptStillAnswers() async throws {
