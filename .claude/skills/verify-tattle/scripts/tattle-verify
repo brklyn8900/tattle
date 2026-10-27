@@ -97,8 +97,10 @@ cmd_launch() {
     use_copy $copy
     local running
     running=$(app_pids)
-    if [ -n "$running" ] && [ $replace = 0 ]; then
-        die "the $COPY_NAME is already running (pid $running, started $(ps -p "${running%%$'\n'*}" -o lstart= | sed "s/ *$//")), not by this run. the user or another session may be using it: ask, then rerun with --replace"
+    # Only the dev copy is guarded: another session may be driving it. A running release
+    # build is replaced.
+    if [ $copy = dev ] && [ -n "$running" ] && [ $replace = 0 ]; then
+        die "the $COPY_NAME is already running (pid $running, started $(ps -p "${running%%$'\n'*}" -o lstart= | sed "s/ *$//")), not by this run. Another session may be driving it: ask, then rerun with --replace"
     fi
     build_ax
     "$AX" trusted >/dev/null || die "this terminal has no Accessibility permission"

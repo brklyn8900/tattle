@@ -16,8 +16,8 @@ it:
 - the **release build** (`launch --release`): `build/Tattle.app`, bundle id
   `io.github.eladefrati.tattle`, data in `~/Library/Application Support/Tattle/`, log
   subsystem `io.github.eladefrati.tattle`. Use it when the proof must be on the build that
-  ships, such as the broker's install and refusals before a push. It is the copy the user
-  runs: its history is his, so `--fresh` on it moves his data aside for the run.
+  ships, such as the broker's install and refusals before a push. A running release build
+  is replaced without asking.
 
 Use the dev copy otherwise: it runs beside the release build without stopping it.
 
@@ -33,12 +33,11 @@ It builds its accessibility tool (`scripts/tattle-ax.swift`) into
 
     $V launch            # the dev copy, keeping its existing data
     $V launch --fresh    # moves the copy's data folder into the run folder first; cleanup puts it back
-    $V launch --release  # the release build instead; combines with --fresh and --replace
+    $V launch --release  # the release build instead, replacing a running one; combines with --fresh
 
-`launch` refuses when the copy is already running and no open run started it: the user or
-another session may be using it. For the dev copy, check with the other sessions
-(ListAgents); for the release build, it is usually the user's, so say you are replacing it.
-Only then rerun with `--replace`, which quits it. It refuses while a run is open.
+`launch` refuses when the dev copy is already running and no open run started it: another
+session may be driving it. Check with the other sessions (ListAgents), then rerun with
+`--replace`, which quits it. It refuses while a run is open.
 
 What it does: starts `log stream --level debug` for the copy's subsystem (unnamed reasons
 are debug lines, which `log show` cannot read back later), builds and opens the copy (the
@@ -152,8 +151,8 @@ pid it launched, checked against the copy's executable path) and the log stream.
 `--fresh` run it moves the run's data folder into `fresh-data/` and puts the previous one
 back. It prints the evidence folder and its contents. Run it after every failed attempt
 too, before launching again. It never kills by process name and never touches the other
-copy or the broker. After a release run the release build stays quit: `open
-build/Tattle.app` gives the user his copy back.
+copy or the broker. After a release run the release build stays quit; `open
+build/Tattle.app` starts it again.
 
 ## Gotchas
 
