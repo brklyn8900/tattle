@@ -184,7 +184,7 @@ final class ConnectionNameTests: XCTestCase {
         mine.uid = getuid()
         let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
         let row = LiveConnection(connection: mine, owner: owner, isNew: false)
-        let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .host, key: "x.example", facts: row.facts(now: t0)))
+        let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .host, key: "x.example", facts: row.facts(now: t0)), redactor: .addressesOnly)
         XCTAssertEqual(row.facts(now: t0).first { $0.name == "Runs as" }?.value, "you (\(login))", "the panel is unchanged")
         XCTAssertFalse(sent.contains("Username Doe"), sent)
         XCTAssertFalse(sent.contains("you ("), sent)

@@ -43,9 +43,12 @@ struct Redactor: Sendable {
             let pattern = "\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b"
             out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
         }
-        out = Self.redactIPv4(out)
-        out = Self.redactIPv6(out)
-        return out
+        return Self.redactAddresses(out)
+    }
+
+    /// Replaces private and local IP addresses only.
+    static func redactAddresses(_ text: String) -> String {
+        redactIPv6(redactIPv4(text))
     }
 
     private static let ipv4 = try! NSRegularExpression(

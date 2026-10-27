@@ -37,7 +37,7 @@ final class Explainer {
         let key = Rule(kind: request.kind, match: .exact, pattern: request.key, purpose: "", source: .llm)
         if let kept = try store.confirmedRule(replacedBy: key) { throw RuleStoreError.alreadyConfirmed(kept.id!) }
         let provider = makeProvider(settings.providerCommand)
-        let prompt = Prompt.build(instructions: settings.promptInstructions, request: request, redact: makeRedactor().redact)
+        let prompt = Prompt.build(instructions: settings.promptInstructions, request: request, redactor: makeRedactor())
         lastPrompt = prompt
         let output = try await provider.explain(prompt)
         let answer = try LLMAnswer.parse(output)

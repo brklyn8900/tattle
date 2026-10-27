@@ -176,7 +176,7 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(shown["Runs as"], "you (\(login))")
         XCTAssertNotNil(shown["Working in"])
 
-        let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts))
+        let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts), redactor: .addressesOnly)
         XCTAssertFalse(sent.contains("Username Doe"), sent)
         XCTAssertTrue(sent.contains("Apple Development") && sent.contains("ABCDE12345"), sent)
         XCTAssertFalse(sent.contains("client-acme"), sent)
