@@ -40,9 +40,11 @@ struct Redactor: Sendable {
         }
         // A one- or two-letter username would match ordinary text ("-e"). Where it appears
         // in a path the home replacement covers it; the facts built for a prompt never
-        // carry the login (UserName.describeForModel).
+        // carry the login (UserName.describeForModel). The username never matches as a label
+        // of a dotted name, so "mail.google.com" stays whole for a user called mail. A dot that
+        // ends a sentence does not join a label.
         if username.count >= 3 {
-            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b"
+            let pattern = "(?<![\\w-]\\.)\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b(?!\\.[\\w-])"
             out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
         }
         return Self.redactAddresses(out)

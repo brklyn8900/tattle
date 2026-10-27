@@ -277,6 +277,23 @@ final class ExplainerTests: XCTestCase {
         XCTAssertTrue(sent.contains(#"{"name":"Host","value":"<machine>"}"#), sent)
     }
 
+    /// The Destination fact repeats the key. Redacted inside the name, it would contradict the
+    /// key it stands beside, and the model is told never to contradict the facts.
+    func testTheUsernameIsNotRedactedInsideADottedName() async throws {
+        let provider = FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#)
+        let explainer = Explainer(store: store, settings: settings, makeRedactor: {
+            Redactor(home: "/Users/mail", username: "mail", machineNames: [])
+        }, makeProvider: { _ in provider })
+        _ = try await explainer.ask(ExplainRequest(kind: .host, key: "mail.google.com", facts: [
+            Fact(name: "Destination", value: "mail.google.com"),
+            Fact(name: "Also", value: "smtp.mail.example, relay.mail, you (mail), mail@example.com, run by mail."),
+        ]))
+        let sent = try XCTUnwrap(provider.seen.prompts.first)
+        XCTAssertTrue(sent.contains(#""item":{"key":"mail.google.com","kind":"host"}"#), sent)
+        XCTAssertTrue(sent.contains(#"{"name":"Destination","value":"mail.google.com"}"#), sent)
+        XCTAssertTrue(sent.contains(#"{"name":"Also","value":"smtp.mail.example, relay.mail, you (<user>), <user>@example.com, run by <user>."}"#), sent)
+    }
+
     /// The sniffer never names a local-network destination, so an unnamed connection's key is
     /// its address. The rule still keys on the address itself.
     func testAnUnnamedConnectionsPrivateAddressDoesNotGoOutAsTheKey() async throws {
