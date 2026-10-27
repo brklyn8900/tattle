@@ -32,6 +32,13 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("host USERS-COMPUTER.local and Users-Computer"), "host <machine> and <machine>")
     }
 
+    func testMachineNamesMatchOnlyAsWholeHostNames() {
+        let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev.local", "dev"])
+        XCTAssertEqual(dev.redact("Apple Development (ABCDE12345)"), "Apple Development (ABCDE12345)")
+        XCTAssertEqual(dev.redact("my-dev-box devices dev2 webdev my-dev"), "my-dev-box devices dev2 webdev my-dev")
+        XCTAssertEqual(dev.redact("dev, DEV.local and dev.lan"), "<machine>, <machine> and <machine>.lan")
+    }
+
     /// The router's DNS names this Mac by its bare Bonjour name and with `.lan`; neither is
     /// among the names Host gives.
     func testCurrentCoversTheBareComputerNameAndItsLanForm() throws {
@@ -39,7 +46,7 @@ final class RedactorTests: XCTestCase {
             throw XCTSkip("this Mac has no .local name")
         }
         let bare = String(local.dropLast(".local".count))
-        XCTAssertEqual(Redactor.current.redact("\(bare) and \(bare.lowercased()).lan"), "<machine> and <machine>")
+        XCTAssertEqual(Redactor.current.redact("\(bare) and \(bare.lowercased()).lan"), "<machine> and <machine>.lan")
     }
 
     func testPrivateIPsOnly() {

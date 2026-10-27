@@ -12,10 +12,10 @@ struct Redactor: Sendable {
         var names = ([host.localizedName, host.name] + host.names)
             .compactMap { $0 }
             .filter { !$0.isEmpty && $0 != "localhost" }
-        // The router's DNS knows the Bonjour name bare and as name.lan; Host gives only name.local.
+        // The router's DNS knows the Bonjour name bare and as name.lan; Host gives only
+        // name.local. The bare name covers name.lan, which reads <machine>.lan.
         for name in names where name.hasSuffix(".local") {
-            let bare = String(name.dropLast(".local".count))
-            names += [bare, bare + ".lan"]
+            names.append(String(name.dropLast(".local".count)))
         }
         return Redactor(
             home: NSHomeDirectory(),
@@ -31,9 +31,11 @@ struct Redactor: Sendable {
             let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![\\w.~@+-])"
             out = out.replacingOccurrences(of: pattern, with: "<home>", options: .regularExpression)
         }
+        // A machine name matches only as a whole host name, so on a Mac called dev
+        // "Apple Development" stays whole.
         for name in machineNames.sorted(by: { $0.count > $1.count }) {
             out = out.replacingOccurrences(
-                of: NSRegularExpression.escapedPattern(for: name),
+                of: "(?<![A-Za-z0-9-])" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9-])",
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
         // A one- or two-letter username would match ordinary text ("-e"). Where it appears
