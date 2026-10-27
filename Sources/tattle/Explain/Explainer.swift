@@ -25,7 +25,8 @@ final class Explainer {
 
     /// What the knowledge base already says, if anything. Never reaches the model.
     func lookup(_ request: ExplainRequest) throws -> Rule? {
-        try store.lookup(kind: request.kind, key: request.key)
+        try store.candidates(kind: request.kind, key: request.key)
+            .first { request.isApple || !$0.describesApplesProgram }
     }
 
     /// Asks the model and stores its answer. Called only from the explain button. Throws

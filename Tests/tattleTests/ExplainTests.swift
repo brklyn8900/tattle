@@ -224,6 +224,28 @@ final class ExplainerTests: XCTestCase {
         XCTAssertTrue(provider.seen.prompts.isEmpty)
     }
 
+    /// Process names are anyone's to take: a /tmp/mDNSResponder is not the macOS resolver.
+    /// A port-wide rule describes the port, whoever listens on it.
+    func testBuiltinRulesAboutApplesProgramsNeedAppleSignedItems() throws {
+        let repoSeeds = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Resources/knowledge")
+        SeedLoader(rules: store, settings: SettingsStore(database: store.database)).load(from: repoSeeds)
+        let explainer = explainer(FakeProvider(output: ""))
+        func lookup(_ kind: Rule.Kind, _ key: String, isApple: Bool) throws -> Rule? {
+            try explainer.lookup(ExplainRequest(kind: kind, key: key, isApple: isApple))
+        }
+
+        XCTAssertEqual(try lookup(.process, "mDNSResponder", isApple: true)?.category, "system")
+        XCTAssertNil(try lookup(.process, "mDNSResponder", isApple: false))
+        XCTAssertEqual(try lookup(.port, "ControlCenter:tcp/5000", isApple: true)?.category, "sharing")
+        XCTAssertNil(try lookup(.port, "ControlCenter:tcp/5000", isApple: false))
+        XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApple: true)?.purpose.prefix(8), "The macO")
+        XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApple: false)?.purpose.prefix(7), "Bonjour",
+                       "the port-wide rule, not the resolver's")
+        XCTAssertEqual(try lookup(.process, "claude", isApple: false)?.owner, "Anthropic")
+    }
+
     func testBadAnswerStoresNothing() async throws {
         let explainer = explainer(FakeProvider(output: "I cannot help."))
         do {

@@ -7,11 +7,15 @@ struct ExplainRequest: Equatable, Sendable {
     /// Deterministic facts from the Identify step: signer, owner, category, declared
     /// intent. Sent with the item so the model explains them instead of guessing.
     var facts: [Fact]
+    /// The program is Apple's, by its signature: a rule about one of Apple's programs
+    /// describes only that program, not whatever takes its name.
+    var isApple: Bool
 
-    init(kind: Rule.Kind, key: String, facts: [Fact] = []) {
+    init(kind: Rule.Kind, key: String, facts: [Fact] = [], isApple: Bool = false) {
         self.kind = kind
         self.key = Rule.normalize(key, for: kind)
         self.facts = facts
+        self.isApple = isApple
     }
 }
 

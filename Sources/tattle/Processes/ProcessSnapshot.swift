@@ -140,6 +140,15 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
         return readings.isEmpty ? nil : readings.reduce(0, +)
     }
 
+    /// Part of macOS: the app by its bundle's signer, a program as its leader is.
+    var isApple: Bool {
+        switch kind {
+        case .app: signature?.signer == .apple
+        case .process: leader?.isApple ?? false
+        case .system: true
+        }
+    }
+
     /// The group explains as its one process, or as the app; macOS is not one thing.
     var explainKey: String? { kind == .system ? nil : name }
 

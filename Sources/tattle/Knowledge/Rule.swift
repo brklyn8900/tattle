@@ -66,6 +66,12 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     /// Precedence rank: lower wins. Confirmation promotes any source to `user`.
     var rank: Int { confirmed == nil ? source.rank : Source.user.rank }
 
+    /// A shipped rule about one of Apple's programs by its name, which any program can take.
+    /// A port-wide rule (`*:udp/5353`) describes the port, whoever listens.
+    var describesApplesProgram: Bool {
+        source == .builtin && owner == "Apple" && (kind == .process || (kind == .port && !pattern.hasPrefix("*")))
+    }
+
     /// True once an unconfirmed LLM rule has outlived its lifetime.
     func isExpired(at now: Date) -> Bool {
         source == .llm && confirmed == nil

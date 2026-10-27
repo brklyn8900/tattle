@@ -116,7 +116,7 @@ private struct PortDetail: View {
                 }
                 FactsGrid(facts: item.facts)
                 Divider()
-                ExplainSection(request: ExplainRequest(kind: .port, key: item.explainKey, facts: item.facts), state: state)
+                ExplainSection(request: ExplainRequest(kind: .port, key: item.explainKey, facts: item.facts, isApple: item.signature?.signer == .apple), state: state)
                 Divider()
                 HStack {
                     if let path = item.process?.path {

@@ -158,7 +158,7 @@ private struct GroupDetail: View {
                 FactsGrid(facts: group.facts)
                 if let key = group.explainKey {
                     Divider()
-                    ExplainSection(request: ExplainRequest(kind: .process, key: key, facts: group.facts), state: state)
+                    ExplainSection(request: ExplainRequest(kind: .process, key: key, facts: group.facts, isApple: group.isApple), state: state)
                 }
                 Divider()
                 HStack {
@@ -219,7 +219,7 @@ private struct ProcessDetail: View {
                 }
                 FactsGrid(facts: item.facts)
                 Divider()
-                ExplainSection(request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts), state: state)
+                ExplainSection(request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts, isApple: item.isApple), state: state)
                 Divider()
                 HStack {
                     if let path = item.path {
