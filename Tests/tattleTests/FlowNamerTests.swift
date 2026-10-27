@@ -200,6 +200,24 @@ final class FlowNamerTests: XCTestCase {
                        [FlowEvent(key: udpKey, kind: .opened), FlowEvent(key: udpKey, kind: .named("example.org", .quic))], "after a flow given up on")
     }
 
+    /// A Retry moves the client to an id the server chose before the handshake is over, and a
+    /// ClientHello split over two Initials can finish under it. Only a finished flow restarts
+    /// on a new id, so this one is named from both halves.
+    func testANewIdOnAPendingQUICFlowDoesNotRestartIt() {
+        var n = namer()
+        let hello = SnifferParserTests.clientHello(sni: Array("example.org".utf8))
+        let half = hello.count / 2
+        let rest = hello.count - half
+        let first = SnifferParserTests.sealInitial([0x06, 0x00, 0x40 | UInt8(half >> 8), UInt8(half & 0xff)] + hello[..<half],
+                                                   dcid: [1, 2, 3, 4, 5, 6, 7, 8])
+        let second = SnifferParserTests.sealInitial([0x06, 0x40 | UInt8(half >> 8), UInt8(half & 0xff), 0x40 | UInt8(rest >> 8), UInt8(rest & 0xff)] + hello[half...],
+                                                    dcid: [9, 10, 11, 12, 13, 14, 15, 16])
+        XCTAssertEqual(n.observe(udp(first), at: t0), [FlowEvent(key: udpKey, kind: .opened)], "half a ClientHello")
+        XCTAssertEqual(n.observe(udp(second), at: t0 + 0.1), [FlowEvent(key: udpKey, kind: .named("example.org", .quic))],
+                       "the rest, under the id from the Retry")
+        XCTAssertEqual(n.flowCount, 1)
+    }
+
     func testShortHeaderDoesNotStartAFlow() {
         var n = namer()
         XCTAssertEqual(n.observe(udp([0x41, 1, 2, 3]), at: t0), [], "a connection open before capture started")
