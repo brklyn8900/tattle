@@ -265,6 +265,17 @@ final class ShellProviderTests: XCTestCase {
         XCTAssertEqual(output, "hello")
     }
 
+    /// The prompt carries captured data, which can carry instructions: an agent preset runs
+    /// with every tool off, so the model can only answer.
+    func testCodexPresetTurnsEveryToolOff() throws {
+        let codex = try XCTUnwrap(ShellProvider.presets.first { $0.id == "codex" }).command
+        for flag in ["--ignore-user-config", "--disable shell_tool", "--disable view_image", "--disable multi_agent",
+                     "--disable apps", "--disable plugins", "--disable image_generation", "-c web_search=disabled",
+                     "--sandbox read-only"] {
+            XCTAssertTrue(codex.contains(flag), flag)
+        }
+    }
+
     func testSchemaPlaceholderAndEmptyWorkingDirectory() async throws {
         let output = try await ShellProvider(command: "printf '%s' {schema} | head -c 1; echo; ls -A | wc -l | tr -d ' '").explain("")
         XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), "{\n0")

@@ -33,7 +33,9 @@ struct ShellProvider: ExplainProvider {
                // the time.
                command: "claude -p --setting-sources project,local --tools \"\" --permission-prompts none --output-format json --json-schema {schema}"),
         Preset(id: "codex", name: "Codex",
-               command: "codex exec --skip-git-repo-check -"),
+               // Every tool off, as --tools "" does for Claude: the shell and view_image read
+               // the disk, web search and apps reach out. The user's config could add MCP servers.
+               command: "codex exec --skip-git-repo-check --ignore-user-config --disable shell_tool --disable view_image --disable multi_agent --disable apps --disable plugins --disable image_generation -c web_search=disabled --sandbox read-only -"),
         Preset(id: "ollama", name: "Ollama",
                command: "ollama run llama3.2 --format json"),
     ]
