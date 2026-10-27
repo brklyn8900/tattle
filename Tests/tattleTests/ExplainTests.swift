@@ -414,14 +414,14 @@ final class ShellProviderTests: XCTestCase {
         XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
     }
 
-    /// A child left holding only stderr outlived the command, and the wait for stderr's end
-    /// ran after the timeout was disarmed, so it lasted as long as the child.
+    /// A command that ends its stdout but never exits, with a child holding stderr, still
+    /// ends at the timeout, child included.
     func testTimeoutKillsAChildHoldingOnlyStderr() async throws {
         let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-child-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: pidFile) }
         let start = Date()
         do {
-            _ = try await ShellProvider(command: "sleep 10 >/dev/null & echo $! > '\(pidFile.path)'; echo hi", timeout: 0.5).explain("")
+            _ = try await ShellProvider(command: "exec >&-; sleep 10 & echo $! > '\(pidFile.path)'; wait", timeout: 0.5).explain("")
             XCTFail("expected timeout")
         } catch let error as ProviderError {
             XCTAssertEqual(error, .timedOut)
@@ -431,6 +431,26 @@ final class ShellProviderTests: XCTestCase {
         let deadline = Date().addingTimeInterval(2)
         while kill(child, 0) == 0, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
         XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
+    }
+
+    /// A command that answered and exited 0 but left a child holding stdin, stdout or stderr
+    /// waited for the timeout, 120 s in the app, and its answer was thrown away as a timeout.
+    func testACommandsLeftoverChildrenEndWhenItExits() async throws {
+        let prompt = String(repeating: "x", count: 1_000_000)
+        for (holds, redirect) in [("stdin", " <&0 >/dev/null 2>&1"), ("stdout", " </dev/null 2>/dev/null"),
+                                  ("stderr", " </dev/null >/dev/null")] {
+            let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-child-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: pidFile) }
+            let start = Date()
+            let output = try? await ShellProvider(command: "sleep 10\(redirect) & echo $! > '\(pidFile.path)'; echo answer",
+                                                 timeout: 5).explain(prompt)
+            XCTAssertEqual(output, "answer\n", holds)
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2.5, "answered once the command exited: \(holds)")
+            let child = try XCTUnwrap(Int32(String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+            let deadline = Date().addingTimeInterval(2)
+            while kill(child, 0) == 0, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+            XCTAssertNotEqual(kill(child, 0), 0, "the child is gone: \(holds)")
+        }
     }
 
     /// A command may answer without reading its input. Writing the rest of a prompt larger

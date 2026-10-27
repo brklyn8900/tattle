@@ -64,11 +64,20 @@ struct ShellProvider: ExplainProvider {
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         let pid = try spawn(shell, ["-l", "-c", command], in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
 
-        // The command leads a process group of its own, so the timeout ends whatever it
-        // started: a child left holding stdout or stderr would keep the reads below waiting.
+        // The command leads a process group of its own, so its exit, or the timeout, ends
+        // whatever it started: a child left holding stdin, stdout or stderr would keep the
+        // write or the reads below waiting.
         let watchdog = Watchdog()
         let deadline = DispatchWorkItem { watchdog.fire { _ = killpg(pid, SIGKILL) } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: deadline)
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            var info = siginfo_t()
+            while waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) == -1 && errno == EINTR {}
+            _ = killpg(pid, SIGKILL)
+            group.leave()
+        }
 
         // A command may answer without reading all of its input. The write then fails with
         // EPIPE rather than raising SIGPIPE, which would end the app, and the answer counts.
@@ -78,15 +87,15 @@ struct ShellProvider: ExplainProvider {
 
         // Drain stderr on its own queue so a chatty command cannot block on a full pipe.
         let errorBuffer = ErrorBuffer()
-        let group = DispatchGroup()
         group.enter()
         DispatchQueue.global().async {
             errorBuffer.set(stderr.fileHandleForReading.readDataToEndOfFile())
             group.leave()
         }
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
-        // Joined before the disarm, so the timeout also ends a child holding only stderr,
-        // and before the reap, so the group id still names the command's group.
+        // The exit's kill and the stderr drain are joined before the disarm, so the timeout
+        // also ends a child holding only stderr. They are joined before the reap too, so the
+        // group id still names the command's group for both kills.
         group.wait()
         let terminationStatus = waitForExit(pid) { deadline.cancel(); return watchdog.disarm() }
 
