@@ -460,6 +460,60 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 
+    /// A process that left the command's group kept the pipe it held open after the command
+    /// exited, and the write or the reads waited for it: the answer came only once it was
+    /// gone, and was thrown away as a timeout.
+    func testAnAnswerDoesNotWaitForAProcessThatLeftTheGroup() async throws {
+        for (holds, redirect) in Self.heldPipes {
+            let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-holder-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: pidFile) }
+            let start = Date()
+            let output = try? await ShellProvider(command: Self.leaveTheGroup(holding: redirect, recordingIn: pidFile) + "; echo answer",
+                                                 timeout: 5).explain(Self.largerThanAPipe)
+            XCTAssertEqual(output, "answer\n", holds)
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2.5, "answered once the command exited: \(holds)")
+            try Self.endHolder(recordedIn: pidFile, holds)
+        }
+    }
+
+    /// The same holder with a command that never exits: the timeout threw only once the
+    /// holder was gone, and with a holder that never exits Explain never ended.
+    func testTheTimeoutDoesNotWaitForAProcessThatLeftTheGroup() async throws {
+        for (holds, redirect) in Self.heldPipes {
+            let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-holder-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: pidFile) }
+            let start = Date()
+            do {
+                _ = try await ShellProvider(command: Self.leaveTheGroup(holding: redirect, recordingIn: pidFile) + "; sleep 6",
+                                            timeout: 1).explain(Self.largerThanAPipe)
+                XCTFail("expected timeout: \(holds)")
+            } catch let error as ProviderError {
+                XCTAssertEqual(error, .timedOut, holds)
+            }
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2.5, "returned at the timeout: \(holds)")
+            try Self.endHolder(recordedIn: pidFile, holds)
+        }
+    }
+
+    private static let heldPipes = [("stdin", " <&0 >/dev/null 2>&1"), ("stdout", " </dev/null 2>/dev/null"),
+                                    ("stderr", " </dev/null >/dev/null")]
+    private static let largerThanAPipe = String(repeating: "x", count: 1_000_000)
+
+    /// Starts a process that leaves the command's group with setsid, as a daemonizing helper
+    /// does, so the group kill cannot reach it. It records its pid once it has left and lives
+    /// 6 s. The command waits for that record before it goes on.
+    private static func leaveTheGroup(holding redirect: String, recordingIn pidFile: URL) -> String {
+        "perl -MPOSIX -e 'POSIX::setsid(); open my $f, \">\", shift; print $f $$; close $f; sleep 6' '\(pidFile.path)'\(redirect) & "
+            + "until [ -s '\(pidFile.path)' ]; do sleep 0.01; done"
+    }
+
+    /// The holder outliving the call shows the case ran with a pipe still held.
+    private static func endHolder(recordedIn pidFile: URL, _ holds: String) throws {
+        let holder = try XCTUnwrap(Int32(String(contentsOf: pidFile, encoding: .utf8)), holds)
+        XCTAssertEqual(kill(holder, 0), 0, "the holder outlived the call: \(holds)")
+        kill(holder, SIGKILL)
+    }
+
     /// A command may answer without reading its input. Writing the rest of a prompt larger
     /// than the pipe then failed with SIGPIPE, which killed the app.
     func testACommandThatDoesNotReadThePromptStillAnswers() async throws {

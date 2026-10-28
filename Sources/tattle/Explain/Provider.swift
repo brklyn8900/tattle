@@ -61,54 +61,111 @@ struct ShellProvider: ExplainProvider {
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workDir) }
 
+        let queue = kqueue()
+        guard queue != -1 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(queue) }
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         let pid = try spawn(shell, ["-l", "-c", command], in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
+        let result = exchange(with: pid, on: queue, input: Data(input.utf8), stdin: stdin.fileHandleForWriting,
+                              stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading,
+                              until: .now() + timeout)
+        let status = reap(pid)
 
-        // The command leads a process group of its own, so its exit, or the timeout, ends
-        // whatever it started: a child left holding stdin, stdout or stderr would keep the
-        // write or the reads below waiting.
-        let watchdog = Watchdog()
-        let deadline = DispatchWorkItem { watchdog.fire { _ = killpg(pid, SIGKILL) } }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: deadline)
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global().async {
-            var info = siginfo_t()
-            while waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) == -1 && errno == EINTR {}
-            _ = killpg(pid, SIGKILL)
-            group.leave()
-        }
-
-        // A command may answer without reading all of its input. The write then fails with
-        // EPIPE rather than raising SIGPIPE, which would end the app, and the answer counts.
-        _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
-        try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8))
-        try? stdin.fileHandleForWriting.close()
-
-        // Drain stderr on its own queue so a chatty command cannot block on a full pipe.
-        let errorBuffer = ErrorBuffer()
-        group.enter()
-        DispatchQueue.global().async {
-            errorBuffer.set(stderr.fileHandleForReading.readDataToEndOfFile())
-            group.leave()
-        }
-        let output = stdout.fileHandleForReading.readDataToEndOfFile()
-        // The exit's kill and the stderr drain are joined before the disarm, so the timeout
-        // also ends a child holding only stderr. They are joined before the reap too, so the
-        // group id still names the command's group for both kills.
-        group.wait()
-        let terminationStatus = waitForExit(pid) { deadline.cancel(); return watchdog.disarm() }
-
-        if terminationStatus.timedOut { throw ProviderError.timedOut }
-        guard terminationStatus.status == 0 else {
-            var message = String(decoding: errorBuffer.value, as: UTF8.self)
+        guard result.exited else { throw ProviderError.timedOut }
+        guard status == 0 else {
+            var message = String(decoding: result.errors, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if message.isEmpty {
-                message = failureMessage(in: String(decoding: output, as: UTF8.self))
+                message = failureMessage(in: String(decoding: result.output, as: UTF8.self))
             }
-            throw ProviderError.failed(status: terminationStatus.status, stderr: message)
+            throw ProviderError.failed(status: status, stderr: message)
         }
-        return String(decoding: output, as: UTF8.self)
+        return String(decoding: result.output, as: UTF8.self)
+    }
+
+    /// Writes `input` to the command and reads its stdout and stderr until it exits or the
+    /// deadline passes. Then it kills the command's process group, which ends whatever the
+    /// command left running. A process that left the group, as a daemonizing helper does,
+    /// can hold a pipe open long after the command is gone, so nothing here waits on a pipe:
+    /// the descriptors are non-blocking, and one kqueue watches them and the exit with the
+    /// deadline as its timeout.
+    private static func exchange(with pid: pid_t, on queue: Int32, input: Data, stdin: FileHandle,
+                                 stdout: FileHandle, stderr: FileHandle,
+                                 until deadline: DispatchTime) -> (output: Data, errors: Data, exited: Bool) {
+        for handle in [stdin, stdout, stderr] {
+            _ = fcntl(handle.fileDescriptor, F_SETFL, fcntl(handle.fileDescriptor, F_GETFL) | O_NONBLOCK)
+        }
+        // A command may answer without reading all of its input. The write then fails with
+        // EPIPE rather than raising SIGPIPE, which would end the app, and the answer counts.
+        _ = fcntl(stdin.fileDescriptor, F_SETNOSIGPIPE, 1)
+
+        func watch(_ ident: Int32, _ filter: Int32, _ flags: Int32 = EV_ADD, _ fflags: UInt32 = 0) -> kevent {
+            kevent(ident: UInt(ident), filter: Int16(filter), flags: UInt16(flags), fflags: fflags, data: 0, udata: nil)
+        }
+        var changes = [watch(pid, EVFILT_PROC, EV_ADD, NOTE_EXIT), watch(stdin.fileDescriptor, EVFILT_WRITE),
+                       watch(stdout.fileDescriptor, EVFILT_READ), watch(stderr.fileDescriptor, EVFILT_READ)]
+        var events = Array(repeating: kevent(), count: changes.count)
+        var unsent = input, writing: FileHandle? = stdin
+        var output = Data(), errors = Data()
+        var exited = false
+        while !exited {
+            let now = DispatchTime.now()
+            guard now < deadline else { break }
+            let left = deadline.uptimeNanoseconds - now.uptimeNanoseconds
+            var wait = timespec(tv_sec: Int(left / 1_000_000_000), tv_nsec: Int(left % 1_000_000_000))
+            let count = kevent(queue, changes, Int32(changes.count), &events, Int32(events.count), &wait)
+            changes.removeAll()
+            for event in events.prefix(Int(max(count, 0))) {
+                switch Int32(event.filter) {
+                case EVFILT_PROC:
+                    // The exit, or ESRCH if the command had already exited when it was watched.
+                    exited = true
+                case EVFILT_WRITE:
+                    if let handle = writing, !send(&unsent, to: handle) {
+                        try? handle.close()
+                        writing = nil
+                    }
+                default:
+                    let open = event.ident == UInt(stdout.fileDescriptor)
+                        ? receive(from: stdout, into: &output) : receive(from: stderr, into: &errors)
+                    if !open { changes.append(watch(Int32(event.ident), EVFILT_READ, EV_DELETE)) }
+                }
+            }
+        }
+        // The command is still unreaped, so its group id names only its own group.
+        _ = killpg(pid, SIGKILL)
+        try? writing?.close()
+        // What the command wrote before it exited is already in the pipes.
+        _ = receive(from: stdout, into: &output)
+        _ = receive(from: stderr, into: &errors)
+        return (output, errors, exited)
+    }
+
+    /// Writes as much of `unsent` as the pipe takes now. False once all of it is written or
+    /// the command has closed its end.
+    private static func send(_ unsent: inout Data, to handle: FileHandle) -> Bool {
+        while !unsent.isEmpty {
+            let count = unsent.withUnsafeBytes { write(handle.fileDescriptor, $0.baseAddress, $0.count) }
+            if count > 0 {
+                unsent.removeFirst(count)
+            } else if errno != EINTR {
+                return errno == EAGAIN
+            }
+        }
+        return false
+    }
+
+    /// Reads what the pipe holds now. False once every writer has closed its end.
+    private static func receive(from handle: FileHandle, into data: inout Data) -> Bool {
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        while true {
+            let count = read(handle.fileDescriptor, &buffer, buffer.count)
+            if count > 0 {
+                data.append(contentsOf: buffer[..<count])
+            } else if count == 0 || errno != EINTR {
+                return count == -1 && errno == EAGAIN
+            }
+        }
     }
 
     /// Starts `path` with posix_spawn: Process cannot put the child in a group of its own
@@ -149,17 +206,13 @@ struct ShellProvider: ExplainProvider {
         return pid
     }
 
-    /// Waits for `pid` to exit and reaps it. `exited` runs between the two: until the
-    /// reap the pid, and so the group id, cannot belong to another process.
-    private static func waitForExit(_ pid: pid_t, exited: () -> Bool) -> (status: Int32, timedOut: Bool) {
-        var info = siginfo_t()
-        while waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) == -1 && errno == EINTR {}
-        let timedOut = exited()
+    /// Reaps `pid` and returns its exit code, or the signal that ended it, as Process
+    /// reports them.
+    private static func reap(_ pid: pid_t) -> Int32 {
         var status: Int32 = 0
         while waitpid(pid, &status, 0) == -1 && errno == EINTR {}
-        // The exit code, or the signal that ended it, as Process reports them.
         let signal = status & 0x7f
-        return (signal == 0 ? (status >> 8) & 0xff : signal, timedOut)
+        return signal == 0 ? (status >> 8) & 0xff : signal
     }
 
     /// Agent CLIs report errors on stdout inside their JSON envelope ("Not logged in").
@@ -176,35 +229,4 @@ struct ShellProvider: ExplainProvider {
     static func shellQuote(_ text: String) -> String {
         "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
-}
-
-/// Kills at the timeout unless disarmed first, never both: once the command is reaped,
-/// its group id may name another process's group.
-private final class Watchdog: @unchecked Sendable {
-    private enum State { case armed, fired, disarmed }
-    private let lock = NSLock()
-    private var state = State.armed
-
-    func fire(_ kill: () -> Void) {
-        lock.withLock {
-            guard state == .armed else { return }
-            state = .fired
-            kill()
-        }
-    }
-
-    /// Whether it fired.
-    func disarm() -> Bool {
-        lock.withLock {
-            defer { state = .disarmed }
-            return state == .fired
-        }
-    }
-}
-
-private final class ErrorBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
-    var value: Data { lock.withLock { data } }
-    func set(_ new: Data) { lock.withLock { data = new } }
 }
