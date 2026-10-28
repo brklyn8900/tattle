@@ -264,8 +264,12 @@ cmd_save() {
     record "save $1"
     ax dump > "$run/$1.ax.txt"
     ax text > "$run/$1.txt"
-    ax shot "$run/$1.png" > /dev/null || echo "warning: no screenshot; the tree and text are the evidence" >&2
-    echo "saved $run/$1.txt, .ax.txt, .png"
+    if ax shot "$run/$1.png" > /dev/null && [ -s "$run/$1.png" ]; then
+        echo "saved $run/$1.txt, .ax.txt, .png"
+    else
+        echo "warning: no screenshot (does the terminal have Screen Recording permission?); the tree and text are the evidence" >&2
+        echo "saved $run/$1.txt, .ax.txt"
+    fi
 }
 
 cmd_db() {

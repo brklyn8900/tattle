@@ -109,7 +109,9 @@ Each run writes to `build/verify/runs/<run-id>/`, which cleanup never deletes:
   (screenshot of the panel window). the user set the dev copy's item to always show in the
   menu bar (2026-10-25), so the panel opens on screen. If that setting is lost and the
   menu bar is too full, macOS puts the item and its panel off every display; `shot` then
-  moves the panel onto the main display for the capture and says so.
+  moves the panel onto the main display for the capture and says so. The `.png` needs
+  Screen Recording permission for the terminal app; without it `save` warns and the
+  `.txt` and `.ax.txt` files are the evidence.
 - `$V db "<sql>"`: read-only query on the run's copy's history database, appended to `db.txt`.
   Tables: `connection` (one row per connection: `localPort`, `pid`, `processName`,
   `remoteAddress`, `remotePort`, `scope`, `name`, `nameSource`, `firstSeen`, `ended`),
