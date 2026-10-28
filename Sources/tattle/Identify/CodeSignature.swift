@@ -93,7 +93,7 @@ struct CodeSignature: Equatable, Sendable {
         let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate] ?? []
 
         if flags & SecCodeSignatureFlags.adhoc.rawValue != 0 || certificates.isEmpty {
-            return CodeSignature(signer: .adHoc, identifier: identifier, teamIdentifier: team)
+            return CodeSignature(signer: .adHoc, identifier: identifier)
         }
         let signer = classify((SecCertificateCopySubjectSummary(certificates[0]) as String?) ?? "")
         guard satisfies(code, signer == .apple ? "anchor apple" : "anchor apple generic") else {

@@ -56,6 +56,21 @@ final class CodeSignatureTests: XCTestCase {
         }
     }
 
+    /// An ad-hoc signature has no certificate, so the team its CodeDirectory names is
+    /// whoever signed it saying so.
+    func testAnAdHocSignatureClaimsNoTeam() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let adHoc = dir.appending(path: "adhoc")
+        try FileManager.default.copyItem(atPath: "/bin/ls", toPath: adHoc.path)
+        try codesign(["--force", "--sign", "-", "--team-identifier", "ABCDE12345", adHoc.path])
+
+        let signature = CodeSignature.read(path: adHoc.path)
+        XCTAssertEqual(signature.signer, .adHoc)
+        XCTAssertNil(signature.teamIdentifier)
+    }
+
     func testClassify() {
         XCTAssertEqual(CodeSignature.classify("Developer ID Application: PACE Anti-Piracy, Inc. (TFZ8226T6X)"), .developerID(name: "PACE Anti-Piracy, Inc."))
         XCTAssertEqual(CodeSignature.classify("Apple Development: someone@example.com (ABCDE12345)"), .development)
