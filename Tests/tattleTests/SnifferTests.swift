@@ -71,6 +71,50 @@ final class SnifferTests: XCTestCase {
                        "the first run stopped before the second reported")
     }
 
+    /// A raw-IP capture that delivers its packets on the first read, then nothing.
+    private final class OnePass: CaptureSource, @unchecked Sendable {
+        let dataLinkType = PacketCapture.linkRaw
+        private let packets: OSAllocatedUnfairLock<[[UInt8]]>
+        init(_ packets: [[UInt8]]) { self.packets = OSAllocatedUnfairLock(initialState: packets) }
+        func install(_ filter: CaptureFilter) throws {}
+        func readPackets(_ handle: (Double, [UInt8]) -> Void) throws {
+            for bytes in packets.withLock({ p in defer { p = [] }; return p }) { handle(Date().timeIntervalSince1970, bytes) }
+            usleep(10_000)
+        }
+    }
+
+    /// A run's flows end with it. One whose handshake was not read yet gets a reason when the
+    /// capture stops or reopens, or its connection keeps neither a name nor a reason.
+    func testFlowsPendingWhenARunEndsGetAReason() {
+        let me = IPAddress(bytes: [192, 168, 1, 5])
+        let remote = IPAddress(bytes: [203, 0, 113, 7])
+        @Sendable func syn(from port: UInt16) -> [UInt8] {
+            [0x45, 0, 0, 40, 0, 0, 0, 0, 64, 6, 0, 0] + me.bytes + remote.bytes
+                + [UInt8(port >> 8), UInt8(port & 0xff), 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
+        }
+        func key(_ port: UInt16) -> FlowKey { FlowKey(proto: .tcp, localPort: port, remote: remote, remotePort: 443) }
+        let interface = OSAllocatedUnfairLock(initialState: "en0")
+        let opens = OSAllocatedUnfairLock(initialState: 0)
+        let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
+        let sniffer = Sniffer(open: { _ in OnePass([syn(from: opens.withLock { n in n += 1; return 50000 + UInt16(n) })]) },
+                              host: Sniffer.Host(primaryInterface: { interface.withLock { $0 } }, hardwareAddress: { _ in nil },
+                                                 addresses: { _ in [me] }, resolvers: { [] }, interfaceCheckEvery: 0.05),
+                              onEvents: { new in events.withLock { $0 += new } }, onStatus: { _ in })
+        defer { sniffer.stop() }
+        sniffer.start()
+        XCTAssertTrue(eventually { events.withLock { $0 } == [FlowEvent(key: key(50001), kind: .opened)] }, "the first run's flow opened")
+
+        interface.withLock { $0 = "en1" }
+        XCTAssertTrue(eventually { events.withLock { $0 }.count >= 3 })
+        XCTAssertEqual(events.withLock { $0 }, [FlowEvent(key: key(50001), kind: .opened), FlowEvent(key: key(50001), kind: .unnamed(.captureEnded)),
+                                                 FlowEvent(key: key(50002), kind: .opened)],
+                       "the default route moved: the old run gave up on its flow before the new run opened one")
+
+        sniffer.stop()
+        XCTAssertTrue(eventually { events.withLock { $0 }.count >= 4 })
+        XCTAssertEqual(events.withLock { $0 }.last, FlowEvent(key: key(50002), kind: .unnamed(.captureEnded)), "stopped")
+    }
+
     /// An opener that does not return until the test lets it, as a broker request that is slow
     /// to answer. Counts how many opens have begun.
     private final class SlowOpen: @unchecked Sendable {

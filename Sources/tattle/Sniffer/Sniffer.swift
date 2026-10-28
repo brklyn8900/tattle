@@ -162,6 +162,11 @@ final class Sniffer: @unchecked Sendable {
     private func captureLoop(_ capture: any CaptureSource, interface: String, direction installed: CaptureFilter.Direction, shouldStop: () -> Bool) {
         var installed = installed
         var namer = FlowNamer(localAddresses: host.addresses(nil), resolvers: host.resolvers())
+        // Every way out drops the namer, and with it the flows whose handshake was not read.
+        defer {
+            let events = namer.endCapture()
+            if !events.isEmpty { onEvents(events) }
+        }
         var lastInterfaceCheck = Date()
         var lastAddressRefresh = Date()
         var lastExpire = Date.distantPast

@@ -57,6 +57,9 @@ struct FlowEvent: Equatable, Sendable {
         /// Too many newer flows opened before this one's handshake was read, and it was
         /// dropped to stay within `flowCapacity`.
         case evicted
+        /// The packet capture stopped or reopened (a stop, a restart, the default route moving,
+        /// a failed read) before this flow's handshake was read.
+        case captureEnded
 
         /// Stored in history as the name source of an unnamed connection.
         static let codePrefix = "none:"
@@ -69,6 +72,7 @@ struct FlowEvent: Equatable, Sendable {
             case .quic(let failure): Self.codePrefix + "quic-" + failure.rawValue
             case .timeout: Self.codePrefix + "timeout"
             case .evicted: Self.codePrefix + "evicted"
+            case .captureEnded: Self.codePrefix + "capture-ended"
             }
         }
 
@@ -79,6 +83,7 @@ struct FlowEvent: Equatable, Sendable {
             case Self.codePrefix + "no-server-name": self = .noServerName
             case Self.codePrefix + "timeout": self = .timeout
             case Self.codePrefix + "evicted": self = .evicted
+            case Self.codePrefix + "capture-ended": self = .captureEnded
             default:
                 guard code.hasPrefix(Self.codePrefix + "quic-"),
                       let failure = QUIC.Failure(rawValue: String(code.dropFirst(Self.codePrefix.count + 5))) else { return nil }
@@ -95,6 +100,7 @@ struct FlowEvent: Equatable, Sendable {
             case .quic: "the QUIC handshake could not be read"
             case .timeout: "the connection sent nothing in its first \(Int(FlowNamer.finalizeAfter)) seconds"
             case .evicted: "too many connections opened at once for Tattle to follow this one"
+            case .captureEnded: "the packet capture stopped or restarted before this connection's handshake was read"
             }
         }
     }
@@ -367,6 +373,17 @@ struct FlowNamer: Sendable {
             }
         }
         dnsMap.forget(arrivedBy: now - Self.dnsRemembered)
+        return events
+    }
+
+    /// The capture this namer reads is over: every flow still waiting for its handshake is
+    /// given up on, as at a timeout.
+    mutating func endCapture() -> [FlowEvent] {
+        var events: [FlowEvent] = []
+        for (key, var flow) in flows where !flow.finished {
+            if let event = giveUp(on: &flow, at: key, reason: .captureEnded) { events.append(event) }
+            flows[key] = flow
+        }
         return events
     }
 
