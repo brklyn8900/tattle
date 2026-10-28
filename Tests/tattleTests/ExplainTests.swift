@@ -51,7 +51,7 @@ final class RedactorTests: XCTestCase {
     func testMachineNamesFromTheSystemsOwnNames() {
         let names = Redactor.machineNames(
             computerName: "Username’s Computer", localHostName: "Users-Computer",
-            hostName: "desktop.corp.example.com", domains: ["tail1234.ts.net.", "localdomain"])
+            hostName: "desktop.corp.example.com", domains: ["tail1234.ts.net", "localdomain"])
         let username = Redactor(home: "/Users/username", username: "username", machineNames: names)
         XCTAssertEqual(
             username.redact("Username’s Computer, Users-Computer.local, users-computer.tail1234.ts.net, users-computer.lan"),
@@ -59,6 +59,20 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(username.redact("desktop.corp.example.com, desktop.localdomain"), "<machine>, <machine>")
         let none = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "localhost", domains: ["localdomain"])
         XCTAssertEqual(none, [])
+    }
+
+    func testEmptyAndLocalhostNamesAreNeverMachineNames() {
+        XCTAssertEqual(Redactor.machineNames(
+            computerName: nil, localHostName: "", hostName: "localhost.localdomain", domains: ["lan"]), [])
+        XCTAssertEqual(Set(Redactor.machineNames(computerName: nil, localHostName: "Studio", hostName: "", domains: ["lan"])),
+                       ["Studio", "Studio.local", "Studio.lan"])
+    }
+
+    func testAnEmptyDomainNeverTakesAPeriod() {
+        let domains = SystemDNS(states: ["State:/Network/Global/DNS": ["SearchDomains": ["", "."]]]).domains
+        let testmac = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
+            computerName: nil, localHostName: "testmac", hostName: nil, domains: domains))
+        XCTAssertEqual(testmac.redact("Then testmac. Next"), "Then <machine>. Next")
     }
 
     func testCurrentCoversTheLocalHostNameBareAndUnderEachSearchDomain() throws {

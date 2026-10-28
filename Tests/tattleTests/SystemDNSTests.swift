@@ -16,4 +16,12 @@ final class SystemDNSTests: XCTestCase {
         ])
         XCTAssertEqual(dns.domains, ["lan", "tail1234.ts.net"])
     }
+
+    func testDomainsLoseTrailingDotsEmptiesAndRepeats() {
+        let dns = SystemDNS(states: [
+            "State:/Network/Global/DNS": ["SearchDomains": ["", ".", "tail1234.ts.net.", "Tail1234.TS.net"]],
+            "State:/Network/Service/A1B2/DNS": ["DomainName": "lan."],
+        ])
+        XCTAssertEqual(dns.domains, ["lan", "tail1234.ts.net"])
+    }
 }

@@ -28,16 +28,18 @@ struct Redactor: Sendable {
     /// label under every search domain, which is how Tailscale and the router's DHCP name
     /// this Mac. The bare name covers name.lan, which reads <machine>.lan.
     static func machineNames(computerName: String?, localHostName: String?, hostName: String?, domains: [String]) -> [String] {
-        var names = [computerName, localHostName, localHostName.map { $0 + ".local" }, hostName].compactMap { $0 }
-        let labels = [localHostName, hostName?.split(separator: ".").first.map(String.init)].compactMap { $0 }
-            .filter { $0.lowercased() != "localhost" }
-        for label in labels {
-            for domain in domains {
-                names.append(label + "." + (domain.hasSuffix(".") ? String(domain.dropLast()) : domain))
-            }
-        }
+        let bare = [computerName, localHostName, localHostName.map { $0 + ".local" }, hostName].compactMap { $0 }
+        let labels = [localHostName, hostName.map(firstLabel)].compactMap { $0 }
+        let names = bare + labels.flatMap { label in domains.map { label + "." + $0 } }
         var seen = Set<String>()
-        return names.filter { !$0.isEmpty && $0.lowercased() != "localhost" && seen.insert($0.lowercased()).inserted }
+        return names.filter { name in
+            let first = firstLabel(name).lowercased()
+            return first != "" && first != "localhost" && seen.insert(name.lowercased()).inserted
+        }
+    }
+
+    private static func firstLabel(_ name: String) -> String {
+        String(name.prefix { $0 != "." })
     }
 
     func redact(_ text: String) -> String {

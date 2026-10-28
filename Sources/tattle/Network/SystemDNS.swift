@@ -18,6 +18,11 @@ struct SystemDNS {
     init(states: [String: [String: Any]]) {
         servers = Set(states.values.flatMap { $0["ServerAddresses"] as? [String] ?? [] }.compactMap(IPAddress.init(text:)))
         let domains = states.values.flatMap { ($0["SearchDomains"] as? [String] ?? []) + [$0["DomainName"] as? String].compactMap { $0 } }
-        self.domains = Array(Set(domains)).sorted()
+            .map { domain in
+                var name = domain.lowercased()
+                while name.hasSuffix(".") { name.removeLast() }
+                return name
+            }
+        self.domains = Set(domains).subtracting([""]).sorted()
     }
 }
