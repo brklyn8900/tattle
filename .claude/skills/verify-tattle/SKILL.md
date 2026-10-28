@@ -1,6 +1,6 @@
 ---
 name: verify-tattle
-description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed.
+description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Runs go on testmac, the test Mac, not the user's Mac. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed.
 ---
 
 # Verify Tattle
@@ -20,6 +20,21 @@ it:
   is replaced without asking.
 
 Use the dev copy otherwise: it runs beside the release build without stopping it.
+
+## Where it runs
+
+Runs go on testmac, the test Mac, not on the user's Mac: verify runs, `make test`, and anything
+that changes the system. A run that must happen on the user's Mac needs his yes first, with the
+reason.
+
+- Bring testmac's checkout to the commit under test first: a git bundle from this Mac's
+  repo, fast-forward from it, then delete the bundle.
+- The accessibility tool needs testmac's GUI session, not an ssh one. Put the `$V` commands
+  in a script that writes its output to files, start it with
+  `ssh <testmac> 'open -na Ghostty --args -e /bin/zsh <script>'`, and read the files and the
+  run folder over ssh.
+- testmac has no signing identity, so both copies build ad hoc there.
+- Copy the run folder back to this Mac's `build/verify/runs/testmac-<date>/`.
 
 All commands run from the repo root through one helper:
 
@@ -138,8 +153,8 @@ Proof standards:
 
 - **Administrator password.** Installing or removing packet access opens macOS's
   administrator dialog. Press the button, then stop: tell the user the dialog is up and what
-  it will do, and wait for him to type the password into the dialog himself. Never type,
-  script or ask for the password in the terminal.
+  it will do, and wait for him to type the password into the dialog himself (on testmac,
+  over Screen Sharing). Never type, script or ask for the password in the terminal.
 - **Changes outside the run's copy.** Startup's `Load`, `Unload` and `Remove`, and
   Processes' `Quit` and `Force Quit`, act on the user's real system. Use them only on
   something the run created, or with his yes.
