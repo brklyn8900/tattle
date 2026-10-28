@@ -7,8 +7,9 @@ signed it, who owns the other end, and why it is probably there.
 Tattle is an explainer, not a firewall and not a system monitor. It makes no network calls
 of its own: no telemetry, no update check, no cloud lookups. The one way anything leaves
 your machine is an "explain" button you click, which sends a single redacted item to an LLM
-you already have, through a command you configured. Design in the
-[proposal](docs/proposal.md); decisions in the [ADRs](docs/adr/).
+you already have, through a command you configured. Background processes the command
+leaves running are killed when it exits. Design in the [proposal](docs/proposal.md);
+decisions in the [ADRs](docs/adr/).
 
 ## Status
 
