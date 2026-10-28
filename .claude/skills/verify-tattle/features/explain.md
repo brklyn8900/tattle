@@ -31,10 +31,12 @@ Preconditions:
 
       D="$HOME/Library/Application Support/Tattle/tattle.sqlite"   # Tattle Dev/ for the dev copy
       sqlite3 "$D" "select value from setting where key='provider.command'" > provider-command-before.txt
-      sqlite3 "$D" "update setting set value='$PWD/.claude/skills/verify-tattle/scripts/fake-provider $PWD/build/verify/prompts' where key='provider.command'"
+      sqlite3 "$D" "insert into setting (key, value) values ('provider.command', '$PWD/.claude/skills/verify-tattle/scripts/fake-provider $PWD/build/verify/prompts') on conflict (key) do update set value = excluded.value"
 
-  After cleanup, write the saved value back with a parameter binding (it holds quotes),
-  and delete the rules the run stored: `purpose = 'fake answer for the verify run'`.
+  An `update` alone changes nothing when the copy never saved a provider, and `Explain`
+  then stays disabled. After cleanup, write the saved value back with a parameter binding
+  (it holds quotes), or delete the row if the saved file is empty, and delete the rules the
+  run stored: `purpose = 'fake answer for the verify run'`.
 
 - **Shipped rule.** `$V tab Ports`, `$V ax press --prefix "5353, mDNSResponder"`: the
   detail ends in `The macOS name resolver: ...` and `Tattle's rules · risk low · confidence
