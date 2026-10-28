@@ -135,6 +135,22 @@ final class PromptTests: XCTestCase {
         XCTAssertFalse(prompt.contains("\\/"))
     }
 
+    /// A process key is the process's name, and a titled process names itself: Homebrew's
+    /// Postgres backends read "postgres: <login> <db> [local] idle". A port key starts with
+    /// that name.
+    func testAProcessNameInTheKeyLosesTheLoginAndTheHomePath() throws {
+        let redactor = Redactor(home: "/Users/username", username: "username", machineNames: ["dev"])
+        func key(_ kind: Rule.Kind, _ key: String) throws -> String? {
+            let data = try capturedData(in: Prompt.build(instructions: "x", request: ExplainRequest(kind: kind, key: key), redactor: redactor))
+            return (data["item"] as? [String: String])?["key"]
+        }
+        XCTAssertEqual(try key(.process, "postgres: username dev [local] idle"), "postgres: <user> dev [local] idle")
+        XCTAssertEqual(try key(.process, "ruby /Users/username/bin/sync"), "ruby <home>/bin/sync")
+        XCTAssertEqual(try key(.port, "postgres: username dev 192.168.1.9(5000) idle:tcp/5432"), "postgres: <user> dev <private-ip>(5000) idle:tcp/5432")
+        XCTAssertEqual(try key(.process, "username.helper"), "username.helper", "the dotted-name rule holds in keys")
+        XCTAssertEqual(try key(.host, "username-dev.example"), "username-dev.example", "a host key is not rewritten by name")
+    }
+
     func testPanelOnlyFactsAndPromptValues() throws {
         let facts = [
             Fact(name: "Working in", value: "~/dev/client-acme", inPrompt: false),
