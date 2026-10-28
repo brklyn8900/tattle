@@ -56,7 +56,8 @@ Teardown is `$V cleanup` (below).
     $V doctor
 
 Read-only. Run it after launch and whenever anything looks off. Every line must be `ok`:
-Accessibility permission for this terminal; exactly one copy of the run's kind; started by the open run;
+Accessibility permission for this terminal (the terminal app the session runs in, such
+as iTerm or Ghostty, granted in Privacy & Security on each Mac); exactly one copy of the run's kind; started by the open run;
 bundle id; the running code hash equals the bundle on disk; the menu bar item is
 reachable; the bundle is newer than every file in `Sources/`, `Resources/` and
 `Package.swift` (otherwise relaunch: the app is not the code under test); the database has

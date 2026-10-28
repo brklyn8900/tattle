@@ -10,8 +10,9 @@ detail adds facts, an explanation, and controls.
 ## Sub-features
 
 - `st-groups`: group headings with their one-line descriptions.
-- `st-row`: `"<name>, <when> · <state> · <signer>"`; the name is the program's when Tattle
-  can resolve it (`CometUpdater`), else the launchd label.
+- `st-row`: `"<name>, <when> · <state> · <signer>"`; the name is the one macOS's
+  background-items record gives (`CometUpdater`), which Tattle reads only with Full Disk
+  Access; otherwise, and for an agent macOS has not registered, the launchd label.
 - `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Plist` with the path),
   `Explain`, `Reveal Plist`, `Login Items Settings`.
 - `st-control`: `Load` / `Unload` for the user's own agents, `Managed by the system` for
@@ -51,7 +52,8 @@ Preconditions:
 - `Load` and `Unload` change the user's real launchd state: only with his yes, or on an agent
   the run created and removes again.
 - The dev copy has its own Full Disk Access grant, separate from the release app's;
-  granted 2026-10-25 (run `2026-10-25T223546` listed the login items).
+  granted on the user's Mac 2026-10-25 (run `2026-10-25T223546` listed the login items). On
+  any other Mac (testmac) it has none until granted there.
 - `Login Items Settings` and `Open Full Disk Access Settings` open System Settings, which
   takes the screen; avoid in unattended runs.
 - Proven 2026-10-25, run `2026-10-25T224119` (list, detail, cross-check, broker row);
