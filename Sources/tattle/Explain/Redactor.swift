@@ -32,10 +32,11 @@ struct Redactor: Sendable {
             out = out.replacingOccurrences(of: pattern, with: "<home>", options: .regularExpression)
         }
         // A machine name matches only as a whole host name, so on a Mac called dev
-        // "Apple Development" stays whole.
+        // "Apple Development" stays whole. It matches only as the first label, so
+        // "pages.dev" stays whole and "dev.lan" reads <machine>.lan.
         for name in machineNames.sorted(by: { $0.count > $1.count }) {
             out = out.replacingOccurrences(
-                of: "(?<![A-Za-z0-9-])" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9-])",
+                of: "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9-])",
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
         // A one- or two-letter username would match ordinary text ("-e"). Where it appears

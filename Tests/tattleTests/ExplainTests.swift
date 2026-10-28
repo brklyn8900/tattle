@@ -39,6 +39,13 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(dev.redact("dev, DEV.local and dev.lan"), "<machine>, <machine> and <machine>.lan")
     }
 
+    /// A later label of a dotted name is someone else's host, not this Mac.
+    func testMachineNamesMatchOnlyAsTheFirstLabel() {
+        let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev.local", "dev"])
+        XCTAssertEqual(dev.redact("pages.dev, api.dev.example.com, x.dev.local"), "pages.dev, api.dev.example.com, x.dev.local")
+        XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev."), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
+    }
+
     /// The router's DNS names this Mac by its bare Bonjour name and with `.lan`; neither is
     /// among the names Host gives.
     func testCurrentCoversTheBareComputerNameAndItsLanForm() throws {
