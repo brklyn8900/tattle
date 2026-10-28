@@ -61,18 +61,12 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(none, [])
     }
 
-    /// The router's DNS names this Mac by its bare Bonjour name and with `.lan`, Tailscale
-    /// and DHCP under their search domains. Read here from the store directly, not through
-    /// the code under test.
     func testCurrentCoversTheLocalHostNameBareAndUnderEachSearchDomain() throws {
         guard let local = SCDynamicStoreCopyLocalHostName(nil) as String? else {
             throw XCTSkip("this Mac has no local host name")
         }
         XCTAssertEqual(Redactor.current.redact("\(local) and \(local.lowercased()).lan"), "<machine> and <machine>.lan")
-        let store = SCDynamicStoreCreate(nil, "tattleTests" as CFString, nil, nil)
-        let states = SCDynamicStoreCopyMultiple(store, ["State:/Network/Global/DNS"] as CFArray,
-                                                ["State:/Network/Service/.*/DNS"] as CFArray) as? [String: [String: Any]]
-        let domains = Set((states ?? [:]).values.flatMap { $0["SearchDomains"] as? [String] ?? [] })
+        let domains = SystemDNS.current.domains
         guard !domains.isEmpty else { throw XCTSkip("this Mac has no search domains") }
         for domain in domains {
             XCTAssertEqual(Redactor.current.redact("\(local.lowercased()).\(domain)"), "<machine>", domain)

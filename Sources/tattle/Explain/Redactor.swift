@@ -21,7 +21,7 @@ struct Redactor: Sendable {
             machineNames: machineNames(
                 computerName: SCDynamicStoreCopyComputerName(nil, nil) as String?,
                 localHostName: SCDynamicStoreCopyLocalHostName(nil) as String?,
-                hostName: hostName, domains: searchDomains()))
+                hostName: hostName, domains: SystemDNS.current.domains))
     }
 
     /// The computer name, the Bonjour name bare and with .local, the hostname, and each host
@@ -38,17 +38,6 @@ struct Redactor: Sendable {
         }
         var seen = Set<String>()
         return names.filter { !$0.isEmpty && $0.lowercased() != "localhost" && seen.insert($0.lowercased()).inserted }
-    }
-
-    /// Search domains and DHCP domain names from the global DNS state and every network
-    /// service's, as `systemResolvers()` reads the servers.
-    private static func searchDomains() -> [String] {
-        guard let store = SCDynamicStoreCreate(nil, "Tattle" as CFString, nil, nil),
-              let states = SCDynamicStoreCopyMultiple(
-                  store, ["State:/Network/Global/DNS"] as CFArray,
-                  ["State:/Network/Service/.*/DNS"] as CFArray) as? [String: [String: Any]] else { return [] }
-        let domains = states.values.flatMap { ($0["SearchDomains"] as? [String] ?? []) + [$0["DomainName"] as? String].compactMap { $0 } }
-        return Array(Set(domains)).sorted()
     }
 
     func redact(_ text: String) -> String {

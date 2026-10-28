@@ -1,5 +1,4 @@
 import Foundation
-import SystemConfiguration
 
 struct IPAddress: Hashable {
     let bytes: [UInt8]  // 4 or 16
@@ -171,14 +170,6 @@ func localAddresses(of interface: String? = nil) -> Set<IPAddress> {
     return result
 }
 
-// The DNS servers the system sends queries to: the global DNS state's and every network
-// service's. The global list alone is not enough: a VPN or Tailscale puts its own resolver
-// there and forwards to the interface's servers, whose replies are what the capture sees.
 func systemResolvers() -> Set<IPAddress> {
-    guard let store = SCDynamicStoreCreate(nil, "Tattle" as CFString, nil, nil) else { return [] }
-    let keys = ["State:/Network/Global/DNS"] as CFArray
-    let patterns = ["State:/Network/Service/.*/DNS"] as CFArray
-    guard let states = SCDynamicStoreCopyMultiple(store, keys, patterns) as? [String: [String: Any]] else { return [] }
-    let servers = states.values.flatMap { $0["ServerAddresses"] as? [String] ?? [] }
-    return Set(servers.compactMap(IPAddress.init(text:)))
+    SystemDNS.current.servers
 }
