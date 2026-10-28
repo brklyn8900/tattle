@@ -27,15 +27,43 @@ struct Redactor: Sendable {
     /// The computer name, the Bonjour name bare and with .local, the hostname, and each host
     /// label under every search domain, which is how Tailscale and the router's DHCP name
     /// this Mac. The bare name covers name.lan, which reads <machine>.lan.
+    ///
+    /// Not covered: a name the router invents, Tailscale's suffix for a name another device
+    /// already has (`-1`), and a rename in Tailscale's admin console.
     static func machineNames(computerName: String?, localHostName: String?, hostName: String?, domains: [String]) -> [String] {
         let bare = [computerName, localHostName, localHostName.map { $0 + ".local" }, hostName].compactMap { $0 }
-        let labels = [localHostName, hostName.map(firstLabel)].compactMap { $0 }
+        let labels = [localHostName, hostName.map(firstLabel), computerName.map(tailscaleLabel)].compactMap { $0 }
         let names = bare + labels.flatMap { label in domains.map { label + "." + $0 } }
         var seen = Set<String>()
         return names.filter { name in
             let first = firstLabel(name).lowercased()
             return first != "" && first != "localhost" && seen.insert(name.lowercased()).inserted
         }
+    }
+
+    /// The label Tailscale's MagicDNS gives this Mac, which it takes from the computer name,
+    /// not the local host name: its HostName is the computer name (measured on this Mac,
+    /// 2026-10-28). A port of SanitizeHostname in tailscale/tailscale util/dnsname/dnsname.go,
+    /// byte for byte, so a curly apostrophe vanishes.
+    static func tailscaleLabel(_ computerName: String) -> String {
+        var name = Array(computerName.utf8)
+        for suffix in [".local", ".localdomain", ".lan"].map({ Array($0.utf8) }) where name.suffix(suffix.count).elementsEqual(suffix) {
+            name.removeLast(suffix.count)
+        }
+        let upper = UInt8(ascii: "A")...UInt8(ascii: "Z")
+        func isAlphanumeric(_ byte: UInt8) -> Bool {
+            upper.contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte) || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+        }
+        var label = name.prefix(63)
+        while let byte = label.first, !isAlphanumeric(byte) { label.removeFirst() }
+        while let byte = label.last, !isAlphanumeric(byte) { label.removeLast() }
+        let dashes = Set("- .@_".utf8)
+        let bytes = label.compactMap { byte -> UInt8? in
+            if upper.contains(byte) { return byte + 32 }
+            if isAlphanumeric(byte) { return byte }
+            return dashes.contains(byte) ? UInt8(ascii: "-") : nil
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     private static func firstLabel(_ name: String) -> String {

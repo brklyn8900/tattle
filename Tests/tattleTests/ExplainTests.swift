@@ -47,8 +47,7 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev."), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
     }
 
-    /// A hostname set to a full name lends its first label too; localhost is never a name.
-    func testMachineNamesFromTheSystemsOwnNames() {
+    func testAFullHostnameIsANameAndItsFirstLabelGoesUnderEachDomain() {
         let names = Redactor.machineNames(
             computerName: "Username’s Computer", localHostName: "Users-Computer",
             hostName: "desktop.corp.example.com", domains: ["tail1234.ts.net", "localdomain"])
@@ -59,6 +58,32 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(username.redact("desktop.corp.example.com, desktop.localdomain"), "<machine>, <machine>")
         let none = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "localhost", domains: ["localdomain"])
         XCTAssertEqual(none, [])
+    }
+
+    func testTailscaleNamesTheMacFromItsComputerName() {
+        let studio = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
+            computerName: "Studio Mac", localHostName: "Elads-Mac-mini", hostName: nil, domains: ["tail.ts.net"]))
+        XCTAssertEqual(studio.redact("studio-mac.tail.ts.net and studio-mac"), "<machine> and studio-mac")
+    }
+
+    func testAGenericHostnameLabelNeverRedactsOrdinaryWords() {
+        let names = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "macbook.localdomain", domains: ["lan"])
+        let mac = Redactor(home: "/Users/username", username: "username", machineNames: names)
+        XCTAssertEqual(mac.redact("MacBook Pro, macbook.lan"), "MacBook Pro, <machine>")
+    }
+
+    func testTailscaleLabel() {
+        XCTAssertEqual(Redactor.tailscaleLabel("U’s Computer"), "us-computer", "measured on this Mac")
+        XCTAssertEqual(Redactor.tailscaleLabel("studio.localdomain.local"), "studio")
+        XCTAssertEqual(Redactor.tailscaleLabel("studio.lan.localdomain"), "studio")
+        XCTAssertEqual(Redactor.tailscaleLabel("studio.local.lan"), "studio-local", "suffixes trimmed in order, once each")
+        XCTAssertEqual(Redactor.tailscaleLabel("a b.c@d_e-f"), "a-b-c-d-e-f")
+        XCTAssertEqual(Redactor.tailscaleLabel("-_ Studio! "), "studio")
+        XCTAssertEqual(Redactor.tailscaleLabel("User's Computer+Two"), "users-computertwo")
+        XCTAssertEqual(Redactor.tailscaleLabel(String(repeating: "a", count: 70)), String(repeating: "a", count: 63))
+        XCTAssertEqual(Redactor.tailscaleLabel(String(repeating: "a", count: 62) + "_b"), String(repeating: "a", count: 62),
+                       "truncated to 63 bytes before the ends are trimmed")
+        XCTAssertEqual(Redactor.tailscaleLabel("日本"), "")
     }
 
     func testEmptyAndLocalhostNamesAreNeverMachineNames() {
