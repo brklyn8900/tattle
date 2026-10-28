@@ -7,7 +7,6 @@ import Observation
 final class Explainer {
     let store: RuleStore
     let settings: AppSettings
-    /// Read on every ask: the computer name and the addresses change while the app runs.
     var makeRedactor: @MainActor () -> Redactor
     /// Builds the provider for the configured command. Tests substitute a fake.
     var makeProvider: @MainActor (String) -> any ExplainProvider

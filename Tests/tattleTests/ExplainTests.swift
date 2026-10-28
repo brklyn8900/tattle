@@ -390,8 +390,6 @@ final class ExplainerTests: XCTestCase {
         }
     }
 
-    /// The computer name and the addresses change while the app runs: each ask redacts what
-    /// they are then.
     func testEachAskRedactsTheNamesOfThatMoment() async throws {
         let provider = FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#)
         var names = ["First-Mac", "Second-Mac"]
