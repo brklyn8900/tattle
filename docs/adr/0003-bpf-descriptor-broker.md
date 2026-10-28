@@ -39,8 +39,8 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
 
 ## Decision
 
-1. `/dev/bpf*` stays root-only. Build order step 5c is a descriptor broker, not a
-   ChmodBPF-style daemon: a small root launch daemon that, on request over XPC, opens one
+1. `/dev/bpf*` stays root-only. The BPF daemon installer of build order step 5 becomes a
+   descriptor broker, not a ChmodBPF-style daemon: a small root launch daemon that, on request over XPC, opens one
    BPF device read-only, binds it to the requested interface, returns the descriptor in
    the reply to that request, and keeps nothing. launchd holds its Mach service in the
    system domain, where only root can register a name, starts it on the first request,
@@ -127,8 +127,7 @@ as root.
   but an inherited handler for resource-limit reports; crash reports still come through
   the system's own port.
 - The sniffer code is the same as planned; it receives a descriptor instead of opening
-  the file. Until the broker exists, testing uses a one-off `chmod o+r /dev/bpf*`
-  reverted with `chmod o-r` afterwards; neither survives a reboot.
+  the file.
 - The broker is a second signed artifact to build, install and update. It is small
   enough to review in full, which is the point.
 - The Apple Development certificate expires yearly; a renewed one keeps the team, so the
