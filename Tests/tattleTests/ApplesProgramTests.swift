@@ -68,6 +68,15 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(snapshot.items.map(\.isApplesProgram), [true, false])
     }
 
+    /// /usr/local is on the Data volume, and Preboot's cryptex folders are world-writable, so a
+    /// copy placed there is not the program. /Library/Apple is kept for Apple's updates.
+    func testWhereTheProgramRuns() {
+        let apple = CodeSignature(signer: .apple)
+        XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/usr/local/bin/mDNSResponder", signature: apple))
+        XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/System/Volumes/Preboot/Cryptexes/App/usr/sbin/mDNSResponder", signature: apple))
+        XCTAssertTrue(ApplesProgram.isNamed("XProtect", path: "/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect", signature: apple))
+    }
+
     private func connection(_ pid: Int32, at: TimeInterval) -> Connection {
         Connection(id: "\(pid):udp/\(Int(at))", proto: .udp, pid: pid, uid: 501, localPort: 5353,
                    remoteAddress: "224.0.0.251", remotePort: 5353, isIPv6: false, scope: .local, tcpState: nil,
