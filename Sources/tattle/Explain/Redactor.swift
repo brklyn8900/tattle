@@ -1,4 +1,5 @@
 import Foundation
+import SystemConfiguration
 
 /// Replaces what would identify this Mac or its user before a prompt leaves the machine:
 /// the home path, the username, private and local IP addresses, and the machine's names.
@@ -7,20 +8,47 @@ struct Redactor: Sendable {
     var username: String
     var machineNames: [String]
 
+    /// The machine's names come from the dynamic store and the kernel, never from a name
+    /// lookup: macOS holds an app's reverse lookups of its own addresses, loopback included,
+    /// behind the Local Network alert, and unanswered they fail after 35 s (measured on
+    /// testmac, 2026-10-28). Host.current() makes those lookups.
     static var current: Redactor {
-        let host = Host.current()
-        var names = ([host.localizedName, host.name] + host.names)
-            .compactMap { $0 }
-            .filter { !$0.isEmpty && $0 != "localhost" }
-        // The router's DNS knows the Bonjour name bare and as name.lan; Host gives only
-        // name.local. The bare name covers name.lan, which reads <machine>.lan.
-        for name in names where name.hasSuffix(".local") {
-            names.append(String(name.dropLast(".local".count)))
-        }
+        var buffer = [CChar](repeating: 0, count: Int(MAXHOSTNAMELEN) + 1)
+        let hostName = gethostname(&buffer, buffer.count) == 0 ? String(cString: buffer) : nil
         return Redactor(
             home: NSHomeDirectory(),
             username: NSUserName(),
-            machineNames: names)
+            machineNames: machineNames(
+                computerName: SCDynamicStoreCopyComputerName(nil, nil) as String?,
+                localHostName: SCDynamicStoreCopyLocalHostName(nil) as String?,
+                hostName: hostName, domains: searchDomains()))
+    }
+
+    /// The computer name, the Bonjour name bare and with .local, the hostname, and each host
+    /// label under every search domain, which is how Tailscale and the router's DHCP name
+    /// this Mac. The bare name covers name.lan, which reads <machine>.lan.
+    static func machineNames(computerName: String?, localHostName: String?, hostName: String?, domains: [String]) -> [String] {
+        var names = [computerName, localHostName, localHostName.map { $0 + ".local" }, hostName].compactMap { $0 }
+        let labels = [localHostName, hostName?.split(separator: ".").first.map(String.init)].compactMap { $0 }
+            .filter { $0.lowercased() != "localhost" }
+        for label in labels {
+            for domain in domains {
+                names.append(label + "." + (domain.hasSuffix(".") ? String(domain.dropLast()) : domain))
+            }
+        }
+        var seen = Set<String>()
+        return names.filter { !$0.isEmpty && $0.lowercased() != "localhost" && seen.insert($0.lowercased()).inserted }
+    }
+
+    /// Search domains and DHCP domain names from the global DNS state and every network
+    /// service's, as `systemResolvers()` reads the servers.
+    private static func searchDomains() -> [String] {
+        guard let store = SCDynamicStoreCreate(nil, "Tattle" as CFString, nil, nil),
+              let states = SCDynamicStoreCopyMultiple(
+                  store, ["State:/Network/Global/DNS"] as CFArray,
+                  ["State:/Network/Service/.*/DNS"] as CFArray) as? [String: [String: Any]] else { return [] }
+        let domains = states.values.flatMap { ($0["SearchDomains"] as? [String] ?? []) + [$0["DomainName"] as? String].compactMap { $0 } }
+        return Array(Set(domains)).sorted()
     }
 
     func redact(_ text: String) -> String {
