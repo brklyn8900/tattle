@@ -225,20 +225,6 @@ says when the installed broker is not this build's
 Building from source is a first-class path. A Homebrew cask is possible; the user passes
 `--no-quarantine` themselves.
 
-## Build order
-
-0. **Sniffer spike.** DNS, TCP SNI, QUIC Initial parsing, run for a day on the development
-   machine, measuring what share of connections get a forward name. The Network tab's
-   value depends on this number, so it is measured before anything is built on it.
-1. Menu bar shell with throughput and the resources line; settings; knowledge-base table;
-   LLM provider with redaction.
-2. Startup tab. Small, static data, obscure names: the right place to prove the explanation
-   pipeline before pointing it at a firehose.
-3. Ports tab.
-4. Processes tab.
-5. Network tab: socket table and history first, then the sniffer from the spike, then
-   the packet-access broker.
-
 ## Future
 
 - **LAN tab.** Devices on the local network: ARP sweep and cache, Bonjour browsing, MAC
