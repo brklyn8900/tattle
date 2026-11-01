@@ -1,6 +1,6 @@
 ---
 name: verify-tattle
-description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Runs go on testmac, the test Mac, when testmac can run them. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed.
+description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed.
 ---
 
 # Verify Tattle
@@ -23,18 +23,11 @@ Use the dev copy otherwise: it runs beside the release build without stopping it
 
 ## Where it runs
 
-Runs go on testmac, the test Mac, when testmac can run them: verify runs, `make test`, and
-anything that changes the system. This is a preference, not an absolute. What testmac can't
-run runs on the user's Mac, such as a proof that needs a signed build (testmac has no signing
-identity); the user is told which run and why. Any other run on the user's Mac needs his yes first,
-with the reason.
+Which machine a run goes on: the session's memory.
 
-Never run the same test on both machines. A guarantee that spans the two is checked against
-a value pinned from the other machine (for example a hash pinned on the user's Mac and checked on
-testmac), not by running the test twice.
+A proof that needs a signed build runs on the user's Mac: testmac has no signing identity.
 
-- Bring testmac's checkout to the commit under test first: a git bundle from this Mac's
-  repo, fast-forward from it, then delete the bundle.
+- Bring testmac's checkout to the commit under test first (tattle `memory.md`, Machines).
 - The accessibility tool needs testmac's GUI session, not an ssh one. Put the `$V` commands
   in a script that writes its output to files, start it with
   `ssh <testmac> 'open -na Ghostty --args -e /bin/zsh <script>'`, and read the files and the
