@@ -10,9 +10,9 @@ date: 2026-10-20
 
 ## Context
 
-The [PRD](../PRD.md) (Privileges) gives the sniffer its packets by making
-`/dev/bpf*` readable to the user's group through a ChmodBPF-style launch daemon, and
-rules out a privileged helper because "without a stable signing identity a root helper
+The [design](../design.md) (Privileges) gives the sniffer its packets by making
+`/dev/bpf*` readable to the user's group through a ChmodBPF-style launch daemon, and the
+[PRD](../PRD.md) (Non-goals) rules out a privileged helper because "without a stable signing identity a root helper
 cannot verify who is talking to it". Both statements were made against an ad-hoc signed
 build.
 
@@ -81,7 +81,7 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 3. All parsing runs in the app as the user, exactly as it would have with readable
    devices. A parser fault is a user-level crash.
 4. Installing and removing the broker goes through the administrator password dialog,
-   with the exact plist shown first, as the PRD already required for the daemon.
+   with the exact plist shown first, as the design already required for the daemon.
    Before asking, the app explains in plain words what the grant does. The Startup tab
    lists the broker like any other daemon, and removal is one click in Tattle. Tattle
    refuses to install from a build the broker would refuse.
@@ -108,7 +108,7 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 5. Without the broker the Network tab works from the socket table alone, shows
    addresses instead of names, and says why.
 
-This supersedes the "no privileged helper" sentence of the PRD's Privileges
+This supersedes the "no privileged helper" sentence of the design's Privileges
 section for this one piece. Everything else there stands: no `sudo`, nothing else runs
 as root.
 

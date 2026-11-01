@@ -10,7 +10,7 @@ date: 2026-10-19
 
 ## Context
 
-The [PRD](../PRD.md) (Startup) reads the login-items database at
+The [design](../design.md) (Startup) reads the login-items database at
 `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm` and calls it
 world-readable. The file permissions are `0644`, but on macOS 26 the folder is gated by
 the Full Disk Access privacy control: a process without the grant gets "you don't have

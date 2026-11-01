@@ -1,7 +1,9 @@
-# Tattle design
+# Tattle
 
-Design document. Status: accepted 2026-10-18. Changes after acceptance go to
-[ADRs](adr/), not to this file.
+What Tattle is for, who it serves, and how it behaves. How it is built is in
+[design.md](design.md).
+
+Status: accepted 2026-10-18. Changes after acceptance go to [ADRs](adr/), not to this file.
 
 ## Overview
 
@@ -61,17 +63,10 @@ don't:
 One user on their own Mac: privacy-curious, comfortable reading a hostname, not interested in
 maintaining firewall rules. Published on GitHub for people like that.
 
-## Design
+## Behaviour
 
-### One engine, one question
-
-Every surface runs the same pipeline on a different source:
-
-1. **Observe**: collect raw items from the system.
-2. **Identify**: attach deterministic facts: process, responsible app, code signer, owner of
-   the IP block, category, the app's own declared intent.
-3. **Explain**: match the item against the knowledge base; if nothing matches and the user
-   clicks, ask the LLM and keep the answer.
+Every surface answers the same question with the same engine
+([design](design.md#one-engine-one-question)).
 
 The menu bar icon shows live in/out throughput. Clicking opens a panel with a resources
 line (CPU, memory, network in/out; GPU has no public per-process source on Apple Silicon,
@@ -79,17 +74,7 @@ so it is left out until one exists) and four tabs.
 
 ### Network
 
-Observe:
-
-- The socket table with owning pid, for all users, without root, from the same `sysctl`
-  (`net.inet.tcp.pcblist_n`, `net.inet.udp.pcblist_n`) that `netstat -anv` reads.
-- Per-process byte counts from NetworkStatistics, the private framework behind `nettop`.
-  It works unentitled today because a kernel gate is off; the tab degrades to interface
-  totals if that changes.
-- A BPF sniffer that reads three things and nothing else: DNS replies on port 53, to build
-  an IP-to-name map; the TLS ClientHello on TCP, for the Server Name Indication; and the
-  QUIC Initial packet, which carries the same ClientHello under a key derivable from the
-  packet itself.
+Sources: [design](design.md#network).
 
 What the sniffer cannot see, stated plainly in the UI: names hidden by Encrypted Client
 Hello (default in Firefox with DNS over HTTPS, in Chrome when Secure DNS returns one), DNS
@@ -116,22 +101,18 @@ Actions: explain; reveal the app.
 
 ### Processes
 
-Observe: `proc_listpids` and `proc_pidinfo`, parent pid, CPU time and memory for sorting.
-This is what is running right now, which neither Ports nor Startup shows.
+What is running right now, which neither Ports nor Startup shows. Sources:
+[design](design.md#processes).
 
-Identify: code signature via `SecCodeCopySigningInformation`: Apple, a Team ID with the
-organization name read from the leaf certificate, or unsigned. Helpers are attributed to
-their app by walking the parent chain and by path containment (`Slack Helper (GPU)` lives
-inside `Slack.app`). macOS also tracks a "responsible process" for TCC, but the only call
-that reads it is private; it is a fallback to consider if attribution gaps show up, not a
-dependency. A built-in glossary covers macOS daemons: `nsurlsessiond`, `trustd`, `apsd`,
-`mDNSResponder`, and the rest.
+Identify: code signer (Apple, a Team ID with its organization name, or unsigned), and the
+app a helper belongs to. A built-in glossary covers macOS daemons: `nsurlsessiond`,
+`trustd`, `apsd`, `mDNSResponder`, and the rest.
 
 Actions: explain; quit or force-quit; reveal in Finder.
 
 ### Ports
 
-Observe: listening TCP and UDP sockets with owning pid, from the same `sysctl` as Network.
+Listening TCP and UDP sockets. Sources: [design](design.md#ports).
 
 Identify: process and signer; whether the socket is bound to loopback only or to all
 interfaces, which is what decides "reachable from my LAN". Well-known port names.
@@ -140,12 +121,9 @@ Actions: explain; quit the owner.
 
 ### Startup
 
-Observe: `~/Library/LaunchAgents`, `/Library/LaunchAgents`, `/Library/LaunchDaemons`, cron
-and `periodic` entries, `launchctl` state for each, and the login-items database
-(`/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`), which is
-world-readable, undocumented, and a keyed archive with more than one schema version in the
-wild; KnockKnock has a parser to learn from. System items under `/System/Library` sit in a
-collapsed "Apple" group.
+Launch agents and daemons, cron and `periodic` entries, and login items. Sources:
+[design](design.md#startup). System items under `/System/Library` sit in a collapsed
+"Apple" group.
 
 Identify: program path and arguments, trigger (at login, on a schedule, on demand, watching
 a path), loaded or not, last run, signer, and the installing app, matched by bundle
@@ -179,8 +157,8 @@ Resolution order for any item:
    can promote a rule to one, at confirmation. Unconfirmed LLM rules expire after 45 days. LLM rules never drive service grouping. A model
    choosing `*.akamaiedge.net` as "Apple CDN" would otherwise mislabel every later match.
 
-The seed knowledge base ships in the repo as JSON files, one per source, compiled into
-SQLite at build time. Contributions are pull requests against those files. The user's local
+The seed knowledge base ships in the repo as data files, one per source
+([design](design.md#knowledge-base)). Contributions are pull requests against those files. The user's local
 rules and LLM answers live in `~/Library/Application Support/Tattle/` and never touch the
 repo.
 
@@ -189,12 +167,7 @@ repo.
 A shell command template, nothing else. The prompt goes to stdin; the answer is read from
 stdout. Presets for `claude -p`, `codex exec`, and `ollama run`, plus a custom field. This
 covers hosted and local models with no SDK dependency, and the user pays with an account
-they already have.
-
-- `claude -p`: run with `--bare --tools "" --permission-prompts none --output-format json
-  --json-schema <rule schema>`; the JSON envelope's `result` field holds the answer.
-- `codex exec`: it is an agent with a sandbox, so it runs in an empty working directory.
-- `ollama run <model>`: reads the prompt from stdin.
+they already have. How each preset is run: [design](design.md#llm-presets).
 
 Before anything is sent, the request is redacted: private IP ranges, the user's home path
 and username, and machine names are replaced with placeholders. The item being explained is
@@ -210,17 +183,6 @@ Settings shows:
 
 Nothing is sent until the user has chosen a provider and clicked explain on an item.
 
-### Privileges
-
-The only privileged piece is read access to `/dev/bpf*` for the sniffer. The devices are
-recreated root-only at every boot, so a one-off `chmod` does not hold. Tattle uses the same
-approach as Wireshark's ChmodBPF: a small launch daemon that, at boot, creates a group,
-puts the user in it, and gives that group read/write on the BPF devices. Installing and
-removing it goes through the standard macOS administrator password dialog, with the exact
-plist shown first. Everything else runs as the user: the socket table, the login-items
-database, signatures, and launch agents need no root on current macOS. There is no
-privileged helper and no `sudo`.
-
 ### Privacy and retention
 
 - Connection history is kept in the local database for a configurable period, 30 days by
@@ -229,25 +191,6 @@ privileged helper and no `sudo`.
 - Nothing leaves the machine except an explicit, redacted LLM request.
 - The app has no account, no identifier, no crash reporter.
 
-### Storage
-
-SQLite through GRDB: typed records, migrations, and value observation that pushes query
-results to SwiftUI when rows change, which is what every tab needs. Tables: connections
-(history), items seen per tab (for "new since"), knowledge base rules, settings.
-
-### Third-party data and licenses
-
-| Data | Source | License | Handling |
-|---|---|---|---|
-| IP block owner | iptoasn.com | PDDL 1.0 | bundled |
-| Domain category and owner | DuckDuckGo Tracker Radar | CC BY-NC-SA 4.0 | separate file under its own license; the app runs without it; non-commercial forks only |
-| MAC vendor (later) | IEEE OUI registry | no copyright asserted | bundled |
-| Apple hosts | Apple, "Use Apple products on enterprise networks" (support.apple.com/101555) | Apple copyright | facts transcribed into the seed, with the source URL and transcription date; partial and enterprise-oriented, re-checked each macOS release |
-| App intent | `InternetAccessPolicy.plist` in app bundles | app's own | read from disk at runtime, only from validly signed bundles; rare (2 of 63 apps on the development machine) |
-
-The app is MIT. The knowledge base is split-licensed by source file so the ShareAlike data
-never contaminates the rest.
-
 ### Distribution
 
 Releases are ad-hoc signed. On current macOS a user opens one by allowing it under System
@@ -255,13 +198,6 @@ Settings, Privacy & Security, after the first blocked launch; the README says so
 signatures do not carry a stable identity, so TCC permissions are asked again after every
 new build. Each release publishes a checksum. Building from source is a first-class path.
 A Homebrew cask is possible; the user passes `--no-quarantine` themselves.
-
-### Stack
-
-Swift, SwiftUI `MenuBarExtra`, macOS 14 or later. Swift Package Manager with a script that
-assembles the app bundle (Info.plist with `LSUIElement`, `codesign -s -`); no Xcode project
-unless something forces one. GitHub Actions on `macos-latest` runs `swift build` and tests
-on every push from the first commit.
 
 ## Build order
 
