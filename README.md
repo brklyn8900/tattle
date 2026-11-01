@@ -8,7 +8,7 @@ and why it is probably there.
 Tattle is an explainer, not a firewall and not a system monitor. It makes no network calls
 of its own: no telemetry, no update check, no cloud lookups. The one way anything leaves
 your machine is the **Explain** button, which sends a single redacted item to an LLM you
-already have, through a command you configured. The [proposal](docs/proposal.md) is the
+already have, through a command you configured. The [PRD](docs/PRD.md) is the
 design as accepted on 2026-10-18, and the [ADRs](docs/adr/) record what changed since.
 
 ## Status
@@ -18,7 +18,7 @@ binaries, so build from source with the steps below.
 
 Not built yet: cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
 attribution, a search bar, and a "started by" filter on processes. Blocking is not planned.
-The proposal leaves it to a future decision of its own.
+The PRD leaves it to a future decision of its own.
 
 ## Build
 

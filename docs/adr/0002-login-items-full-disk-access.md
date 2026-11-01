@@ -10,7 +10,7 @@ date: 2026-10-19
 
 ## Context
 
-The [proposal](../proposal.md) (Startup) reads the login-items database at
+The [PRD](../PRD.md) (Startup) reads the login-items database at
 `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm` and calls it
 world-readable. The file permissions are `0644`, but on macOS 26 the folder is gated by
 the Full Disk Access privacy control: a process without the grant gets "you don't have
@@ -34,13 +34,13 @@ grant.
 
 - The README and the first-run experience must explain the grant: it is broad, and
   Tattle's only outbound traffic remains the user's explicit explain request.
-- Ad-hoc signed releases lose the grant on every update (proposal, Distribution). The
+- Ad-hoc signed releases lose the grant on every update (PRD, Distribution). The
   Startup tab shows the notice again when that happens.
 
 ## Alternatives
 
 - Not reading the database. Loses the "Open at login" list, which System Settings
   shows and users most often ask about. Rejected.
-- Reading it through a privileged helper. The proposal rules out privileged helpers;
+- Reading it through a privileged helper. The PRD rules out privileged helpers;
   Full Disk Access is a user grant, not a privilege escalation. Rejected.
 - `sfltool dumpbtm`. Raises an administrator password dialog on every call. Rejected.

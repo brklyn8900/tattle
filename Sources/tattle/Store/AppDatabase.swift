@@ -26,7 +26,7 @@ struct AppDatabase: Sendable {
 
     /// The default location: ~/Library/Application Support/<bundle name>/tattle.sqlite, so
     /// the release app uses Tattle/ and the dev build (make run) Tattle Dev/.
-    /// The folder is marked so Spotlight does not index connection history (proposal,
+    /// The folder is marked so Spotlight does not index connection history (PRD,
     /// Privacy and retention); Time Machine is left to the user.
     static func openDefault() throws -> AppDatabase {
         let support = try FileManager.default.url(

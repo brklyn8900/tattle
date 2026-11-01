@@ -10,7 +10,7 @@ date: 2026-10-19
 
 ## Context
 
-The [proposal](../proposal.md) makes the Network tab's value depend on a BPF sniffer
+The [PRD](../PRD.md) makes the Network tab's value depend on a BPF sniffer
 naming outbound connections from DNS replies, TLS SNI and QUIC Initial packets, and asks
 for that coverage to be measured before anything is built on it (build order step 0).
 
@@ -99,7 +99,7 @@ logs to a third-party log intake.
 - Private Relay also means the system resolver is not where most names pass; a design that
   started from DNS would have offered a name for a third of connections on this machine,
   and a wrong one for a large share of those.
-- Browser connections are still attributed to the browser, not the page (proposal, Future:
+- Browser connections are still attributed to the browser, not the page (PRD, Future:
   per-page browser attribution).
 - Two spike defects found in review do not affect this result but go into the reference
   parser before the app inherits it: TCP ClientHello reassembly ignores sequence numbers,
@@ -112,4 +112,4 @@ logs to a third-party log intake.
 - Deferring QUIC. Would have left 39% of connections to the DNS fallback, which with
   Private Relay means mostly unnamed. Rejected.
 - Network Extension. Not available without a paid developer account, and would not supply
-  hostnames for browser or Electron traffic anyway (proposal, Future).
+  hostnames for browser or Electron traffic anyway (PRD, Future).

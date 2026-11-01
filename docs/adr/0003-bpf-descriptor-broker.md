@@ -10,7 +10,7 @@ date: 2026-10-20
 
 ## Context
 
-The [proposal](../proposal.md) (Privileges) gives the sniffer its packets by making
+The [PRD](../PRD.md) (Privileges) gives the sniffer its packets by making
 `/dev/bpf*` readable to the user's group through a ChmodBPF-style launch daemon, and
 rules out a privileged helper because "without a stable signing identity a root helper
 cannot verify who is talking to it". Both statements were made against an ad-hoc signed
@@ -36,7 +36,7 @@ flow in the kernel, browsers and Electron apps included, with the owning process
 attributed for free, and can ask for the first outbound bytes of each flow, which are
 the TLS ClientHello on TCP and the QUIC Initial on UDP: the same bytes the sniffer
 parses. It would replace the sniffer and the broker both, and allow blocking. The
-proposal's "no paid account" non-goal is what rules it out, not a technical limit.
+PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 
 ## Decision
 
@@ -81,7 +81,7 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
 3. All parsing runs in the app as the user, exactly as it would have with readable
    devices. A parser fault is a user-level crash.
 4. Installing and removing the broker goes through the administrator password dialog,
-   with the exact plist shown first, as the proposal already required for the daemon.
+   with the exact plist shown first, as the PRD already required for the daemon.
    Before asking, the app explains in plain words what the grant does. The Startup tab
    lists the broker like any other daemon, and removal is one click in Tattle. Tattle
    refuses to install from a build the broker would refuse.
@@ -108,7 +108,7 @@ proposal's "no paid account" non-goal is what rules it out, not a technical limi
 5. Without the broker the Network tab works from the socket table alone, shows
    addresses instead of names, and says why.
 
-This supersedes the "no privileged helper" sentence of the proposal's Privileges
+This supersedes the "no privileged helper" sentence of the PRD's Privileges
 section for this one piece. Everything else there stands: no `sudo`, nothing else runs
 as root.
 
@@ -154,7 +154,7 @@ as root.
   enough to review in full, which is the point.
 - The Apple Development certificate expires yearly. A renewed one keeps the team, so the
   requirement holds across renewal.
-- Blocking, and with it the paid account, remains a Future item (proposal, Network
+- Blocking, and with it the paid account, remains a Future item (PRD, Network
   Extension) and would be its own ADR.
 
 ## Alternatives
@@ -175,5 +175,5 @@ as root.
   already records it, and builds without the step could not install.
 - Paid account and Network Extension. Would replace the sniffer and the broker with
   one sandboxed extension and allow blocking, at 99 USD a year plus System Settings
-  approvals. Ruled out by the proposal's non-goal. It is the one alternative that would
+  approvals. Ruled out by the PRD's non-goal. It is the one alternative that would
   make this ADR unnecessary if that non-goal is ever dropped.
