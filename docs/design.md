@@ -25,7 +25,9 @@ Every surface runs the same pipeline on a different source:
 - A BPF sniffer that reads three things and nothing else: DNS replies on port 53, to build
   an IP-to-name map; the TLS ClientHello on TCP, for the Server Name Indication; and the
   QUIC Initial packet, which carries the same ClientHello under a key derivable from the
-  packet itself.
+  packet itself. A name from the wire wins; the DNS map is a fallback
+  ([ADR-0001](adr/0001-sniffer-coverage.md)). The sniffer gets its capture descriptor from
+  the broker (Privileges).
 
 ### Processes
 
@@ -46,9 +48,10 @@ Listening TCP and UDP sockets with owning pid, from the same `sysctl` as Network
 
 `~/Library/LaunchAgents`, `/Library/LaunchAgents`, `/Library/LaunchDaemons`, cron and
 `periodic` entries, `launchctl` state for each, and the login-items database
-(`/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`), which is
-world-readable, undocumented, and a keyed archive with more than one schema version in the
-wild; KnockKnock has a parser to learn from.
+(`/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`), which needs
+Full Disk Access ([ADR-0002](adr/0002-login-items-full-disk-access.md)), is undocumented,
+and is a keyed archive with more than one schema version in the wild; KnockKnock has a
+parser to learn from.
 
 ## Knowledge base
 
@@ -57,21 +60,21 @@ SQLite at build time.
 
 ## LLM presets
 
-- `claude -p`: run with `--bare --tools "" --permission-prompts none --output-format json
-  --json-schema <rule schema>`; the JSON envelope's `result` field holds the answer.
-- `codex exec`: it is an agent with a sandbox, so it runs in an empty working directory.
-- `ollama run <model>`: reads the prompt from stdin.
+The commands, and why each flag is there, are `ShellProvider.presets` in
+`Sources/tattle/Explain/Provider.swift`.
 
 ## Privileges
 
-The only privileged piece is read access to `/dev/bpf*` for the sniffer. The devices are
-recreated root-only at every boot, so a one-off `chmod` does not hold. Tattle uses the same
-approach as Wireshark's ChmodBPF: a small launch daemon that, at boot, creates a group,
-puts the user in it, and gives that group read/write on the BPF devices. Installing and
-removing it goes through the standard macOS administrator password dialog, with the exact
-plist shown first. Everything else runs as the user: the socket table, the login-items
-database, signatures, and launch agents need no root on current macOS. There is no
-privileged helper and no `sudo`.
+The only privileged piece is packet access for the sniffer. `/dev/bpf*` stays root-only. A
+descriptor broker, a small root launch daemon written in C, opens one BPF device read-only
+on a request over XPC, binds it to the requested interface, returns the descriptor in the
+reply, and keeps nothing. It answers only a sender that runs as the installing user,
+carries Tattle's signature, and cannot be steered by another process of that user. The
+checks, and how install verifies the build before root runs it, are in
+[ADR-0003](adr/0003-bpf-descriptor-broker.md). Installing and removing it goes through the
+standard macOS administrator password dialog, with the exact plist shown first. Everything
+else runs as the user: the socket table, the login-items database (with Full Disk Access),
+signatures, and launch agents need no root on current macOS. There is no `sudo`.
 
 ## Storage
 
@@ -95,6 +98,8 @@ never contaminates the rest.
 ## Stack
 
 Swift, SwiftUI `MenuBarExtra`, macOS 14 or later. Swift Package Manager with a script that
-assembles the app bundle (Info.plist with `LSUIElement`, `codesign -s -`); no Xcode project
+assembles the app bundle (Info.plist with `LSUIElement`) and signs it and the broker with
+the hardened runtime: with the first Apple Development identity in the keychain, or ad hoc
+without one; no Xcode project
 unless something forces one. GitHub Actions on `macos-latest` runs `swift build` and tests
 on every push from the first commit.

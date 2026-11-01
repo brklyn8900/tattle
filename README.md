@@ -8,8 +8,9 @@ and why it is probably there.
 Tattle is an explainer, not a firewall and not a system monitor. It makes no network calls
 of its own: no telemetry, no update check, no cloud lookups. The one way anything leaves
 your machine is the **Explain** button, which sends a single redacted item to an LLM you
-already have, through a command you configured. The [PRD](docs/PRD.md) is the
-design as accepted on 2026-10-18, and the [ADRs](docs/adr/) record what changed since.
+already have, through a command you configured. The [PRD](docs/PRD.md) says what
+it does, the [design](docs/design.md) how it is built, and the [ADRs](docs/adr/) why each
+decision was made.
 
 ## Status
 
@@ -17,7 +18,8 @@ The four tabs (Network, Processes, Ports, Startup) and Explain are built. There 
 binaries, so build from source with the steps below.
 
 Not built yet: cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
-attribution, a search bar, and a "started by" filter on processes. Blocking is not planned.
+attribution, a search bar, a "started by" filter on processes, and IP block owner data (iptoasn). The
+Tracker Radar and Apple hosts knowledge files ship with no rules. Blocking is not planned.
 The PRD leaves it to a future decision of its own.
 
 ## Build

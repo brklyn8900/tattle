@@ -3,7 +3,8 @@
 What Tattle is for, who it serves, and how it behaves. How it is built is in
 [design.md](design.md).
 
-Status: accepted 2026-10-18. Changes after acceptance go to [ADRs](adr/), not to this file.
+Status: kept current. It changes only with a decision: an [ADR](adr/) in the same commit, or
+the user's instruction.
 
 ## Overview
 
@@ -55,8 +56,9 @@ don't:
 - Notarized or App Store distribution.
 - Any network call the app makes on its own.
 - Malware detection. Tattle says what something is; it does not score it.
-- A privileged helper process. Without a stable signing identity a root helper cannot
-  verify who is talking to it, so any local process could drive it.
+- Root beyond packet access. The packet-access broker
+  ([ADR-0003](adr/0003-bpf-descriptor-broker.md)) is the one piece that runs as root;
+  there is no `sudo`.
 
 ## Audience
 
@@ -75,6 +77,18 @@ so it is left out until one exists) and four tabs.
 ### Network
 
 Sources: [design](design.md#network).
+
+A connection is named from the connection itself first: the TLS Server Name Indication,
+the ClientHello inside a QUIC Initial, the HTTP Host header. A name from DNS replies is a
+fallback, used only when nothing else named the connection, and marked "from DNS"
+([ADR-0001](adr/0001-sniffer-coverage.md)). A server name that is a known relay ingress is
+shown as "relayed", and a known Encrypted Client Hello cover name as "name hidden";
+neither is shown as the destination.
+
+Packets come through a broker the user installs from Tattle, through the administrator
+password dialog, after the app explains what the grant does
+([ADR-0003](adr/0003-bpf-descriptor-broker.md)). Without it the tab works from the socket
+table alone, shows addresses instead of names, and says why.
 
 What the sniffer cannot see, stated plainly in the UI: names hidden by Encrypted Client
 Hello (default in Firefox with DNS over HTTPS, in Chrome when Secure DNS returns one), DNS
@@ -129,6 +143,12 @@ Identify: program path and arguments, trigger (at login, on a schedule, on deman
 a path), loaded or not, last run, signer, and the installing app, matched by bundle
 identifier prefix and signer.
 
+The login-items database needs Full Disk Access. Tattle asks for it once, from the Startup
+tab, with a button to the System Settings pane and the reason stated there; there is no
+dialog at launch. Without the grant the tab works from the plist folders and `launchctl`
+alone, and says what is missing ([ADR-0002](adr/0002-login-items-full-disk-access.md)).
+The packet-access broker is listed like any other daemon, and removing it is one click.
+
 System Settings shows two lists of developer names with toggles. This tab shows what each
 item runs, when, and why. Control stays where it already works: plist-based items can be
 loaded and unloaded here; database-backed login items are toggled in System Settings via a
@@ -158,9 +178,9 @@ Resolution order for any item:
    choosing `*.akamaiedge.net` as "Apple CDN" would otherwise mislabel every later match.
 
 The seed knowledge base ships in the repo as data files, one per source
-([design](design.md#knowledge-base)). Contributions are pull requests against those files. The user's local
-rules and LLM answers live in `~/Library/Application Support/Tattle/` and never touch the
-repo.
+([design](design.md#knowledge-base)). Contributions are pull requests against those files.
+The user's local rules and LLM answers live in `~/Library/Application Support/Tattle/` and
+never touch the repo.
 
 ### LLM provider
 
@@ -196,8 +216,14 @@ Nothing is sent until the user has chosen a provider and clicked explain on an i
 Releases are ad-hoc signed. On current macOS a user opens one by allowing it under System
 Settings, Privacy & Security, after the first blocked launch; the README says so. Ad-hoc
 signatures do not carry a stable identity, so TCC permissions are asked again after every
-new build. Each release publishes a checksum. Building from source is a first-class path.
-A Homebrew cask is possible; the user passes `--no-quarantine` themselves.
+new build. A build from source is signed with the first Apple Development identity in the
+keychain, so grants survive rebuilds
+([ADR-0002](adr/0002-login-items-full-disk-access.md)); without one it is ad hoc. An
+ad-hoc build must install the packet-access broker again after each rebuild, and the app
+says when the installed broker is not this build's
+([ADR-0003](adr/0003-bpf-descriptor-broker.md)). Each release publishes a checksum.
+Building from source is a first-class path. A Homebrew cask is possible; the user passes
+`--no-quarantine` themselves.
 
 ## Build order
 
@@ -211,7 +237,7 @@ A Homebrew cask is possible; the user passes `--no-quarantine` themselves.
 3. Ports tab.
 4. Processes tab.
 5. Network tab: socket table and history first, then the sniffer from the spike, then
-   the BPF daemon installer.
+   the packet-access broker.
 
 ## Future
 
