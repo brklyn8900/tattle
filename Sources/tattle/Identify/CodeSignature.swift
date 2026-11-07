@@ -105,9 +105,9 @@ struct CodeSignature: Equatable, Sendable {
         return SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), compiled) == errSecSuccess
     }
 
-    /// Maps the leaf certificate's subject to a signer kind. A Developer ID subject ends in a
-    /// parenthesised id, which is dropped: the team comes from the signing information,
-    /// where it is authoritative.
+    /// Maps the leaf certificate's subject to a signer kind. A subject issued to a team ends
+    /// in its parenthesised id, which is dropped: the team comes from the signing
+    /// information, where it is authoritative.
     static func classify(_ subject: String) -> Signer {
         if subject == "Software Signing" { return .apple }
         if subject == "Apple Mac OS Application Signing" { return .appStore }
@@ -117,7 +117,7 @@ struct CodeSignature: Equatable, Sendable {
         for prefix in ["Apple Development: ", "Mac Developer: ", "iPhone Developer: "] where subject.hasPrefix(prefix) {
             return .development
         }
-        return .other(subject)
+        return .other(stripId(Substring(subject)))
     }
 
     private static func stripId(_ name: Substring) -> String {

@@ -75,7 +75,9 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(CodeSignature.classify("Developer ID Application: PACE Anti-Piracy, Inc. (TFZ8226T6X)"), .developerID(name: "PACE Anti-Piracy, Inc."))
         XCTAssertEqual(CodeSignature.classify("Apple Development: someone@example.com (ABCDE12345)"), .development)
         XCTAssertEqual(CodeSignature.classify("Apple Mac OS Application Signing"), .appStore)
-        XCTAssertEqual(CodeSignature.classify("Apple Distribution: Acme (X)"), .other("Apple Distribution: Acme (X)"))
+        XCTAssertEqual(CodeSignature.classify("Apple Distribution: Acme (ABCDE12345)"), .other("Apple Distribution: Acme"),
+                       "the team is a fact of its own")
+        XCTAssertEqual(CodeSignature.classify("3rd Party Mac Developer Application: Acme (ABCDE12345)"), .other("3rd Party Mac Developer Application: Acme"))
     }
 
     /// A development certificate is named after the developer's Apple account, usually an
