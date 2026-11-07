@@ -13,8 +13,9 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// command name, which is cut at 16 characters.
     var name: String
     var path: String?
-    /// The interpreter's file name when the process is a script, so a row can say
-    /// "node script" and the signature is understood to be the interpreter's.
+    /// The interpreter's file name when the process runs code that is not its executable's
+    /// (a script file, inline code, or code its unreadable arguments would name), so a row
+    /// can say "node script" and the signature is understood to be the interpreter's.
     var interpreter: String?
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
@@ -25,16 +26,21 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
 
     var id: Int32 { pid }
 
-    /// The name and interpreter for an executable and its arguments. An interpreter
-    /// running a file is named after the file, or after the npm package the file belongs
-    /// to. Otherwise the name the process was started under wins over the executable's
-    /// file name: a multi-call binary at a version-numbered path is "claude" or "ugrep",
-    /// a login shell "-zsh" is zsh, and a node process that set its title keeps it.
+    /// The name and interpreter for an executable and its arguments, by what the process
+    /// runs (`LaunchedCode.running`). An interpreter running a script file is named after
+    /// the file, or after the npm package the file belongs to; running other code, it is
+    /// still marked as the interpreter. Otherwise the name the process was started under
+    /// wins over the executable's file name: a multi-call binary at a version-numbered path
+    /// is "claude" or "ugrep", a login shell "-zsh" is zsh, and a node process that set its
+    /// title keeps it.
     static func name(path: String?, arguments: [String]?, command: String) -> (name: String, interpreter: String?) {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
-        if let executable, isInterpreter(executable), let arguments {
-            for argument in arguments.dropFirst() where argument.hasPrefix("/") && FileManager.default.fileExists(atPath: argument) {
-                return (scriptName(argument), executable)
+        var interpreter: String?
+        if let path {
+            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }) {
+            case .script(let script, let name): return (scriptName(script), name)
+            case .unnamed(let name): interpreter = name
+            case .program, .standardInput, .undetermined: break
             }
         }
         if let first = arguments?.first {
@@ -42,15 +48,9 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             // like one ("/Users/u/Library/Application Support/x/server").
             let isTitle = first.contains(" ") && !first.hasPrefix("/")
             let started = (isTitle ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
-            if !started.isEmpty { return (String(started), nil) }
+            if !started.isEmpty { return (String(started), interpreter) }
         }
-        return (executable ?? command, nil)
-    }
-
-    /// "python3.14" and "node25" are interpreters too.
-    static func isInterpreter(_ executable: String) -> Bool {
-        CodeSignature.interpreters.contains(executable)
-            || CodeSignature.interpreters.contains(String(executable.reversed().drop { $0.isNumber || $0 == "." }.reversed()))
+        return (executable ?? command, interpreter)
     }
 
     /// A file inside an npm package is known by the package: "chrome-devtools-mcp"

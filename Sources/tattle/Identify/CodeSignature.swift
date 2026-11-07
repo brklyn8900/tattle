@@ -45,20 +45,17 @@ struct CodeSignature: Equatable, Sendable {
         }
     }
 
-    /// Interpreters whose signature says nothing about what they run.
-    static let interpreters: Set<String> = [
-        "sh", "bash", "zsh", "ksh", "csh", "tcsh", "dash", "osascript", "python", "python3",
-        "perl", "ruby", "php", "node", "env", "open",
-    ]
-
-    /// The signature that matters for a command line: the script's when an interpreter
-    /// runs a file, "script" when it runs inline code, otherwise the program's.
+    /// The signature of the code a command line runs (`LaunchedCode.started`): the program's,
+    /// through any wrapper; the script's when an interpreter runs a file at an absolute path;
+    /// "script" when it runs code at no path the command line locates; nil when a wrapper's
+    /// program is not named.
     static func read(program: String, arguments: [String], reading: (String) -> CodeSignature? = { read(path: $0) }) -> CodeSignature? {
-        guard interpreters.contains(URL(fileURLWithPath: program).lastPathComponent) else { return reading(program) }
-        for argument in arguments where argument.hasPrefix("/") && FileManager.default.fileExists(atPath: argument) {
-            return reading(argument)
+        switch LaunchedCode.started(program: program, arguments: arguments) {
+        case .program(let path): reading(path)
+        case .script(let path, _) where path.hasPrefix("/"): reading(path)
+        case .script, .unnamed, .standardInput: CodeSignature(signer: .script)
+        case .undetermined: nil
         }
-        return CodeSignature(signer: .script)
     }
 
     /// Reads and validates the signature at `path`. Resources are not validated: that

@@ -97,7 +97,7 @@ final class CodeSignatureTests: XCTestCase {
         let reading: (String) -> CodeSignature? = { asked.append($0); return CodeSignature(signer: .apple) }
         XCTAssertEqual(CodeSignature.read(program: "/bin/ls", arguments: ["-l"], reading: reading)?.signer, .apple)
         XCTAssertEqual(CodeSignature.read(program: "/usr/bin/osascript", arguments: ["-e", "1+1"], reading: reading)?.signer, .script)
-        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-c", script.path], reading: reading)?.signer, .apple)
+        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", script.path], reading: reading)?.signer, .apple)
         XCTAssertEqual(asked, ["/bin/ls", script.path])
     }
 
