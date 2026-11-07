@@ -128,6 +128,16 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(wrapper.interpreter)
     }
 
+    func testARunningJavaIsAProgramAndAJobRunThroughJavaIsSignedByItsJar() {
+        let named = ProcessEntry.name(path: "/Library/Java/JavaVirtualMachines/x.jdk/Contents/Home/bin/java",
+                                      arguments: ["java", "-jar", "/x/server.jar"], command: "java")
+        XCTAssertEqual(named.name, "java")
+        XCTAssertNil(named.interpreter, "a JVM's row is the program, not a script")
+        let job = signer("/usr/bin/java", ["-jar", "/x/server.jar"])
+        XCTAssertEqual(job.signer, .apple)
+        XCTAssertEqual(job.read, ["/x/server.jar"], "not Apple's /usr/bin/java")
+    }
+
     func testInlineCodeLaunchdStartsIsNotPartOfMacOS() {
         let named = ProcessEntry.name(path: "/bin/zsh", arguments: ["zsh", "-c", "while :; do sleep 1; done"], command: "zsh")
         let entries = [

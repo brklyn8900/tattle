@@ -27,22 +27,16 @@ enum LaunchedCode: Equatable, Sendable {
     static func running(executable: String, arguments: [String]?) -> LaunchedCode {
         let name = URL(fileURLWithPath: executable).lastPathComponent
         guard let grammar = grammar(of: name, in: interpreters) else { return .program(executable) }
-        guard let arguments else { return .unnamed(interpreter: name) }
-        switch scan(arguments, grammar) {
-        case .file(let path): return .script(path: path, interpreter: name)
-        case .operand(let index) where grammar.operandIsScript && !arguments[index].isEmpty:
-            return .script(path: arguments[index], interpreter: name)
-        // An empty operand is what is left when a process rewrites its own arguments (a node
-        // title), so the script is no longer named.
-        case .operand, .code, .program: return .unnamed(interpreter: name)
-        case .standardInput, .nothing: return .standardInput(interpreter: name)
-        }
+        return interpreted(by: name, arguments: arguments, grammar)
     }
 
     /// What a command line starts: through any wrappers (`nohup`, `caffeinate`, `env`) to
-    /// the program they run, then as `running` reads it. `arguments` follow argv[0].
+    /// the program they run, and through java to the jar it runs, then as `running` reads
+    /// it. `arguments` follow argv[0].
     static func started(program: String, arguments: [String]) -> LaunchedCode {
-        guard let grammar = grammar(of: URL(fileURLWithPath: program).lastPathComponent, in: wrappers) else {
+        let name = URL(fileURLWithPath: program).lastPathComponent
+        if let grammar = grammar(of: name, in: launchers) { return interpreted(by: name, arguments: arguments, grammar) }
+        guard let grammar = grammar(of: name, in: wrappers) else {
             return running(executable: program, arguments: arguments)
         }
         switch scan(arguments, grammar) {
@@ -55,6 +49,20 @@ enum LaunchedCode: Equatable, Sendable {
             guard index < arguments.count else { return .undetermined }
             return started(program: arguments[index], arguments: Array(arguments[(index + 1)...]))
         case .program, .code, .file, .standardInput, .nothing: return .undetermined
+        }
+    }
+
+    /// What the interpreter `name` runs with `arguments`.
+    private static func interpreted(by name: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
+        guard let arguments else { return .unnamed(interpreter: name) }
+        switch scan(arguments, grammar) {
+        case .file(let path): return .script(path: path, interpreter: name)
+        case .operand(let index) where grammar.operandIsScript && !arguments[index].isEmpty:
+            return .script(path: arguments[index], interpreter: name)
+        // An empty operand is what is left when a process rewrites its own arguments (a node
+        // title), so the script is no longer named.
+        case .operand, .code, .program: return .unnamed(interpreter: name)
+        case .standardInput, .nothing: return .standardInput(interpreter: name)
         }
     }
 
@@ -186,6 +194,12 @@ enum LaunchedCode: Equatable, Sendable {
         "tclsh": Grammar(options: ["-encoding": .value], grouped: false),
         "expect": Grammar(options: ["-c": .code, "-f": .file, "-b": .file, "-D": .value], grouped: false),
         "awk": Grammar(options: ["-f": .file, "-v": .value, "-F": .value], operandIsScript: false),
+    ]
+
+    /// Interpreters only in a command line: a job run through java runs its jar, not Apple's
+    /// `/usr/bin/java`. A running JVM keeps its own name and signer, as a program rather than
+    /// a script.
+    private static let launchers: [String: Grammar] = [
         "java": Grammar(options: [
             "-jar": .file, "-m": .code, "--module": .code,
             "-cp": .value, "-classpath": .value, "--class-path": .value, "-p": .value, "--module-path": .value,
