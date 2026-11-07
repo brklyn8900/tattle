@@ -29,6 +29,17 @@ Preconditions:
   processes` for a few seconds), `$V save processes-list`. Compare M processes with `ps
   -A | wc -l` minus one, within a few. Rows read `"<name>, N processes · <signer>,
   <memory>, <cpu>"`; CPU is `–` until the second sample.
+- **macOS row.** In `processes-list.txt`, `macOS, N processes · Apple` holds most of the
+  processes (650 of 717 on testmac). A macOS row of a handful, with Apple's daemons in rows
+  of their own signed by a certificate name such as `macOS Software Signing`, means Apple's
+  own code is not recognised.
+- **Script started by launchd.** On testmac (it loads a LaunchAgent): write
+  `~/Library/LaunchAgents/local.tattle-verify.inline.plist` with `ProgramArguments`
+  `/bin/zsh`, `-c`, `while :; do sleep 5; done`, `/usr/bin/true`, and `launchctl bootstrap
+  gui/$(id -u)` it. Its row reads `zsh, N processes · zsh script`, not a member of `macOS`
+  and not named `true`; press it, then `--prefix "zsh, pid <pid>"` when its `sleep` child
+  makes it a group. The detail has `Runs with zsh (/bin/zsh)`, `Interpreter signed by
+  Apple`, `Parent launchd (pid 1)`. Afterwards `launchctl bootout` it and delete the plist.
 - **Sort.** `$V ax press CPU` (the segment; the resources line's `CPU` text is not
   pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
 - **Marker process.** Start one the run owns: `nohup /bin/sleep 7777 >/dev/null 2>&1 &`
@@ -49,3 +60,10 @@ Preconditions:
   marker's detail, never a `Quit` prefix.
 - The list refreshes every 3 s; wait for labels, not fixed sleeps.
 - Proven 2026-10-25, run `2026-10-25T224119`; `Force Quit` not exercised.
+- macOS row and script started by launchd proven 2026-11-07 on testmac, run
+  `2026-11-07T180918` (commit `879a2ca`); run `2026-11-07T175830` is the same journeys on
+  `b2a39de`, before the fix (637 rows, a macOS row of 10). Copies in this Mac's
+  `build/verify/runs/testmac-2026-11-07/`.
+- testmac's display sleeps after a minute idle, which closes the panel and sets the
+  session's `CGSSessionScreenIsLocked` with no password lock; hold `caffeinate -di` for
+  the length of a run.

@@ -44,6 +44,17 @@ Preconditions:
 - **Broker row.** Under `Daemons`, `io.github.eladefrati.tattle.capture-broker, on demand
   · running, pid N · ...`; its detail has `Remove` (driving it is packet-access.md's
   journey; do not press it here).
+- **Signer of a command line.** On testmac: write these plists in `~/Library/LaunchAgents/`
+  (unloaded agents are listed too; the `zsh -c` one is Processes' loaded probe), with an
+  ad-hoc-signed copy of `/bin/sleep` as `agent`, and a `probe.sh` and `probe.pl` in a
+  folder of the run's. Each row and its `Signed by` fact read the code that runs, never
+  the interpreter or wrapper:
+  - `/bin/zsh -c <code> /usr/bin/true`: `script, not signed`;
+  - `/usr/bin/nohup <dir>/agent 600`: `ad hoc signed`;
+  - `Program` `/bin/sh` with `ProgramArguments` `/bin/sh <dir>/probe.sh`: `Runs /bin/sh
+    <dir>/probe.sh`, argv[0] not repeated, and `unsigned`;
+  - `/usr/bin/perl5.34 <dir>/probe.pl`: `unsigned`.
+  Delete the plists and the folder afterwards.
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
   `Open at login` and background groups are missing: record that precondition as unmet.
 
@@ -58,3 +69,7 @@ Preconditions:
   takes the screen; avoid in unattended runs.
 - Proven 2026-10-25, run `2026-10-25T224119` (list, detail, cross-check, broker row);
   Load and Unload not exercised.
+- Signer of a command line proven 2026-11-07 on testmac, run `2026-11-07T180918` (commit
+  `879a2ca`); on `b2a39de`, run `2026-11-07T175830`, all four rows read `macOS Software
+  Signing` and the Program row read `Runs /bin/sh /bin/sh ...`. Copies in this Mac's
+  `build/verify/runs/testmac-2026-11-07/`.

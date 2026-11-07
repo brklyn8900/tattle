@@ -68,3 +68,6 @@ Preconditions:
   unit test.
 - Proven 2026-10-27, run `2026-10-27T105938` (release build): shipped rule, Apple gate,
   ask and redaction.
+- Shipped rule proven again 2026-11-07 on testmac (macOS 26.7.1, where Apple's binaries are
+  signed `macOS Software Signing`), dev copy at `879a2ca`, run `2026-11-07T180918`: the
+  `5353, mDNSResponder` detail has `Signed by Apple` and the rule.

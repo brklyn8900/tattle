@@ -46,9 +46,10 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
-  Proven 2026-10-25.
+  Proven 2026-10-25; a command line's signer 2026-11-07.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
-  CPU, and Quit. Proven 2026-10-25.
+  CPU, and Quit. Proven 2026-10-25; the macOS row and a script started by launchd
+  2026-11-07.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27.
