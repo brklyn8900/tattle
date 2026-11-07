@@ -44,8 +44,8 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
-    /// Part of macOS: signed by Apple's software signing certificate, or the kernel. A
-    /// script is not, whoever signed its interpreter.
+    /// Part of macOS: signed by Apple as its own code, or the kernel. A script is not,
+    /// whoever signed its interpreter.
     var isPartOfMacOS: Bool { pid == 0 || (interpreter == nil && signature?.signer == .apple) }
     var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 

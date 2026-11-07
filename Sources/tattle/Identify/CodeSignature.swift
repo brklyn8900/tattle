@@ -4,7 +4,7 @@ import Security
 /// Who signed a binary or bundle, read from its code signature.
 struct CodeSignature: Equatable, Sendable {
     enum Signer: Equatable, Sendable {
-        /// Part of macOS, signed by Apple's Software Signing certificate.
+        /// Apple's own code, as macOS is: signed by Apple itself (`anchor apple`).
         case apple
         /// Distributed through the Mac App Store.
         case appStore
@@ -61,9 +61,10 @@ struct CodeSignature: Equatable, Sendable {
     /// Reads and validates the signature at `path`. Resources are not validated: that
     /// takes seconds on a large app and the question here is who signed it.
     ///
-    /// A certificate's subject is whatever its maker wrote, so the kind it names counts only
-    /// when the chain proves it: Apple's own code chains to Apple (`anchor apple`), every
-    /// other kind to a certificate Apple issued (`anchor apple generic`).
+    /// Apple's own code is known by its chain alone (`anchor apple`): Apple has signed it
+    /// under more than one subject ("Software Signing", "macOS Software Signing"). Every
+    /// other kind is read from the leaf certificate's subject, which is whatever its maker
+    /// wrote, so it counts only when the chain shows Apple issued it (`anchor apple generic`).
     static func read(path: String) -> CodeSignature {
         var staticCode: SecStaticCode?
         let url = URL(fileURLWithPath: path) as CFURL
@@ -92,10 +93,13 @@ struct CodeSignature: Equatable, Sendable {
         if flags & SecCodeSignatureFlags.adhoc.rawValue != 0 || certificates.isEmpty {
             return CodeSignature(signer: .adHoc, identifier: identifier)
         }
-        let signer = classify((SecCertificateCopySubjectSummary(certificates[0]) as String?) ?? "")
-        guard satisfies(code, signer == .apple ? "anchor apple" : "anchor apple generic") else {
+        if satisfies(code, "anchor apple") {
+            return CodeSignature(signer: .apple, identifier: identifier, teamIdentifier: team)
+        }
+        guard satisfies(code, "anchor apple generic") else {
             return CodeSignature(signer: .notIssuedByApple, identifier: identifier)
         }
+        let signer = classify((SecCertificateCopySubjectSummary(certificates[0]) as String?) ?? "")
         return CodeSignature(signer: signer, identifier: identifier, teamIdentifier: team)
     }
 
@@ -105,11 +109,10 @@ struct CodeSignature: Equatable, Sendable {
         return SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), compiled) == errSecSuccess
     }
 
-    /// Maps the leaf certificate's subject to a signer kind. A subject issued to a team ends
-    /// in its parenthesised id, which is dropped: the team comes from the signing
-    /// information, where it is authoritative.
+    /// Maps the leaf certificate's subject to a signer kind other than Apple's own. A subject
+    /// issued to a team ends in its parenthesised id, which is dropped: the team comes from
+    /// the signing information, where it is authoritative.
     static func classify(_ subject: String) -> Signer {
-        if subject == "Software Signing" { return .apple }
         if subject == "Apple Mac OS Application Signing" { return .appStore }
         for prefix in ["Developer ID Application: "] where subject.hasPrefix(prefix) {
             return .developerID(name: stripId(subject.dropFirst(prefix.count)))
