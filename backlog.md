@@ -47,6 +47,10 @@ done)
 - Check whether `StartupSnapshot`'s fallback to BTM's own `teamIdentifier` (when the
   signature has none) brings back an ad-hoc item's claimed team; where BTM gets that field
   is unverified (agreed 2026-10-27).
+- `LaunchedCode`'s option tables come from the manual pages, and an option they do not list
+  counts as taking no value. A real option that takes one but is not listed (mostly node's
+  and java's long options) makes its value read as the script: a launch item then shows
+  that file's signer, and a process is named after it (`LaunchedCode.swift`).
 
 **From the review triage of 2026-11-07** (its "consider" list, verified at `0618f7e`; IDs
 are the triage's)
