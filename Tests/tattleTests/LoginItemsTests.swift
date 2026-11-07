@@ -62,8 +62,7 @@ final class LoginItemsTests: XCTestCase {
     }
 
     func testThisMachineDatabaseParses() throws {
-        guard try LoginItemsDatabase.currentFile() != nil else { throw XCTSkip("no login-items database here") }
-        let db = try LoginItemsDatabase.readCurrent()
+        let db = try LoginItemsDatabase.readCurrentOrSkip()
         XCTAssertGreaterThanOrEqual(db.version, 13)
         XCTAssertFalse(db.items.isEmpty)
         XCTAssertTrue(db.items.contains { $0.kind == .app }, "at least one app opens at login")
@@ -73,6 +72,20 @@ final class LoginItemsTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: LoginItemsDatabase.folder, includingPropertiesForKeys: nil)
         for file in files where file.pathExtension == "btm" {
             XCTAssertNoThrow(try LoginItemsDatabase.parse(Data(contentsOf: file)), file.lastPathComponent)
+        }
+    }
+}
+
+extension LoginItemsDatabase {
+    /// This Mac's database, or a skip when there is none or the test runner has no Full Disk
+    /// Access, without which macOS refuses to list the folder.
+    static func readCurrentOrSkip() throws -> LoginItemsDatabase {
+        do {
+            return try readCurrent()
+        } catch ReadError.cannotList(let reason) {
+            throw XCTSkip("the login-items folder cannot be listed without Full Disk Access: \(reason)")
+        } catch ReadError.noDatabase {
+            throw XCTSkip("no login-items database here")
         }
     }
 }

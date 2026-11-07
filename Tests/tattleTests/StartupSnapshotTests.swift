@@ -112,11 +112,11 @@ final class StartupSnapshotTests: XCTestCase {
     func testThisMachineBuilds() throws {
         let cache = SignatureCache()
         let snapshot = StartupSnapshot.build(
-            launchd: LaunchdReader().read(), loginItems: try LoginItemsDatabase.readCurrent().items,
+            launchd: LaunchdReader().read(), loginItems: try LoginItemsDatabase.readCurrentOrSkip().items,
             state: LaunchctlState.read(), signature: cache.signature(at:))
         XCTAssertFalse(snapshot.items.isEmpty)
         XCTAssertEqual(Set(snapshot.items.map(\.id)).count, snapshot.items.count, "ids are unique")
-        XCTAssertTrue(snapshot.items.contains { $0.signature?.signer == .apple || $0.signature != nil })
+        XCTAssertTrue(snapshot.items.contains { $0.signature != nil }, "signatures are read")
     }
 
     func testStateText() {
