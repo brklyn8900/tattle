@@ -64,7 +64,8 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
 
         let programArguments = plist["ProgramArguments"] as? [String] ?? []
         let program = plist["Program"] as? String ?? programArguments.first
-        let arguments = plist["Program"] is String ? programArguments : Array(programArguments.dropFirst())
+        // ProgramArguments[0] is argv[0] even when Program names the executable.
+        let arguments = Array(programArguments.dropFirst())
 
         return LaunchdItem(
             label: label, scope: scope, plistURL: url, program: program, arguments: arguments,

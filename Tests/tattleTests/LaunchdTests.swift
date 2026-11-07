@@ -20,8 +20,10 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(a.arguments, ["--x"])
         let b = try parse("<key>Label</key><string>b</string><key>Program</key><string>/bin/bar</string><key>ProgramArguments</key><array><string>bar</string><string>-v</string></array>")
         XCTAssertEqual(b.program, "/bin/bar")
-        XCTAssertEqual(b.arguments, ["bar", "-v"], "with Program set, ProgramArguments is argv as given")
+        XCTAssertEqual(b.arguments, ["-v"], "with Program set, ProgramArguments[0] is argv[0], not an argument")
         XCTAssertFalse(b.disabled)
+        let script = try parse("<key>Label</key><string>c</string><key>Program</key><string>/bin/sh</string><key>ProgramArguments</key><array><string>/bin/sh</string><string>/x.sh</string></array>")
+        XCTAssertEqual(script.arguments, ["/x.sh"])
     }
 
     func testRejectsMissingLabelAndNonDictionary() {
