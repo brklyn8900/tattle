@@ -86,8 +86,9 @@ final class ProcessTableTests: XCTestCase {
     func testParseArguments() {
         var bytes: [UInt8] = [3, 0, 0, 0]
         bytes += Array("/usr/bin/node".utf8) + [0, 0, 0]
-        bytes += Array("node".utf8) + [0] + Array("/tmp/server.js".utf8) + [0] + Array("--port".utf8) + [0]
-        bytes += Array("HOME=/Users/u".utf8) + [0]
+        for string in ["node", "/tmp/server.js", "--port", "HOME=/Users/u"] {
+            bytes += Array(string.utf8) + [0]
+        }
         XCTAssertEqual(ProcessTable.parseArguments(bytes[...]), ["node", "/tmp/server.js", "--port"])
         XCTAssertNil(ProcessTable.parseArguments([1, 0][...]))
     }
