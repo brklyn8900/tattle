@@ -4,6 +4,33 @@
   destination, a new listening port, or a new startup item. Needs a PRD change. After the
   search bar (agreed 2026-11-07).
 
+**Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
+session ticks its lines in the commit that closes them; the docs session removes this list
+once every line is ticked)
+
+- [x] 9 (TX, T1, T2): the test target builds and the suite can gate on Xcode 27.2. fix-1-tests.
+- [ ] 1 (A1, A7) and 2 (A2a-e): Apple's binaries read as Apple; a command line's signer is
+  the code it runs. fix-2-signer.
+- [ ] 3 (A3, A8): a connection is signed by its own process. fix-3-identity.
+- [ ] 8 (K1a, K1b): rules answer only for the identity they were given for. fix-3-identity.
+- [ ] 16 (K3, K4): relay rules and stale names match Apple's documentation. fix-3-identity.
+- [ ] 4 (B1): the exception-port drop covers EXC_CRASH and corpse notifications.
+  fix-4-broker-counters.
+- [ ] 5 (R1, R2): the network-rate sampler survives interfaces disappearing.
+  fix-4-broker-counters.
+- [ ] 6 (E1, E3): Explain's command runs without Tattle's privacy grants; the login PATH is
+  documented. fix-5-explain.
+- [ ] 7 (E2): the Claude Code preset keeps no transcript and loads no account connectors.
+  fix-5-explain.
+- [ ] 10 (E7a-h, apostrophes): redaction covers what the README promises. fix-6-redaction.
+- [ ] 11 (S2): a running job reads as running. fix-7-facts.
+- [ ] 12 (S1): unreadable plists are shown, not dropped. fix-7-facts.
+- [ ] 13 (N1): inbound connections read as inbound. fix-7-facts.
+- [ ] 14 (PR1): "Quit <App>" acts on the app. fix-7-facts.
+- [ ] 15 (PR2): third-party root code is not labelled as the system. fix-7-facts.
+- [ ] 17 and decisions 4-6: docs match the code. fix-8-docs.
+- [ ] 18 (D6): the author's name only in author-credit fields. fix-8-docs.
+
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a) is
 done)
 
