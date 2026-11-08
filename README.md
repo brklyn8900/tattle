@@ -88,7 +88,9 @@ with the JSON schema the answer must match. **Output contract** in Settings show
 schema.
 
 Before sending, Tattle replaces your home path, your username, private and local IP
-addresses, and the Mac's names with placeholders. **Last prompt sent** shows the exact text.
+addresses, and the Mac's names with placeholders. A username of one or two letters is
+replaced only where a login stands: before an `@` and first in a process title. **Last
+prompt sent** shows the exact text.
 The Claude Code preset keeps no transcript of the call and starts none of your account's
 connectors, but Claude Code adds the email address it is signed in with to the request, and
 Tattle cannot remove it.

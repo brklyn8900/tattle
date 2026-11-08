@@ -87,16 +87,26 @@ struct Redactor: Sendable {
                 of: "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9-])",
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
-        // A one- or two-letter username would match ordinary text ("-e"). Where it appears
-        // in a path the home replacement covers it; the facts built for a prompt never
-        // carry the login (UserName.describeForModel). The username never matches as a label
-        // of a dotted name, so "mail.google.com" stays whole for a user called mail. A dot that
-        // ends a sentence does not join a label.
+        return Self.redactAddresses(redactUsername(out))
+    }
+
+    /// The username never matches as a label of a dotted name, so "mail.google.com" stays
+    /// whole for a user called mail. A dot that ends a sentence does not join a label.
+    ///
+    /// A login of one or two letters would match ordinary text ("-e"), so it goes only where
+    /// a login stands: before an "@" ("e@ttys003") and first in a process title ("postgres: e
+    /// db"). Where it appears in a path the home replacement covers it; the facts built for a
+    /// prompt never carry it as "you (e)" (UserName.describeForModel).
+    private func redactUsername(_ text: String) -> String {
+        guard !username.isEmpty else { return text }
+        let login = NSRegularExpression.escapedPattern(for: username)
+        let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
         if username.count >= 3 {
-            let pattern = "(?<![\\w-]\\.)\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b(?!\\.[\\w-])"
-            out = out.replacingOccurrences(of: pattern, with: "<user>", options: [.regularExpression, .caseInsensitive])
+            return text.replacingOccurrences(of: "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])", with: "<user>", options: options)
         }
-        return Self.redactAddresses(out)
+        return text
+            .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: options)
+            .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: options)
     }
 
     /// Replaces private and local IP addresses only.

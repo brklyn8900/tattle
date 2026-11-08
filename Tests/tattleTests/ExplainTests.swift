@@ -22,9 +22,19 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("Usernamex.example.com"), "Usernamex.example.com")
     }
 
-    func testShortUsernameOnlyInHomePath() {
+    /// One or two letters are ordinary text anywhere else ("-e", "a"), so a short login goes
+    /// only where a login stands: before an "@", and first in a process title.
+    func testAShortUsernameIsReplacedOnlyWhereALoginGoes() {
         let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
         XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1"), "<home>/x run by e with osascript -e 1")
+        XCTAssertEqual(short.redact("sshd-session: e@ttys003 (pid 9)"), "sshd-session: <user>@ttys003 (pid 9)")
+        XCTAssertEqual(short.redact("postgres: e clientdb [local] idle:tcp/5432"), "postgres: <user> clientdb [local] idle:tcp/5432")
+        XCTAssertEqual(short.redact("sshd: E [priv]"), "sshd: <user> [priv]")
+        XCTAssertEqual(short.redact("sshd: e"), "sshd: <user>")
+        XCTAssertEqual(short.redact("mail: be@x.example, code-e@x.example, a.e@x.example"), "mail: be@x.example, code-e@x.example, a.e@x.example")
+        XCTAssertEqual(short.redact("postgres: clientdb e [local]"), "postgres: clientdb e [local]", "second in the title is not the login's place")
+        let none = Redactor(home: "", username: "", machineNames: [])
+        XCTAssertEqual(none.redact("sshd: x@y"), "sshd: x@y", "no login, nothing to match")
     }
 
     /// "/Users/eve/..." is another account's folder, not the home "/Users/u" plus "ve/...".
