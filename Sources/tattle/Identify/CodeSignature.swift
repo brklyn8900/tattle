@@ -16,8 +16,8 @@ struct CodeSignature: Equatable, Sendable {
         /// Signed without any certificate.
         case adHoc
         case unsigned
-        /// Code an interpreter runs (a script file, inline code, standard input), which
-        /// carries no signature; the interpreter's says nothing about it.
+        /// Code an interpreter runs (a script file, inline code, standard input), whose
+        /// signature, if it has one, is not read; the interpreter's says nothing about it.
         case script
         /// Signed, but the signature does not match the binary.
         case invalid(String)
