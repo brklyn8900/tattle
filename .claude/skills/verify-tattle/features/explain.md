@@ -154,8 +154,10 @@ Preconditions:
 - **Settings.** `tattle-ax` reaches only the panel. Walk the app's `AXWindows` whose subrole
   is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. After the
   migration the `AXPopUpButton` reads `Claude Code` and the command field holds the current
-  flags. Set the field to the earlier preset's text and relaunch: the row keeps it and the
-  picker reads `Custom`. The footnote says `The command must work from a login shell`.
+  flags. Put the earlier preset's text in the row with the app quit, and relaunch: the row
+  keeps it and the picker reads `Custom`. Setting the field's `AXValue` returns success but does
+  not reach SwiftUI's binding, so the row is what to write. The footnote says `The command must
+  work from a login shell`.
 
 ## Gotchas
 
@@ -173,6 +175,8 @@ Preconditions:
   `Refresh` after changing a plist.
 - A closed connection stays in its row as `closing` for about 30 s after its listener has
   gone (33 s measured), and the row counts it until then.
+- A refused command cannot be driven in the app: both private calls work on every macOS here.
+  `testARefusedCommandNeverRunsAndLeavesNoChild` covers the refusal on a suspended child.
 - Over plain ssh, `claude` reads `Not logged in` on testmac (seen 2026-11-08; inferred: the login
   keychain is not open to that session). `hc exec --on testmac` and testmac's GUI session are
   signed in.
@@ -208,3 +212,8 @@ Preconditions:
   in run `2026-11-08T170858`, Settings in run `2026-11-08T171037`, both copied to
   `build/verify/runs/testmac-2026-11-08/`. Packet capture is off there, so the row was the
   connection's address.
+- The suspended start and the one-shot migration proven 2026-11-08 on the development Mac,
+  signed dev copy at `c59806d`, on a database holding the earlier preset: the migrated row,
+  Settings and one real request in run `2026-11-08T174405`; the same text staying after a
+  relaunch in run `2026-11-08T174445`; the command charged to `/bin/zsh` and refused the
+  protected folder, with Startup listing login items, in run `2026-11-08T174453`.
