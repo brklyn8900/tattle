@@ -42,7 +42,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 
 - [Network names and unnamed reasons](./network-names.md): who each connection goes to, or
   why Tattle could not tell, and who signed the process and its app. Proven 2026-10-25; a
-  connection's own signer 2026-11-08.
+  connection's own signer, rows with differing signers, a file put in a bundle and a process
+  that replaces itself 2026-11-08.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build.
@@ -59,4 +60,5 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   2026-11-08.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
-  2026-10-27; an answer going with its code and the shipped `claude` rule 2026-11-08.
+  2026-10-27; an answer going with its code and one version of it, the shipped `claude` rule
+  and a host's prompt 2026-11-08.

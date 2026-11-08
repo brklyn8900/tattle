@@ -5,9 +5,12 @@ a rule for the item, the section shows it with its provenance (`Tattle's rules �
 confidence high`). Otherwise it reads `No explanation yet.` with an `Explain` button, which
 sends one redacted prompt to the provider command configured in Settings and stores the
 answer as an unconfirmed rule (`Model answer, unconfirmed · ...`), for the code it was
-given for: another program under the same name does not get it, confirmed or not. With
-nothing to tell that code by, such as unnamed code, the answer stays while the detail is
-open and is not kept. Shipped rules about Apple's programs show only for Apple's own program
+given for: another program under the same name does not get it, confirmed or not. Code with
+no publisher is known at one version: by its signature's own hash, or, for unsigned code and
+scripts, by the file's content, read only when an answer is looked up or stored. A file that
+cannot be read keeps no answer. With nothing to tell that code by, such as unnamed code, the
+answer stays while the detail holds that code and is not kept. A host's prompt says nothing
+of the program that connected. Shipped rules about Apple's programs show only for Apple's own program
 by that name: Apple-signed, on the sealed system volume, and named for its own file. A
 shipped rule with another publisher's name on it shows only for that publisher's program.
 
@@ -18,8 +21,12 @@ shipped rule with another publisher's name on it shows only for that publisher's
 - `ex-ask`: `Explain` runs the provider and shows its answer.
 - `ex-identity`: an answer shows only for the code it was given for; another program by
   the name can be asked about, and keeps its own answer.
-- `ex-unkept`: an answer about code nothing identifies shows with no `Confirm` and is not
-  stored.
+- `ex-version`: an answer goes with one version of code that has no publisher: a script or
+  unsigned file edited or replaced at its path, ad hoc code rebuilt there, and a launch item
+  whose line or program changes.
+- `ex-unkept`: an answer about code nothing identifies, or whose file cannot be read, shows
+  with no `Confirm` and is not stored; it goes when the row comes to hold other code.
+- `ex-host`: a host's prompt carries the host and the connection, not who made it.
 - `ex-publisher`: the shipped `claude` rule shows for Anthropic's program only.
 - `ex-redaction`: the prompt carries the item and facts as one JSON line; the key keeps
   only address redaction (`<private-ip>`), facts and instructions get the full redaction.
@@ -73,6 +80,27 @@ Preconditions:
   done"`, row `sh,`: `Signed by unnamed code`, `No explanation yet.` `Explain` shows the
   answer with no `Confirm`, and it is still there after the tab refreshes; `$V db "select
   count(*) from rule where pattern = 'sh' and source = 'llm'"` is 0.
+- **One version of the code.** A launch agent running `/bin/sh <dir>/job.sh`. In Processes,
+  `job.sh,`: `Explain`, `Confirm`. `$V db "select identity from rule where pattern =
+  'job.sh'"` is `script:<dir>/job.sh:sha256:<hash>`. Append a line to the file and reopen the
+  row: `No explanation yet.`; remove the line and reopen: `Model answer, confirmed by you`.
+  With a program of your own in place of the script, ad hoc signed, the identity is
+  `ad-hoc:<hash>:<path>`; unsigned (Intel only), `unsigned:<path>:sha256:<hash>`. Stop it,
+  replace the file with another build, start it again: `No explanation yet.`
+- **A file that cannot be read.** The same agent, then `chmod 000 <dir>/job2.sh`: `Explain`
+  shows the answer with no `Confirm`, and no rule is stored.
+- **A launch item through a wrapper.** A plist, not loaded, with `/usr/bin/env <dir>/good`.
+  In Startup, press `Refresh`, then its row: `Explain`, `Confirm`; the identity is
+  `command:<hash>:sha256:<hash>`. Change the plist to `<dir>/evil`, `Refresh`, reopen: `Runs`
+  names it and `No explanation yet.`; change it back: confirmed again. Then replace the file
+  `good` itself: `No explanation yet.`
+- **An answer that was not kept goes with its code.** A row shared by two programs of one
+  name (Network, below in `network-names.md`): `Explain` shows the answer with no `Confirm`.
+  Stop one of the two and end its connection: when the row holds one program the detail reads
+  `No explanation yet.`
+- **A host's prompt.** With the fake provider, open a connection's detail and `Explain`. The
+  panel shows `Process`, `App` and `Signed by`; the recorded prompt's `facts` hold only
+  `Destination`, `Protocol`, `Reach`, `Since` and `First contact`.
 - **The shipped `claude` rule.** Where a real Claude Code session runs, open the row holding
   it (`Herdr Core,` here), then `--prefix "claude, pid <pid>"` (`claude, pid N · Anthropic
   PBC`): the detail ends in `Claude Code, Anthropic's coding agent ...` and `Tattle's rules ·
@@ -92,6 +120,15 @@ Preconditions:
   the real `mDNSResponder` to hold a connection at the same time. Its connections last 1
   to 2 s, and a 9-minute wait on 2026-10-27 never caught one: that case rests on the
   unit test.
+- Startup reads its items once; going back to the tab does not read them again. Press
+  `Refresh` after changing a plist.
+- A closed connection stays in its row as `closing` for about 30 s after its listener has
+  gone (33 s measured), and the row counts it until then.
+- A file in Documents, Desktop or Downloads makes macOS ask (`"TattleDev" would like to access
+  files in your Documents folder`) the first time an answer is stored or looked up for it,
+  and the detail waits for the reply. Nothing is read just by opening a detail with no answer
+  kept for that file. Seen 2026-11-08 on testmac, run `2026-11-08T123311`; `tccutil reset
+  SystemPolicyDocumentsFolder <bundle id>` puts it back.
 - Proven 2026-10-27, run `2026-10-27T105938` (release build): shipped rule, Apple gate,
   ask and redaction.
 - Shipped rule proven again 2026-11-07 on testmac (macOS 26.7.1, where Apple's binaries are
@@ -103,3 +140,7 @@ Preconditions:
 - The `claude` rule proven 2026-11-08 on the development Mac, where a real session runs,
   dev copy at `ebf12ca`: the script under the name in run `2026-11-08T104814`, Anthropic's
   program in run `2026-11-08T105317`.
+- One version of the code, a file that cannot be read and a host's prompt proven 2026-11-08 on
+  testmac, dev copy at `969e6d3`, run `2026-11-08T122412`; a launch item through a wrapper in run
+  `2026-11-08T122957`; an unkept answer going with its code in run `2026-11-08T123157`. All
+  copied to `build/verify/runs/testmac-2026-11-08/`.

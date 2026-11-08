@@ -24,7 +24,10 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   by`), and the app it is filed under apart when that differs (`App signed by`, `App team`).
   A script reads `Signed by script, not signed`, with `Runs with` and `Interpreter signed
   by`; one of Apple's developer tools reads `Signed by unnamed code`. History keeps both, in
-  `signer` and `appSigner`.
+  `signer` and `appSigner`. A row whose connections have different signers names none. A
+  process that replaces itself with another program is read again for its next connections.
+- `net-foreign`: a file in an app's bundle that the app's signer did not sign keeps the row
+  from holding any answer given for the app; what the app only launches does not.
 - `net-history`: the same outcome in the `connection` table, written even when the
   connection closed before the outcome arrived.
 - `net-names-off`: without packet access, the header says `Destinations are addresses:
@@ -90,6 +93,19 @@ Preconditions:
   (18081, 18082, 18083)"`: `nc | Ghostty | Apple | Mitchell Hashimoto`, `job.swift | Ghostty
   | script, not signed | Mitchell Hashimoto`, `git-remote-http | Ghostty | unnamed code |
   Mitchell Hashimoto`.
+- **A row whose connections differ.** From launch agents, so no app takes them: one running
+  your own program named `nc` to `$IP:18092`, then `/bin/sh -c "sleep 200 | /usr/bin/nc $IP
+  18091"`. The row reads `nc, 2 on this network, 2` with no signer, and its detail has no
+  `Signed by`. Each connection's detail has its own: `Apple` and `unsigned`.
+- **A file put in a bundle.** Build `Tool.app` with your own `Contents/MacOS/Tool`, `codesign
+  -s - Tool.app`, then copy another program to `Contents/MacOS/dropper` and start it from a
+  launch agent. Row `Tool, 1 on this network · ad hoc signed`; `Explain` shows the answer with
+  no `Confirm` and stores nothing. With `Tool` itself running instead, and the dropper's
+  connection gone, `Explain` offers `Confirm` and stores `ad-hoc:<hash>:<path of Tool.app>`.
+- **A process that replaces itself.** A launch agent running `/bin/bash exec.sh $IP`, which
+  does `exec 3<>/dev/tcp/$1/18095; sleep 12; exec /usr/bin/nc $1 18096 < <(sleep 300)`. `$V db
+  "select pid, processName, signer, remotePort from connection where remotePort in (18095,
+  18096)"`: one pid, `exec.sh | script, not signed | 18095` and `nc | Apple | 18096`.
 
 ## Gotchas
 
@@ -100,10 +116,13 @@ Preconditions:
   `lib` link for `swift-frontend`.
 - Xcode Service holds no connection, so its row in this tab rests on the unit test
   (`testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode` in `NetworkSnapshotTests`).
-- A foreign executable inside a copied bundle rests on the unit test
-  (`testAConnectionIsSignedByItsOwnProcessAndItsAppApart`): on testmac a new binary put in a
-  copy of `Calculator.app`, unsigned or ad hoc, sat held at launch (state `S`, no CPU, and
-  a program that only returns never returned), so it never opened a connection to read.
+- A foreign executable inside a copy of a publisher's bundle rests on the unit tests
+  (`testAConnectionIsSignedByItsOwnProcessAndItsAppApart`,
+  `testAFileInABundleItsSignerDidNotSignTakesAwayTheRowsIdentity`): on testmac a new binary put
+  in a copy of `Calculator.app`, unsigned or ad hoc, sat held at launch (state `S`, no CPU,
+  and a program that only returns never returned), with macOS's `"Calculator" is damaged and
+  can't be opened` alert on the screen, so it never opened a connection to read.
+  One put in a bundle built on the machine runs, which is the recipe above.
 - The two unnamed rows look alike in the list; tell them apart by the `Process nc (pid
   ...)` fact against the pids `connect` printed.
 - The panel lists open connections only, and a closed connection's detail keeps the state
@@ -125,5 +144,8 @@ Preconditions:
   Tattle started`).
 - A connection's own signer proven 2026-11-08 on testmac, dev copy at `ebf12ca`, run
   `2026-11-08T105543`, copied to `build/verify/runs/testmac-2026-11-08/`.
-- The relay and OHTTP rules read from the `rule` table at `ebf12ca` on testmac, run
-  `2026-11-08T104732`; no traffic to those hosts can be made on demand.
+- The relay and OHTTP rules read from the `rule` table at `969e6d3` on testmac, run
+  `2026-11-08T122412`; no traffic to those hosts can be made on demand.
+- A row whose connections differ, a file put in a bundle and a process that replaces itself
+  proven 2026-11-08 on testmac, dev copy at `969e6d3`, run `2026-11-08T122412`; the bundle's own
+  executable in run `2026-11-08T122957`. Copied to `build/verify/runs/testmac-2026-11-08/`.
