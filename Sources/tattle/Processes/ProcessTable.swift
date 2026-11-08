@@ -104,7 +104,7 @@ enum ProcessTable {
     /// would not answer for; the default spawns `ps`, tests pass a table. `signature` is
     /// called per executable path, to know Apple's interpreters by their signing identifier.
     static func read(
-        fallback: ([Int32]) -> [Int32: ProcessUsage] = ProcessUsageFallback.read, signature: (String) -> CodeSignature? = { _ in nil }
+        fallback: ([Int32]) -> [Int32: ProcessUsage] = ProcessUsageFallback.read, signature: (String) -> CodeSignature?
     ) throws -> [ProcessEntry] {
         var entries = try list(signature: signature)
         let uid = getuid()
@@ -127,7 +127,7 @@ enum ProcessTable {
 
     /// The kernel's process list. Zombies are left out: they hold nothing and are gone
     /// as soon as their parent notices.
-    static func list(signature: (String) -> CodeSignature? = { _ in nil }) throws -> [ProcessEntry] {
+    static func list(signature: (String) -> CodeSignature?) throws -> [ProcessEntry] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         let stride = MemoryLayout<kinfo_proc>.stride
         // Processes start between the size query and the read, so ask for room to spare

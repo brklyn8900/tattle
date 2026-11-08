@@ -3,7 +3,7 @@ import XCTest
 
 final class ProcessTableTests: XCTestCase {
     func testKernelListHasEveryoneWithNamesAndParents() throws {
-        let entries = try ProcessTable.list()
+        let entries = try ProcessTable.list(signature: { _ in nil })
         let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         XCTAssertEqual(byPid.count, entries.count, "one entry per pid")
         XCTAssertGreaterThan(entries.count, 100)
@@ -38,7 +38,7 @@ final class ProcessTableTests: XCTestCase {
         try process.run()
         defer { process.terminate() }
 
-        let entries = try ProcessTable.list()
+        let entries = try ProcessTable.list(signature: { _ in nil })
         let entry = try XCTUnwrap(entries.first { $0.pid == process.processIdentifier })
         XCTAssertEqual(entry.name, "tattle-probe-script.sh")
         XCTAssertEqual(entry.interpreter, "sh")
@@ -128,10 +128,10 @@ final class ProcessTableTests: XCTestCase {
 
     func testReadFillsUsageForOthersThroughFallback() throws {
         var asked: [Int32] = []
-        let entries = try ProcessTable.read { pids in
+        let entries = try ProcessTable.read(fallback: { pids in
             asked = pids
             return Dictionary(pids.map { ($0, ProcessUsage(memoryBytes: 7, cpuSeconds: 1, memoryIsFootprint: false)) }, uniquingKeysWith: { a, _ in a })
-        }
+        }, signature: { _ in nil })
         XCTAssertTrue(asked.contains(1), "launchd is root, so ps must supply it")
         XCTAssertFalse(asked.contains(getpid()), "own processes come from libproc")
         XCTAssertEqual(entries.first { $0.pid == 1 }?.usage?.memoryBytes, 7)
@@ -139,7 +139,7 @@ final class ProcessTableTests: XCTestCase {
     }
 
     func testRealFallbackCoversRootProcesses() throws {
-        let entries = try ProcessTable.read()
+        let entries = try ProcessTable.read(signature: { _ in nil })
         let root = entries.filter { $0.uid == 0 && $0.pid > 0 }
         let covered = root.filter { $0.usage != nil }
         // A handful can exit between the kernel list and ps.

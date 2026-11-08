@@ -206,7 +206,10 @@ final class NetworkObserver {
         var processes: [ProcessEntry]?
         do {
             (entries, processes) = try await Task.detached(priority: .utility) {
-                (try SocketTable.read(), eager ? try? ProcessTable.list() : nil)
+                // Processes are named without their signatures: Apple's programs run from
+                // their own files, so their signing identifiers would name them the same,
+                // and reading every signature would hold up the first poll.
+                (try SocketTable.read(), eager ? try? ProcessTable.list(signature: { _ in nil }) : nil)
             }.value
         } catch {
             self.error = String(describing: error)
@@ -221,7 +224,7 @@ final class NetworkObserver {
         if !unknown.isEmpty {
             let signatures = signatures
             let resolved = await Task.detached(priority: .utility) { [processes] () -> [Int32: ConnectionOwner] in
-                guard let list = processes ?? (try? ProcessTable.list()) else { return [:] }
+                guard let list = processes ?? (try? ProcessTable.list(signature: { _ in nil })) else { return [:] }
                 let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
                 var result: [Int32: ConnectionOwner] = [:]
                 for pid in unknown {
