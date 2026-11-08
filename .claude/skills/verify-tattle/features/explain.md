@@ -35,8 +35,8 @@ connectors.
   with no `Confirm` and is not stored; it goes when the row comes to hold other code.
 - `ex-host`: a host's prompt carries the host and the connection, not who made it.
 - `ex-publisher`: the shipped `claude` rule shows for Anthropic's program only.
-- `ex-redaction`: the prompt carries the item and facts as one JSON line; the key keeps
-  only address redaction (`<private-ip>`), facts and instructions get the full redaction.
+- `ex-redaction`: the prompt carries the item and facts as one JSON line; the key, the facts
+  and the instructions get the full redaction.
 - `ex-no-grants`: the command is charged to itself, and cannot open what only Tattle's Full
   Disk Access opens.
 - `ex-preset`: the Claude Code preset works from the app and leaves nothing per call. A

@@ -20,12 +20,11 @@ enum Prompt {
 
     /// The item and facts go out as one JSON line between two markers. JSON escapes line
     /// breaks and quotes inside a value, so a value cannot pass for a fact or for the end
-    /// of the block. The instructions and the fact values get the full redaction. The key
-    /// gets less, because a key rewritten by name names another item ("mail.google.com" as
-    /// "<user>.google.com").
+    /// of the block. The instructions, the key and the fact values get the full redaction:
+    /// a fact usually repeats the key, so a key redacted less would undo it.
     static func build(instructions: String, request: ExplainRequest, redactor: Redactor) -> String {
         let captured: [String: Any] = [
-            "item": ["kind": label(for: request.kind), "key": redactKey(request, redactor)],
+            "item": ["kind": label(for: request.kind), "key": redactor.redact(request.key)],
             "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": redactor.redact($0.promptValue ?? $0.value)] },
         ]
         // The input is only strings, so serialization cannot fail.
@@ -40,18 +39,6 @@ enum Prompt {
             "Answer with one JSON object matching this schema:",
             OutputContract.schema,
         ].joined(separator: "\n")
-    }
-
-    /// Every key loses its addresses. A process or port key carries a process name, which a
-    /// titled process sets itself ("postgres: username app [local] idle"), so it also loses the
-    /// home path and the login. No key loses a machine name.
-    private static func redactKey(_ request: ExplainRequest, _ redactor: Redactor) -> String {
-        switch request.kind {
-        case .host, .launchItem:
-            return Redactor.redactAddresses(request.key)
-        case .process, .port:
-            return Redactor(home: redactor.home, username: redactor.username, machineNames: []).redact(request.key)
-        }
     }
 
     static func label(for kind: Rule.Kind) -> String {
