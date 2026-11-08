@@ -194,6 +194,9 @@ final class LaunchedCodeTests: XCTestCase {
         let commands: [(String, [String], String)] = [
             ("/usr/bin/xcrun", ["--sdk", "macosx", "/x/tool"], "/x/tool"),
             ("/usr/bin/sudo", ["-u", "root", "/x/agent"], "/x/agent"),
+            ("/usr/bin/sudo", ["--user", "root", "/x/agent"], "/x/agent"),
+            ("/usr/bin/sudo", ["--prompt", "/bin/ls", "/x/agent"], "/x/agent"),
+            ("/usr/bin/sudo", ["--chdir=/bin", "/x/agent"], "/x/agent"),
             ("/usr/bin/screen", ["-dmS", "name", "/x/agent"], "/x/agent"),
         ]
         for (program, arguments, code) in commands {
@@ -216,6 +219,7 @@ final class LaunchedCodeTests: XCTestCase {
             XCTAssertEqual(signer(program, arguments), .script, "\(program) \(arguments)")
         }
         XCTAssertNil(signer("/usr/bin/sudo", ["-s", "/x/agent"]), "a shell runs the command")
+        XCTAssertNil(signer("/usr/bin/sudo", ["--login", "/x/agent"]), "a shell runs the command")
         XCTAssertNil(signer("/usr/bin/screen", ["-S", "name", "-X", "stuff", "/x/agent"]), "a command to a running session")
     }
 

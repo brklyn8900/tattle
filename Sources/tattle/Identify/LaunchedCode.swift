@@ -493,6 +493,9 @@ enum LaunchedCode: Equatable, Sendable {
         "sudo": Grammar(options: [
             "-C": .value, "-D": .value, "-g": .value, "-h": .value, "-p": .value, "-R": .value, "-r": .value,
             "-T": .value, "-t": .value, "-U": .value, "-u": .value, "-e": .code, "-i": .code, "-s": .code,
+            "--close-from": .value, "--chdir": .value, "--group": .value, "--host": .value, "--prompt": .value,
+            "--chroot": .value, "--command-timeout": .value, "--other-user": .value, "--user": .value,
+            "--edit": .code, "--login": .code, "--shell": .code,
         ], operandsBeforeCommand: .assignments),
         "screen": Grammar(options: [
             "-c": .value, "-e": .value, "-h": .value, "-p": .value, "-S": .value, "-s": .value,
