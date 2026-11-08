@@ -42,8 +42,8 @@ connectors.
 - `ex-preset`: the Claude Code preset works from the app and leaves nothing per call. A
   command saved by an earlier version is moved to the current preset once; the same text
   typed later stays the user's.
-- `ex-login-path`: Settings says that a tool on a PATH set only in `~/.zshrc` needs its full
-  path.
+- `ex-login-path`: Settings says the command must work from a login shell, which does not
+  read `~/.zshrc`.
 
 ## How to get to it (user POV)
 
@@ -155,7 +155,7 @@ Preconditions:
   is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. After the
   migration the `AXPopUpButton` reads `Claude Code` and the command field holds the current
   flags. Set the field to the earlier preset's text and relaunch: the row keeps it and the
-  picker reads `Custom`.
+  picker reads `Custom`. The footnote says `The command must work from a login shell`.
 
 ## Gotchas
 

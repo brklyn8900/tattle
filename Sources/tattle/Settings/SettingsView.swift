@@ -18,7 +18,7 @@ struct SettingsView: View {
                 TextField("Command", text: $settings.providerCommand, axis: .vertical)
                     .font(.body.monospaced())
                     .lineLimit(1...4)
-                Text("The prompt goes to the command's standard input; the answer is read from its standard output. {schema} is replaced with the output contract. Nothing is sent until you click Explain on an item. The command runs in your login shell, which does not read ~/.zshrc: a tool on a PATH set only there needs its full path.")
+                Text("The prompt goes to the command's standard input; the answer is read from its standard output. {schema} is replaced with the output contract. Nothing is sent until you click Explain on an item. The command must work from a login shell, which does not read ~/.zshrc: set PATH in ~/.zprofile or in the command.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
