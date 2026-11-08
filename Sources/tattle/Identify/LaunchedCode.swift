@@ -20,7 +20,8 @@ enum LaunchedCode: Equatable, Sendable {
     case standardInput(interpreter: String)
     /// A program the command line does not locate: at a path relative to the working
     /// directory, found nowhere on the PATH, an app by name or bundle identifier, a document
-    /// and whatever app opens it, or a command inside an option's value.
+    /// and whatever app opens it, a command inside an option's value, or one that xargs
+    /// completes from its standard input.
     case undetermined
 
     /// Who a program is, for reading its command line. Apple's programs are known by their
@@ -99,6 +100,8 @@ enum LaunchedCode: Equatable, Sendable {
         if let grammar = grammar(of: identity.name, in: launchers) {
             return interpreted(executable: program, arguments: arguments, grammar)
         }
+        // xargs adds words from its standard input to the command it runs.
+        if identity.name == "xargs" { return .undetermined }
         if identity.name == "open" { return opened(arguments, identify, through: through, searchPath: searchPath) }
         if identity.name == "find", let code = found(arguments, identify, through: through, searchPath: searchPath) { return code }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
@@ -365,10 +368,6 @@ enum LaunchedCode: Equatable, Sendable {
         "nice": Grammar(options: ["-n": .value]),
         "time": Grammar(options: ["-o": .value]),
         "caffeinate": Grammar(options: ["-t": .value, "-w": .value]),
-        "xargs": Grammar(options: [
-            "-E": .value, "-I": .value, "-J": .value, "-L": .value, "-n": .value,
-            "-P": .value, "-R": .value, "-S": .value, "-s": .value,
-        ]),
         "sandbox-exec": Grammar(options: ["-f": .value, "-n": .value, "-p": .value, "-D": .value]),
         "arch": Grammar(options: ["-arch": .value, "-d": .value, "-e": .value], grouped: false),
         // env's -P names where to look for the program, a search that is not followed.

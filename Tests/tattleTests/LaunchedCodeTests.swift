@@ -100,7 +100,6 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/arch", ["-arch", "arm64", "/x/agent"], "/x/agent"),
             ("/usr/bin/caffeinate", ["-i", "-t", "60", "/x/agent"], "/x/agent"),
             ("/usr/bin/caffeinate", ["-dw", "1", "/x/agent"], "/x/agent"),
-            ("/usr/bin/xargs", ["-n", "1", "/x/agent"], "/x/agent"),
             ("/usr/bin/time", ["-o", "/bin/ls", "/x/agent"], "/x/agent"),
             ("/usr/bin/nice", ["-n", "5", "/x/agent"], "/x/agent"),
             ("/usr/bin/sandbox-exec", ["-f", "/bin/ls", "/x/agent"], "/x/agent"),
@@ -204,6 +203,10 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["run.command"]),
             ("/usr/bin/env", ["-S", "/bin/sh -c payload", "/bin/ls"]),
             ("/usr/bin/nohup", []),
+            // xargs adds words from its standard input to the command it runs.
+            ("/usr/bin/xargs", ["-n", "1", "/x/agent"]),
+            ("/usr/bin/xargs", ["/usr/bin/open", "-a", "/System/Applications/Utilities/Terminal.app"]),
+            ("/usr/bin/xargs", ["/usr/bin/find", "/x", "-maxdepth", "0"]),
         ]
         for (program, arguments) in commands {
             XCTAssertNil(signer(program, arguments), "\(program) \(arguments)")
