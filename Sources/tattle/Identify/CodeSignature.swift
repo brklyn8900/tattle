@@ -16,9 +16,13 @@ struct CodeSignature: Equatable, Sendable {
         /// Signed without any certificate.
         case adHoc
         case unsigned
-        /// Code an interpreter runs (a script file, inline code, standard input), whose
-        /// signature, if it has one, is not read; the interpreter's says nothing about it.
+        /// A script an interpreter runs, from a file or its standard input, whose signature,
+        /// if it has one, is not read; the interpreter's says nothing about it.
         case script
+        /// Code the command line does not name as a file: inline, a module, class or package
+        /// by name, in arguments that cannot be read, or a plugin a compiler loads. Whose code
+        /// it is cannot be known.
+        case unnamed
         /// Signed, but the signature does not match the binary.
         case invalid(String)
         /// Signed with a certificate Apple did not issue. Anyone can make one, with any name.
@@ -41,6 +45,7 @@ struct CodeSignature: Equatable, Sendable {
         case .adHoc: "ad hoc signed"
         case .unsigned: "unsigned"
         case .script: "script, not signed"
+        case .unnamed: "unnamed code"
         case .invalid: "invalid signature"
         case .notIssuedByApple: "certificate not issued by Apple"
         }
@@ -48,8 +53,9 @@ struct CodeSignature: Equatable, Sendable {
 
     /// The signature of the code a command line runs (`LaunchedCode.started`): the program's,
     /// through any of Apple's wrappers, or the first program on the way that is not Apple's;
-    /// "script" when an interpreter runs code, whatever file the command line names as the
-    /// script; nil when Apple's programs lead to one the command line does not locate.
+    /// "script" when an interpreter runs a script, whatever file the command line names as
+    /// the script, and "unnamed code" when it runs code the command line does not name as a
+    /// file; nil when Apple's programs lead to one the command line does not locate.
     ///
     /// A script file's signature is not read: a script rarely carries one, and no interpreter
     /// runs a signed binary as its script, so a signed file in the script's place is an
@@ -63,7 +69,8 @@ struct CodeSignature: Equatable, Sendable {
             program: program, arguments: arguments, invokedAs: invokedAs, environmentPath: environmentPath, identify: identify)
         switch code {
         case .program(let path): return reading(path)
-        case .script, .unnamed, .standardInput: return CodeSignature(signer: .script)
+        case .script, .standardInput: return CodeSignature(signer: .script)
+        case .unnamed: return CodeSignature(signer: .unnamed)
         case .undetermined: return nil
         }
     }

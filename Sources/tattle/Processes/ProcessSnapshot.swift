@@ -54,9 +54,10 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// Cores busy since the previous snapshot: 1.0 is one core fully used, as in
     /// Activity Monitor. Nil until there is a previous reading of this process.
     var cpu: Double?
-    /// Who signed the code the process runs: its executable, or no one for a script.
+    /// Who signed the code the process runs: its executable, or no one for a script or
+    /// unnamed code.
     var signature: CodeSignature?
-    /// The executable's signature when it is an interpreter running a script.
+    /// The executable's signature when it is an interpreter running a script or unnamed code.
     var interpreterSignature: CodeSignature?
     /// The app the process belongs to, by its own path or by an ancestor's.
     var app: AppBundle?
@@ -68,10 +69,10 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var isPartOfMacOS: Bool { pid == 0 || signature?.signer == .apple }
     var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 
-    /// What the row says after the name: "node script", the signer, or that the
-    /// executable has been deleted since the process started (an upgraded tool).
+    /// What the row says after the name: "node script", "node, unnamed code", the signer, or
+    /// that the executable has been deleted since the process started (an upgraded tool).
     var signerText: String? {
-        if let interpreter { return "\(interpreter) script" }
+        if let interpreter { return signature?.signer == .unnamed ? "\(interpreter), unnamed code" : "\(interpreter) script" }
         if path == nil, pid > 0 { return "executable no longer on disk" }
         return signature?.summary
     }
@@ -268,7 +269,8 @@ struct ProcessSnapshot: Equatable, Sendable {
                 uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter,
                 workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
-                signature: entry.interpreter == nil ? executableSignature : CodeSignature(signer: .script),
+                signature: entry.interpreter == nil
+                    ? executableSignature : CodeSignature(signer: entry.runsUnnamedCode ? .unnamed : .script),
                 interpreterSignature: entry.interpreter == nil ? nil : executableSignature,
                 app: app(of: entry.pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &apps)))
         }

@@ -15,9 +15,12 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var path: String?
     /// The interpreter's file name when the process runs code that is not its executable's
     /// (a script file, inline code, standard input under launchd, a compiler's plugin, or code
-    /// its unreadable arguments would name), so a row can say "node script" and sign it as a
-    /// script, with the interpreter's signature as a fact of its own.
+    /// its unreadable arguments would name), so a row can name the interpreter and sign the
+    /// code apart from it, with the interpreter's signature as a fact of its own.
     var interpreter: String?
+    /// The interpreter runs code the command line does not name as a file, not a script:
+    /// the row says "node, unnamed code" and signs it as such.
+    var runsUnnamedCode = false
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
     /// Working directory, readable for the user's own processes only.
@@ -38,14 +41,17 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// process that set its title keeps it.
     static func name(
         path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil, startedByLaunchd: Bool = false
-    ) -> (name: String, interpreter: String?) {
+    ) -> (name: String, interpreter: String?, runsUnnamedCode: Bool) {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         var interpreter: String?
+        var runsUnnamedCode = false
         if let path {
             switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, invokedAs: arguments?.first,
                                         identity: LaunchedCode.Identity(path: path, signature: signature)) {
-            case .script(let script, let name): return (scriptName(script), name)
-            case .unnamed(let name): interpreter = name
+            case .script(let script, let name): return (scriptName(script), name, false)
+            case .unnamed(let name):
+                interpreter = name
+                runsUnnamedCode = true
             case .standardInput(let name) where startedByLaunchd: interpreter = name
             case .program, .standardInput, .undetermined: break
             }
@@ -55,9 +61,9 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             // like one ("/Users/u/Library/Application Support/x/server").
             let isTitle = first.contains(" ") && !first.hasPrefix("/")
             let started = (isTitle ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
-            if !started.isEmpty { return (String(started), interpreter) }
+            if !started.isEmpty { return (String(started), interpreter, runsUnnamedCode) }
         }
-        return (executable ?? command, interpreter)
+        return (executable ?? command, interpreter, runsUnnamedCode)
     }
 
     /// A file inside an npm package is known by the package: "chrome-devtools-mcp"
@@ -161,7 +167,8 @@ enum ProcessTable {
         let started = info.kp_proc.p_starttime
         return ProcessEntry(
             pid: pid, parentPid: info.kp_eproc.e_ppid, uid: info.kp_eproc.e_ucred.cr_uid,
-            name: named.name, path: path, interpreter: named.interpreter, arguments: arguments,
+            name: named.name, path: path, interpreter: named.interpreter, runsUnnamedCode: named.runsUnnamedCode,
+            arguments: arguments,
             workingDirectory: own ? workingDirectory(pid: pid) : nil,
             started: Date(timeIntervalSince1970: Double(started.tv_sec) + Double(started.tv_usec) / 1_000_000))
     }

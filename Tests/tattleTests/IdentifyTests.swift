@@ -95,7 +95,7 @@ final class CodeSignatureTests: XCTestCase {
         // Each file reads as signed by a publisher named for its path.
         let reading: (String) -> CodeSignature? = { CodeSignature(signer: .developerID(name: $0)) }
         XCTAssertEqual(CodeSignature.read(program: "/bin/ls", arguments: ["-l"], reading: reading)?.signer, .developerID(name: "/bin/ls"))
-        XCTAssertEqual(CodeSignature.read(program: "/usr/bin/osascript", arguments: ["-e", "1+1"], reading: reading)?.signer, .script)
+        XCTAssertEqual(CodeSignature.read(program: "/usr/bin/osascript", arguments: ["-e", "1+1"], reading: reading)?.signer, .unnamed)
         XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", "/x/run.sh"], reading: reading)?.signer, .script)
     }
 

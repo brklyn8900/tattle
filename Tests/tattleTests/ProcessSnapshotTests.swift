@@ -161,12 +161,13 @@ final class ProcessSnapshotTests: XCTestCase {
         let named = ProcessEntry.name(path: tools, arguments: [tools, "-c", "payload"], command: "Python")
         let entries = [
             ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
-            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: tools, interpreter: named.interpreter, started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: tools, interpreter: named.interpreter,
+                         runsUnnamedCode: named.runsUnnamedCode, started: Date()),
         ]
         let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in CodeSignature(signer: .apple) }, responsible: { _ in nil })
         let group = snapshot.group(id: "pid:700")
         XCTAssertEqual(group?.kind, .process)
-        XCTAssertEqual(group?.leader?.signerText, "Python script", "the row's subtitle")
+        XCTAssertEqual(group?.leader?.signerText, "Python, unnamed code", "the row's subtitle")
     }
 
     func testAScriptIsNotPartOfTheAppItsInterpreterLivesIn() {
@@ -175,13 +176,14 @@ final class ProcessSnapshotTests: XCTestCase {
         let named = ProcessEntry.name(path: python, arguments: [python, "-c", "payload"], command: "Python")
         let entries = [
             ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
-            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: python, interpreter: named.interpreter, started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: python, interpreter: named.interpreter,
+                         runsUnnamedCode: named.runsUnnamedCode, started: Date()),
             ProcessEntry(pid: 701, parentPid: 1, uid: 501, name: "git", path: git, started: Date()),
         ]
         let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in CodeSignature(signer: .apple) }, responsible: { $0 })
         XCTAssertNil(snapshot.item(pid: 700)?.app, "Xcode's Python runs the script, which is not Xcode's")
         XCTAssertEqual(snapshot.group(id: "pid:700")?.kind, .process)
-        XCTAssertEqual(snapshot.group(id: "pid:700")?.leader?.signerText, "Python script", "the row's subtitle")
+        XCTAssertEqual(snapshot.group(id: "pid:700")?.leader?.signerText, "Python, unnamed code", "the row's subtitle")
         XCTAssertEqual(snapshot.item(pid: 701)?.app?.path, "/Applications/Xcode.app", "Xcode's own tools are Xcode's")
     }
 
