@@ -33,6 +33,16 @@ struct ConnectionOwner: Equatable, Sendable {
 
     static let unknown = ConnectionOwner(processName: "unknown process")
 
+    /// The pids among `opened` whose owner has to be read: one not known yet, or one that has
+    /// replaced itself with another program, which keeps its pid. A pid whose executable cannot
+    /// be read has most likely exited, and what is known of it is better than nothing.
+    static func unresolved(opened: Set<Int32>, known: [Int32: ConnectionOwner], executable: (Int32) -> String?) -> Set<Int32> {
+        opened.filter { pid in
+            guard let owner = known[pid] else { return true }
+            return executable(pid).map { $0 != owner.path } ?? false
+        }
+    }
+
     /// Resolves a pid against a process list, attributing helpers to their app the same
     /// way the Processes tab does, and reads what it runs as that tab does. `byPid` is named
     /// without signatures; `signature` reads each executable the owner's line passes through,

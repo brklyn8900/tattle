@@ -216,10 +216,10 @@ final class NetworkObserver {
         }
         let changes = tracker.update(entries: entries, at: now)
 
-        // Owners are resolved once per pid, from one process list per poll, off the main
-        // thread; a pid whose connections all closed is forgotten so a reused pid is
+        // Owners are resolved once per pid and executable, from one process list per poll, off
+        // the main thread; a pid whose connections all closed is forgotten so a reused pid is
         // resolved afresh.
-        let unknown = Set(changes.opened.map(\.pid)).subtracting(owners.keys)
+        let unknown = ConnectionOwner.unresolved(opened: Set(changes.opened.map(\.pid)), known: owners, executable: ProcessTable.pidPath)
         if !unknown.isEmpty {
             let signatures = signatures
             let resolved = await Task.detached(priority: .utility) { [processes] () -> [Int32: ConnectionOwner] in

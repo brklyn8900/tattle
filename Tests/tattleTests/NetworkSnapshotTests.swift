@@ -183,6 +183,15 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertNil(owner(811).groupIdentity)
     }
 
+    /// A process that replaces itself with another program keeps its pid: the connections it
+    /// opens next are the new program's. One whose path cannot be read is left as it is.
+    func testAnOwnerIsReadAgainWhenItsPidRunsAnotherExecutable() {
+        let owners: [Int32: ConnectionOwner] = [1: ConnectionOwner(processName: "a", path: "/x/a"), 2: ConnectionOwner(processName: "b", path: "/x/b"),
+                                                3: ConnectionOwner(processName: "c", path: "/x/c")]
+        let running: [Int32: String] = [1: "/x/new", 2: "/x/b", 4: "/x/d"]
+        XCTAssertEqual(ConnectionOwner.unresolved(opened: [1, 2, 3, 4], known: owners, executable: { running[$0] }), [1, 4])
+    }
+
     /// A host's answer is shown on every connection to that host, so the model is told about
     /// the host: what it hears of this connection's owner it would say of theirs.
     func testAHostIsExplainedWithoutTheProgramThatConnected() throws {

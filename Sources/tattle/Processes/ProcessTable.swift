@@ -257,7 +257,7 @@ enum ProcessTable {
         return arguments
     }
 
-    private static func pidPath(_ pid: Int32) -> String? {
+    static func pidPath(_ pid: Int32) -> String? {
         guard pid > 0 else { return nil }
         var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
