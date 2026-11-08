@@ -72,6 +72,7 @@ final class SeedLoaderTests: XCTestCase {
             let rule = try XCTUnwrap(try rules.lookup(kind: .host, key: host), host)
             XCTAssertEqual(rule.owner, owner, host)
             XCTAssertFalse(rule.purpose.contains("Apple"), host)
+            XCTAssertEqual(rule.confidence, .medium, "read from its name alone: \(host)")
         }
     }
 

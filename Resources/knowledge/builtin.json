@@ -50,7 +50,7 @@
       "purpose": "An Oblivious HTTP relay, going by its name. The real destination is hidden inside it.",
       "category": "relay",
       "risk": "low",
-      "confidence": "high"
+      "confidence": "medium"
     },
     {
       "kind": "host",
@@ -60,7 +60,7 @@
       "purpose": "An Oblivious HTTP relay, going by its name. The real destination is hidden inside it.",
       "category": "relay",
       "risk": "low",
-      "confidence": "high"
+      "confidence": "medium"
     },
     {
       "kind": "host",
