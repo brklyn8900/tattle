@@ -201,6 +201,20 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(wrapper.interpreter)
     }
 
+    func testPythonIsAnInterpreterInProcessesUnderItsFrameworkName() {
+        let python = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.python3")
+        let inline = ProcessEntry.name(path: python, arguments: [python, "-c", "payload"], command: "Python", signature: apple)
+        XCTAssertEqual(inline.interpreter, "Python")
+        let script = ProcessEntry.name(path: python, arguments: [python, "/x/a.py"], command: "Python", signature: apple)
+        XCTAssertEqual(script.name, "a.py")
+        let brew = "/opt/homebrew/Cellar/python@3.14/3.14.0/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python"
+        XCTAssertEqual(ProcessEntry.name(path: brew, arguments: [brew, "/x/a.py"], command: "Python").name, "a.py", "known by name when not Apple's")
+        let renamed = ProcessEntry.name(path: "/x/agent", arguments: ["agent", "-c", "payload"], command: "agent",
+                                        signature: CodeSignature(signer: .apple, identifier: "com.apple.zsh"))
+        XCTAssertEqual(renamed.interpreter, "agent", "Apple's program by its signing identifier")
+    }
+
     func testARunningJavaIsAProgramAndAJobRunThroughJavaIsSignedByItsJar() {
         let named = ProcessEntry.name(path: "/Library/Java/JavaVirtualMachines/x.jdk/Contents/Home/bin/java",
                                       arguments: ["java", "-jar", "/x/server.jar"], command: "java")

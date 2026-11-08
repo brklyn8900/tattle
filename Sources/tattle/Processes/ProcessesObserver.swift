@@ -18,7 +18,7 @@ final class ProcessesObserver {
         let previous = snapshot
         let result = await Task.detached(priority: .userInitiated) { () -> Result<ProcessSnapshot, Error> in
             do {
-                let entries = try ProcessTable.read()
+                let entries = try ProcessTable.read(signature: signatures.signature(at:))
                 return .success(ProcessSnapshot.build(
                     entries: entries, previous: previous,
                     signature: signatures.signature(at:), runningApp: Self.runningAppBundle(pid:)))

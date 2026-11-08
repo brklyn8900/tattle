@@ -159,9 +159,11 @@ enum LaunchedCode: Equatable, Sendable {
         }
     }
 
-    /// "python3.14", "perl5.34" and "node25" are their interpreters too.
+    /// "python3.14", "perl5.34" and "node25" are their interpreters too, and so is the
+    /// "Python" in a Python framework's app.
     private static func grammar(of name: String, in table: [String: Grammar]) -> Grammar? {
-        table[name] ?? table[String(name.reversed().drop { $0.isNumber || $0 == "." }.reversed())]
+        let name = name.lowercased()
+        return table[name] ?? table[String(name.reversed().drop { $0.isNumber || $0 == "." }.reversed())]
     }
 
     // MARK: - Options

@@ -27,18 +27,18 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var id: Int32 { pid }
 
     /// The name and interpreter for an executable and its arguments, by what the process
-    /// runs (`LaunchedCode.running`). An interpreter running a script file is named after
+    /// runs (`LaunchedCode.running`, which knows Apple's programs by `signature`). An interpreter running a script file is named after
     /// the file, or after the npm package the file belongs to; running other code, it is
     /// still marked as the interpreter. Otherwise the name the process was started under
     /// wins over the executable's file name: a multi-call binary at a version-numbered path
     /// is "claude" or "ugrep", a login shell "-zsh" is zsh, and a node process that set its
     /// title keeps it.
-    static func name(path: String?, arguments: [String]?, command: String) -> (name: String, interpreter: String?) {
+    static func name(path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil) -> (name: String, interpreter: String?) {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         var interpreter: String?
         if let path {
             switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) },
-                                        identity: LaunchedCode.Identity(path: path, signature: nil)) {
+                                        identity: LaunchedCode.Identity(path: path, signature: signature)) {
             case .script(let script, let name): return (scriptName(script), name)
             case .unnamed(let name): interpreter = name
             case .program, .standardInput, .undetermined: break
@@ -93,9 +93,12 @@ enum ProcessTable {
     }
 
     /// Every process with its usage. `fallback` is asked once for the pids libproc
-    /// would not answer for; the default spawns `ps`, tests pass a table.
-    static func read(fallback: ([Int32]) -> [Int32: ProcessUsage] = ProcessUsageFallback.read) throws -> [ProcessEntry] {
-        var entries = try list()
+    /// would not answer for; the default spawns `ps`, tests pass a table. `signature` is
+    /// called per executable path, to know Apple's interpreters by their signing identifier.
+    static func read(
+        fallback: ([Int32]) -> [Int32: ProcessUsage] = ProcessUsageFallback.read, signature: (String) -> CodeSignature? = { _ in nil }
+    ) throws -> [ProcessEntry] {
+        var entries = try list(signature: signature)
         let uid = getuid()
         var missing: [Int32] = []
         for index in entries.indices {
@@ -116,7 +119,7 @@ enum ProcessTable {
 
     /// The kernel's process list. Zombies are left out: they hold nothing and are gone
     /// as soon as their parent notices.
-    static func list() throws -> [ProcessEntry] {
+    static func list(signature: (String) -> CodeSignature? = { _ in nil }) throws -> [ProcessEntry] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         let stride = MemoryLayout<kinfo_proc>.stride
         // Processes start between the size query and the read, so ask for room to spare
@@ -133,12 +136,12 @@ enum ProcessTable {
             // One argmax-sized scratch buffer for the command lines: allocating a
             // megabyte per process made a sweep of 1,600 take over a second.
             var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
-            return buffer.prefix(length / stride).compactMap { entry($0, scratch: &scratch) }
+            return buffer.prefix(length / stride).compactMap { entry($0, scratch: &scratch, signature: signature) }
         }
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
-    private static func entry(_ info: kinfo_proc, scratch: inout [UInt8]) -> ProcessEntry? {
+    private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (String) -> CodeSignature?) -> ProcessEntry? {
         guard Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         let pid = info.kp_proc.p_pid
         let command = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
@@ -146,7 +149,7 @@ enum ProcessTable {
         // KERN_PROCARGS2 refuses other users' processes, so only ask for our own.
         let own = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid()
         let arguments = own ? self.arguments(pid: pid, scratch: &scratch) : nil
-        let named = ProcessEntry.name(path: path, arguments: arguments, command: command)
+        let named = ProcessEntry.name(path: path, arguments: arguments, command: command, signature: path.flatMap(signature))
         let started = info.kp_proc.p_starttime
         return ProcessEntry(
             pid: pid, parentPid: info.kp_eproc.e_ppid, uid: info.kp_eproc.e_ucred.cr_uid,
