@@ -62,6 +62,10 @@ done)
 - No list completes the Apple programs that run code they are given: the tables follow
   nohup, env, xcrun, sudo, find and the rest, but one they do not list (`launchctl asuser`,
   `su`) reads as itself, Apple, whatever it runs (`LaunchedCode.swift`).
+- A copy of one of Apple's other tools outside its usual place keeps Apple's signature and
+  reads as Apple's program, whatever it is told to load: only Apple's Swift tools, clang
+  and ld are known as developer tools by signing identifier wherever they are
+  (`LaunchedCode.swift`).
 - `testALockedFileFailsOneInstallAndWedgesNone` checks that the stage held a locked copy
   when the install failed, which holds only where ditto copies a locked file: macOS 26.7.2
   does, and on 2026-10-26 this Mac's ditto failed on it, so on such a system the check
