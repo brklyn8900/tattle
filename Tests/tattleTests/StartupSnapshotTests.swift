@@ -251,6 +251,33 @@ final class StartupSnapshotTests: XCTestCase {
         }
     }
 
+    /// Only macOS installs a program in those folders, and an update rebuilds it: the line says
+    /// all there is. A copy elsewhere keeps Apple's signature and is a file like any other.
+    func testALaunchItemRunningOneOfApplesProgramsIsNotPinnedToOneBuild() throws {
+        func signed(_ hash: String) -> (String) -> CodeSignature? {
+            { _ in CodeSignature(signer: .apple, identifier: "com.apple.sleep", codeHash: hash) }
+        }
+        XCTAssertEqual(try identity("/bin/sleep", ["100"], reading: signed("aa")), CodeIdentity.command("/bin/sleep 100"))
+        XCTAssertEqual(try identity("/bin/sleep", ["100"], reading: signed("bb")), CodeIdentity.command("/bin/sleep 100"))
+        XCTAssertNotEqual(try identity("/Users/x/sleep", ["100"], reading: signed("aa")), try identity("/Users/x/sleep", ["100"], reading: signed("bb")))
+    }
+
+    func testARegisteredItemRunningOneOfApplesProgramsIsNotPinnedToOneBuild() throws {
+        func identity(_ item: LoginItem, _ hash: String) throws -> CodeIdentity? {
+            let snapshot = StartupSnapshot.build(launchd: LaunchdReader.Result(items: [], appleCount: 0, skipped: [:]), loginItems: [item],
+                                                 state: LaunchctlState(services: [:], overrides: [:]),
+                                                 signature: { _ in CodeSignature(signer: .apple, identifier: "com.apple.x", codeHash: hash) })
+            return try XCTUnwrap(snapshot.items.first).identity
+        }
+        for item in [login("1.agent", name: "agent", kind: .agent, executable: "/usr/sbin/x"),
+                     login("1.helper", name: "helper", kind: .loginItemHelper, executable: "/System/Applications/Passwords.app/Contents/MacOS/x")] {
+            XCTAssertEqual(try identity(item, "aa"), try identity(item, "bb"), item.name)
+            XCTAssertNil(try identity(item, "aa")?.contentFile, item.name)
+        }
+        let copy = login("1.copy", name: "copy", kind: .agent, executable: "/Users/x/agent")
+        XCTAssertNotEqual(try identity(copy, "aa"), try identity(copy, "bb"))
+    }
+
     func testStateText() {
         XCTAssertEqual(StartupItem.State.running(pid: 3).text, "running, pid 3")
         XCTAssertEqual(StartupItem.State.idle(lastExitStatus: 0).text, "not running")

@@ -101,7 +101,9 @@ struct CodeSignature: Equatable, Sendable {
         }
         let code = LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify)
         switch code {
-        case .program(let path): return (launchItem(running: path, signature: reading(path), changesRoot: changesRoot), .file(path))
+        case .program(let path):
+            let signature = launchItem(running: path, signature: reading(path), changesRoot: changesRoot)
+            return (signature, .of(program: path, signature: signature))
         case .script(let path, _): return (CodeSignature(signer: .script), .file(path))
         case .inline: return (CodeSignature(signer: .unnamed), .line)
         case .standardInput: return (CodeSignature(signer: .script), .unknown)

@@ -84,4 +84,14 @@ enum LaunchedVersion: Equatable, Sendable {
     case file(String)
     /// Nothing: the line does not say where its code is.
     case unknown
+
+    /// The program at `path`, which reads as `signature`. Only macOS installs a program where
+    /// Apple's are, and an update rebuilds it, so there the line says all there is.
+    static func of(program path: String, signature: CodeSignature?) -> LaunchedVersion {
+        switch signature?.signer {
+        case .launchItem(applesProgram: .some): .line
+        case .apple where ApplesProgram.isInstalled(at: URL(fileURLWithPath: path).resolvingSymlinksInPath().path): .line
+        default: .file(path)
+        }
+    }
 }

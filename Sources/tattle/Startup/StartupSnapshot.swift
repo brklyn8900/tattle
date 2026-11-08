@@ -184,6 +184,7 @@ struct StartupSnapshot: Equatable, Sendable {
             let container = item.container.flatMap { byIdentifier[$0] }
             let path = executablePath(of: item, container: container)
             let plist = item.url.flatMap(URL.init(string:)).flatMap { $0.isFileURL && $0.pathExtension == "plist" ? $0 : nil }
+            let signed = path.flatMap { registeredSignature(of: item, at: $0, reading: signature) }
             items.append(StartupItem(
                 id: item.bundleIdentifier ?? item.identifier,
                 group: item.isExtension ? .extensions : item.kind == .app ? .loginItems : .background,
@@ -191,8 +192,8 @@ struct StartupSnapshot: Equatable, Sendable {
                 program: path,
                 trigger: trigger(for: item),
                 state: loginItemState(item, state: state),
-                signature: path.flatMap { registeredSignature(of: item, at: $0, reading: signature) },
-                codeVersion: path.map(LaunchedVersion.file) ?? .unknown,
+                signature: signed,
+                codeVersion: path.map { .of(program: $0, signature: signed) } ?? .unknown,
                 developer: item.developerName ?? container?.developerName,
                 teamIdentifier: item.teamIdentifier,
                 parent: container.map { $0.name } ?? item.container,
