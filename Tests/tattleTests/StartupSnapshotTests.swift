@@ -209,6 +209,48 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertTrue(snapshot.items.contains { $0.signature != nil }, "signatures are read")
     }
 
+    private func identity(_ program: String, _ arguments: [String], reading: @escaping (String) -> CodeSignature?) throws -> CodeIdentity? {
+        var item = job("a", program: program)
+        item.arguments = arguments
+        let snapshot = StartupSnapshot.build(launchd: LaunchdReader.Result(items: [item], appleCount: 0, skipped: [:]), loginItems: [],
+                                             state: LaunchctlState(services: [:], overrides: [:]), signature: reading)
+        return try XCTUnwrap(snapshot.items.first).identity
+    }
+
+    /// An answer goes with one version of the code. A line that holds its code is that
+    /// version; one that does not say where its code is has none to keep an answer for.
+    func testALaunchItemIsKnownByItsLineOnlyWhenItsLineHoldsItsCode() throws {
+        let apple: (String) -> CodeSignature? = { CodeSignature(signer: .apple, identifier: "com.apple." + URL(fileURLWithPath: $0).lastPathComponent) }
+        let elsewhere: [(String, [String])] = [
+            ("/usr/bin/env", ["-S", "/x/job"]),
+            ("/usr/bin/env", ["./job"]),
+            ("/bin/sh", []),
+            ("/usr/bin/python3", ["-m", "pkg"]),
+            ("/usr/bin/java", ["-cp", "/x", "Main"]),
+            ("/usr/bin/java", ["-m", "pkg"]),
+            ("/usr/bin/php", ["-S", "localhost:80"]),
+            ("/usr/bin/node", ["--run", "serve"]),
+            ("/usr/bin/node", ["."]),
+            ("/usr/bin/make", []),
+        ]
+        for (program, arguments) in elsewhere {
+            XCTAssertNil(try identity(program, arguments, reading: apple), "\(program) \(arguments)")
+        }
+        let held: [(String, [String])] = [
+            ("/bin/sh", ["-c", "echo"]),
+            ("/usr/bin/python3", ["-c", "pass"]),
+            ("/usr/bin/perl", ["-e", "1"]),
+            ("/usr/bin/php", ["-r", "1;"]),
+            ("/usr/bin/node", ["--eval", "1"]),
+            ("/usr/bin/osascript", ["-e", "1"]),
+            ("/usr/bin/awk", ["{ print }"]),
+            ("/usr/bin/nohup", ["/bin/sh", "-c", "echo"]),
+        ]
+        for (program, arguments) in held {
+            XCTAssertEqual(try identity(program, arguments, reading: apple), CodeIdentity.command(([program] + arguments).joined(separator: " ")), "\(program) \(arguments)")
+        }
+    }
+
     func testStateText() {
         XCTAssertEqual(StartupItem.State.running(pid: 3).text, "running, pid 3")
         XCTAssertEqual(StartupItem.State.idle(lastExitStatus: 0).text, "not running")

@@ -91,22 +91,22 @@ struct CodeSignature: Equatable, Sendable {
         started(program: program, arguments: arguments, environmentPath: environmentPath, changesRoot: changesRoot, reading: reading).signature
     }
 
-    /// How the launch item reads (`read`), and the file its command line reaches when that is
-    /// a program or a script.
+    /// How the launch item reads (`read`), and what says which version of its code this is.
     static func started(
         program: String, arguments: [String], environmentPath: String? = nil, changesRoot: Bool = false,
         reading: (String) -> CodeSignature? = { read(path: $0) }
-    ) -> (signature: CodeSignature?, file: String?) {
+    ) -> (signature: CodeSignature?, version: LaunchedVersion) {
         let identify = {
             LaunchedCode.Identity(path: $0, signature: reading($0), realPath: URL(fileURLWithPath: $0).resolvingSymlinksInPath().path)
         }
         let code = LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify)
         switch code {
-        case .program(let path): return (launchItem(running: path, signature: reading(path), changesRoot: changesRoot), path)
-        case .script(let path, _): return (CodeSignature(signer: .script), path)
-        case .standardInput: return (CodeSignature(signer: .script), nil)
-        case .unnamed: return (CodeSignature(signer: .unnamed), nil)
-        case .undetermined: return (nil, nil)
+        case .program(let path): return (launchItem(running: path, signature: reading(path), changesRoot: changesRoot), .file(path))
+        case .script(let path, _): return (CodeSignature(signer: .script), .file(path))
+        case .inline: return (CodeSignature(signer: .unnamed), .line)
+        case .standardInput: return (CodeSignature(signer: .script), .unknown)
+        case .unnamed: return (CodeSignature(signer: .unnamed), .unknown)
+        case .undetermined: return (nil, .unknown)
         }
     }
 

@@ -12,8 +12,10 @@ enum LaunchedCode: Equatable, Sendable {
     case program(String)
     /// An interpreter running a script file, at the path the command line gives.
     case script(path: String, interpreter: String)
-    /// An interpreter running code the command line does not name as a file: inline (`-c`,
-    /// `-e`), a module or class by name, a package by its folder, or in arguments that cannot
+    /// An interpreter running code the command line holds (`-c`, `-e`, awk's program).
+    case inline(interpreter: String)
+    /// An interpreter running code the command line neither holds nor names as a file: a
+    /// module, class or server by name, a package by its folder, or in arguments that cannot
     /// be read; or one of Apple's developer tools, which runs code from where it is told.
     case unnamed(interpreter: String)
     /// An interpreter reading its code from standard input: a pipe, a file launchd opens
@@ -137,7 +139,7 @@ enum LaunchedCode: Equatable, Sendable {
         let identity = identify(program)
         let code = followed(program, arguments, identity, identify, searchPath: searchPath)
         switch code {
-        case .script, .unnamed, .standardInput: return code
+        case .script, .inline, .unnamed, .standardInput: return code
         case .program, .undetermined:
             // A table can follow a developer tool only to a script: xcrun looks for what it
             // names in a developer folder before the PATH.
@@ -172,7 +174,7 @@ enum LaunchedCode: Equatable, Sendable {
             }
             guard index < arguments.count, let command = located(arguments[index], on: searchPath) else { return .undetermined }
             return started(command, Array(arguments[(index + 1)...]), identify, searchPath: searchPath)
-        case .code, .file, .standardInput, .nothing: return .undetermined
+        case .code, .named, .file, .standardInput, .nothing: return .undetermined
         }
     }
 
@@ -266,7 +268,8 @@ enum LaunchedCode: Equatable, Sendable {
         switch scan(arguments, grammar) {
         case .file(let path): return scriptFile(path, interpreter: name)
         case .operand(let index) where grammar.operandIsScript: return scriptFile(arguments[index], interpreter: name)
-        case .operand, .code: return .unnamed(interpreter: name)
+        case .operand where grammar.operandIsCode, .code: return .inline(interpreter: name)
+        case .operand, .named: return .unnamed(interpreter: name)
         case .standardInput: return .standardInput(interpreter: name)
         case .nothing: return grammar.readsStandardInput ? .standardInput(interpreter: name) : .unnamed(interpreter: name)
         }
@@ -301,7 +304,8 @@ enum LaunchedCode: Equatable, Sendable {
         switch scan(arguments, swiftOptions) {
         case .operand(let index): return scriptFile(arguments[index], interpreter: name)
         case .standardInput: return .standardInput(interpreter: name)
-        case .code, .file, .nothing: return .unnamed(interpreter: name)
+        case .code: return .inline(interpreter: name)
+        case .named, .file, .nothing: return .unnamed(interpreter: name)
         }
     }
 
@@ -315,10 +319,13 @@ enum LaunchedCode: Equatable, Sendable {
     // MARK: - Options
 
     private enum Takes {
-        /// What runs is not the operand as given: code in the command line (inline, a module
-        /// by name, a command in the option's value), the operands run by a shell or a session
-        /// (`sudo -s`, `screen -X`), or a program found where the option says (`env -P`).
+        /// What runs is not the operand as given: code in the command line (inline, a command
+        /// in the option's value), the operands run by a shell or a session (`sudo -s`,
+        /// `screen -X`), or a program found where the option says (`env -P`).
         case code
+        /// What runs is a module, a package's script or a server the option asks for, by name:
+        /// code the command line does not hold.
+        case named
         /// The code comes from standard input.
         case standardInput
         /// The option's value is the file the code is in.
@@ -345,6 +352,8 @@ enum LaunchedCode: Equatable, Sendable {
         var plusOptions = false
         /// The first operand is a script file, not code (awk) or a class (java).
         var operandIsScript = true
+        /// The first operand is the code itself (awk).
+        var operandIsCode = false
         /// Without code named, the interpreter reads standard input; make reads the makefile
         /// in its working directory.
         var readsStandardInput = true
@@ -354,7 +363,7 @@ enum LaunchedCode: Equatable, Sendable {
     }
 
     private enum Found {
-        case code, standardInput, file(String), operand(Int), nothing
+        case code, named, standardInput, file(String), operand(Int), nothing
     }
 
     /// The first option that decides what runs, else the first operand.
@@ -371,6 +380,7 @@ enum LaunchedCode: Equatable, Sendable {
         func taking(_ takes: Takes, attached: Substring?) -> Found? {
             switch takes {
             case .code: return .code
+            case .named: return .named
             case .standardInput: return .standardInput
             case .file: return value(attached: attached).map(Found.file) ?? Found.nothing
             case .value: _ = value(attached: attached); return nil
@@ -431,7 +441,7 @@ enum LaunchedCode: Equatable, Sendable {
     /// Interpreters: the code is a script file, inline, or standard input, never their own.
     private static let interpreters: [String: Grammar] = [
         "sh": bash, "bash": bash, "zsh": zsh, "ksh": shell, "csh": shell, "tcsh": shell, "dash": shell,
-        "python": Grammar(options: ["-c": .code, "-m": .code, "-W": .value, "-X": .value, "--check-hash-based-pycs": .value]),
+        "python": Grammar(options: ["-c": .code, "-m": .named, "-W": .value, "-X": .value, "--check-hash-based-pycs": .value]),
         "perl": Grammar(options: [
             "-e": .code, "-E": .code, "-I": .value, "-M": .value, "-m": .value,
             "-i": .attachedValue, "-l": .octal, "-0": .octalOrHex, "-C": .attachedValue,
@@ -445,11 +455,11 @@ enum LaunchedCode: Equatable, Sendable {
             "--enable": .value, "--disable": .value, "--dump": .value,
         ]),
         "php": Grammar(options: [
-            "-r": .code, "-R": .code, "-B": .code, "-E": .code, "-S": .code, "-f": .file, "-F": .file,
+            "-r": .code, "-R": .code, "-B": .code, "-E": .code, "-S": .named, "-f": .file, "-F": .file,
             "-c": .value, "-d": .value, "-z": .value, "-t": .value,
         ]),
         "node": Grammar(options: [
-            "-e": .code, "--eval": .code, "-p": .code, "--print": .code, "-pe": .code, "--run": .code,
+            "-e": .code, "--eval": .code, "-p": .code, "--print": .code, "-pe": .code, "--run": .named,
             "-r": .value, "--require": .value, "--import": .value, "--loader": .value, "--experimental-loader": .value,
             "-C": .value, "--conditions": .value, "--input-type": .value, "--title": .value, "--env-file": .value,
         ], grouped: false),
@@ -464,7 +474,7 @@ enum LaunchedCode: Equatable, Sendable {
             "-I": .value, "--include-dir": .value, "-o": .value, "--old-file": .value, "-W": .value, "--what-if": .value,
         ], operandIsScript: false, readsStandardInput: false),
         "expect": Grammar(options: ["-c": .code, "-f": .file, "-b": .file, "-D": .value], grouped: false),
-        "awk": Grammar(options: ["-f": .file, "-v": .value, "-F": .value], operandIsScript: false),
+        "awk": Grammar(options: ["-f": .file, "-v": .value, "-F": .value], operandIsScript: false, operandIsCode: true),
     ]
 
     /// Interpreters only in a command line: a job run through java runs its jar, not Apple's
@@ -472,7 +482,7 @@ enum LaunchedCode: Equatable, Sendable {
     /// a script.
     private static let launchers: [String: Grammar] = [
         "java": Grammar(options: [
-            "-jar": .file, "-m": .code, "--module": .code,
+            "-jar": .file, "-m": .named, "--module": .named,
             "-cp": .value, "-classpath": .value, "--class-path": .value, "-p": .value, "--module-path": .value,
             "--upgrade-module-path": .value, "--add-modules": .value, "--limit-modules": .value, "--source": .value,
         ], grouped: false, operandIsScript: false),

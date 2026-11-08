@@ -68,8 +68,8 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     var trigger: String
     var state: State
     var signature: CodeSignature?
-    /// The file its command line reaches, when that is a program or a script.
-    var codeFile: String?
+    /// What says which version of the code its command line reaches this is.
+    var codeVersion: LaunchedVersion = .unknown
     var developer: String?
     var teamIdentifier: String?
     /// The app this item belongs to, for helpers and registered agents.
@@ -88,10 +88,15 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// What tells this item's code from another's of its label (`CodeIdentity`): its
     /// publisher's signature, else its command line. `signature` is of the code the line
     /// reaches, and `program` its first word, which can be a wrapper: only a team says whose
-    /// code it is whichever file that is.
+    /// code it is whichever file that is. Nil when the line does not say where its code is.
     var identity: CodeIdentity? {
         if signature?.teamIdentifier != nil, let published = CodeIdentity.of(signature, path: program) { return published }
-        return runs.flatMap { CodeIdentity.command($0, codeHash: signature?.codeHash, file: codeFile) }
+        guard let runs else { return nil }
+        switch codeVersion {
+        case .line: return CodeIdentity.command(runs)
+        case .file(let file): return CodeIdentity.command(runs, codeHash: signature?.codeHash, file: file)
+        case .unknown: return nil
+        }
     }
 
     /// Deterministic facts sent with an explain request and shown in the detail view.
@@ -163,7 +168,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 trigger: job.isPlaceholder ? "never" : job.triggers.map { $0.description(scope: job.scope) }.joined(separator: ", "),
                 state: launchdState(job, state: state),
                 signature: started?.signature,
-                codeFile: started?.file,
+                codeVersion: started?.version ?? .unknown,
                 developer: registered?.developerName,
                 teamIdentifier: registered?.teamIdentifier,
                 parent: nil,
@@ -187,7 +192,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 trigger: trigger(for: item),
                 state: loginItemState(item, state: state),
                 signature: path.flatMap { registeredSignature(of: item, at: $0, reading: signature) },
-                codeFile: path,
+                codeVersion: path.map(LaunchedVersion.file) ?? .unknown,
                 developer: item.developerName ?? container?.developerName,
                 teamIdentifier: item.teamIdentifier,
                 parent: container.map { $0.name } ?? item.container,

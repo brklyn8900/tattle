@@ -114,12 +114,12 @@ final class ApplesProgramTests: XCTestCase {
 
         // A launch item's is its program's signature, else what its plist says runs.
         var item = StartupItem(id: "a", group: .userAgents, name: "a", program: "/bin/sh", arguments: ["-c", "x"], trigger: "", state: .notLoaded,
-                               signature: CodeSignature(signer: .unnamed), isLoginItem: false)
+                               signature: CodeSignature(signer: .unnamed), codeVersion: .line, isLoginItem: false)
         XCTAssertEqual(item.identity, CodeIdentity.command("/bin/sh -c x"))
         item.signature = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345")
         XCTAssertEqual(item.identity, "team:ABCDE12345:com.acme.a")
         item.signature = CodeSignature(signer: .unsigned)
-        item.codeFile = "/x/job"
+        item.codeVersion = .file("/x/job")
         XCTAssertEqual(item.identity?.contentFile, "/x/job", "the file its line reaches, when nothing else says which version")
     }
 
@@ -127,11 +127,11 @@ final class ApplesProgramTests: XCTestCase {
     func testALaunchItemBehindAWrapperIsNotKnownByTheWrapper() {
         func item(_ target: String, _ signature: CodeSignature) -> StartupItem {
             StartupItem(id: "a", group: .userAgents, name: "a", program: "/usr/bin/env", arguments: [target], trigger: "", state: .notLoaded,
-                        signature: signature, isLoginItem: false)
+                        signature: signature, codeVersion: .file(target), isLoginItem: false)
         }
         let unsigned = CodeSignature(signer: .unsigned)
         XCTAssertNotEqual(item("/Users/x/good", unsigned).identity, item("/tmp/evil", unsigned).identity)
-        XCTAssertEqual(item("/Users/x/good", unsigned).identity, CodeIdentity.command("/usr/bin/env /Users/x/good"))
+        XCTAssertEqual(item("/Users/x/good", unsigned).identity, CodeIdentity.command("/usr/bin/env /Users/x/good", file: "/Users/x/good"))
         let acme = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345")
         XCTAssertEqual(item("/Users/x/good", acme).identity, "team:ABCDE12345:com.acme.a", "a publisher's code, through any wrapper")
     }

@@ -65,13 +65,23 @@ struct CodeIdentity: Hashable, Sendable {
     static func script(at path: String) -> CodeIdentity { CodeIdentity(text: "script:\(path)", contentFile: path) }
 
     /// A launch item's command line, which is what its plist says runs, and the version of the
-    /// code it reaches: its signature's hash, else the content of the file. Hashed because
-    /// arguments can carry tokens. Nil for a file at a relative path, which the plist's line
-    /// does not locate.
+    /// code it reaches: its signature's hash, else the content of the file, with neither the
+    /// line alone (`LaunchedVersion`). Hashed because arguments can carry tokens. Nil for a
+    /// file at a relative path, which the plist's line does not locate.
     static func command(_ line: String, codeHash: String? = nil, file: String? = nil) -> CodeIdentity? {
         let text = "command:" + SHA256.hash(data: Data(line.utf8)).map { String(format: "%02x", $0) }.joined()
         if let codeHash { return CodeIdentity(text: "\(text):\(codeHash)") }
         guard let file else { return CodeIdentity(text: text) }
         return file.hasPrefix("/") ? CodeIdentity(text: text, contentFile: file) : nil
     }
+}
+
+/// What says which version of the code a launch item's line reaches.
+enum LaunchedVersion: Equatable, Sendable {
+    /// The line itself, which holds the code.
+    case line
+    /// The file the line reaches, a program or a script.
+    case file(String)
+    /// Nothing: the line does not say where its code is.
+    case unknown
 }

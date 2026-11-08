@@ -52,7 +52,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             let identity = LaunchedCode.Identity(path: path, signature: signature)
             switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, identity: identity) {
             case .script(let script, let name): return (scriptName(script), name, false, script)
-            case .unnamed(let name):
+            case .inline(let name), .unnamed(let name):
                 interpreter = name
                 runsUnnamedCode = true
             case .standardInput(let name) where startedByLaunchd: interpreter = name

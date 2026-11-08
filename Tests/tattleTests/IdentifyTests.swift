@@ -35,9 +35,9 @@ final class CodeIdentityTests: XCTestCase {
         let apple: (String) -> CodeSignature? = { path in
             path.hasPrefix("/x/") ? CodeSignature(signer: .unsigned) : CodeSignature(signer: .apple, identifier: "com.apple." + URL(fileURLWithPath: path).lastPathComponent)
         }
-        XCTAssertEqual(CodeSignature.started(program: "/usr/bin/env", arguments: ["/x/good"], reading: apple).file, "/x/good")
-        XCTAssertEqual(CodeSignature.started(program: "/bin/sh", arguments: ["/x/job.sh"], reading: apple).file, "/x/job.sh")
-        XCTAssertNil(CodeSignature.started(program: "/bin/sh", arguments: ["-c", "echo"], reading: apple).file, "the code is in the line")
+        XCTAssertEqual(CodeSignature.started(program: "/usr/bin/env", arguments: ["/x/good"], reading: apple).version, .file("/x/good"))
+        XCTAssertEqual(CodeSignature.started(program: "/bin/sh", arguments: ["/x/job.sh"], reading: apple).version, .file("/x/job.sh"))
+        XCTAssertEqual(CodeSignature.started(program: "/bin/sh", arguments: ["-c", "echo"], reading: apple).version, .line, "the code is in the line")
     }
 
     /// The same version of the file reads the same, and a file is hashed whole.
