@@ -60,15 +60,15 @@ enum LaunchedCode: Equatable, Sendable {
     /// the program they run, and through java to the jar it runs, then as `running` reads
     /// it. `arguments` follow argv[0].
     ///
-    /// A program that is not Apple's runs its own code, whatever its name and arguments say,
-    /// so a command line through one never reaches Apple's program: that program reads as
-    /// the one that named it.
+    /// A program that is not Apple's runs its own code, whatever its name and arguments say:
+    /// a command line through one reads as that program, unless it reaches a script, which
+    /// reads as a script whoever starts it.
     ///
     /// launchd finds a program named without a path on `standardPath`; a wrapper finds one on
     /// the job's PATH, `environmentPath` when the plist sets it.
     static func started(program: String, arguments: [String], environmentPath: String? = nil, identify: (String) -> Identity) -> LaunchedCode {
         guard let program = located(program, on: standardPath) else { return .undetermined }
-        return started(program, arguments, identify, through: nil, searchPath: environmentPath ?? standardPath)
+        return started(program, arguments, identify, searchPath: environmentPath ?? standardPath)
     }
 
     /// launchd's `_PATH_STDPATH`, which is also the PATH a job runs with unless its plist
@@ -90,24 +90,29 @@ enum LaunchedCode: Equatable, Sendable {
         return nil
     }
 
-    /// `through` is the first program on the way that is not Apple's; `searchPath` is where a
-    /// wrapper finds a program named without a path.
-    private static func started(
-        _ program: String, _ arguments: [String], _ identify: (String) -> Identity, through: String?, searchPath: String
-    ) -> LaunchedCode {
+    /// `searchPath` is where a wrapper finds a program named without a path.
+    private static func started(_ program: String, _ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode {
         let identity = identify(program)
-        let through = through ?? (identity.isApples ? nil : program)
+        let code = followed(program, arguments, identity, identify, searchPath: searchPath)
+        switch code {
+        case .script, .unnamed, .standardInput: return code
+        case .program, .undetermined: return identity.isApples ? code : .program(program)
+        }
+    }
+
+    /// What `program` starts, read by the name `identity` gives it.
+    private static func followed(
+        _ program: String, _ arguments: [String], _ identity: Identity, _ identify: (String) -> Identity, searchPath: String
+    ) -> LaunchedCode {
         if let grammar = grammar(of: identity.name, in: launchers) {
             return interpreted(executable: program, arguments: arguments, grammar)
         }
         // xargs adds words from its standard input to the command it runs.
         if identity.name == "xargs" { return .undetermined }
-        if identity.name == "open" { return opened(arguments, identify, through: through, searchPath: searchPath) }
-        if identity.name == "find", let code = found(arguments, identify, through: through, searchPath: searchPath) { return code }
+        if identity.name == "open" { return opened(arguments, identify, searchPath: searchPath) }
+        if identity.name == "find", let code = found(arguments, identify, searchPath: searchPath) { return code }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
-            let code = running(executable: program, arguments: arguments, identity: identity)
-            if case .program = code, identity.isApples, let through { return .program(through) }
-            return code
+            return running(executable: program, arguments: arguments, identity: identity)
         }
         switch scan(arguments, grammar) {
         case .operand(var index):
@@ -120,7 +125,7 @@ enum LaunchedCode: Equatable, Sendable {
                 }
             }
             guard index < arguments.count, let command = located(arguments[index], on: searchPath) else { return .undetermined }
-            return started(command, Array(arguments[(index + 1)...]), identify, through: through, searchPath: searchPath)
+            return started(command, Array(arguments[(index + 1)...]), identify, searchPath: searchPath)
         case .code, .file, .standardInput, .nothing: return .undetermined
         }
     }
@@ -128,18 +133,18 @@ enum LaunchedCode: Equatable, Sendable {
     /// What `find` starts: the program its one `-exec`, `-execdir`, `-ok` or `-okdir` runs,
     /// with the words up to ";" or "+". Nil without one, when find runs only its own code;
     /// with more than one, what runs is not one program.
-    private static func found(_ arguments: [String], _ identify: (String) -> Identity, through: String?, searchPath: String) -> LaunchedCode? {
+    private static func found(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode? {
         let runs = arguments.indices.filter { ["-exec", "-execdir", "-ok", "-okdir"].contains(arguments[$0]) }
         guard let run = runs.first else { return nil }
         guard runs.count == 1, run + 1 < arguments.count, let command = located(arguments[run + 1], on: searchPath) else { return .undetermined }
         let words = arguments[(run + 2)...].prefix { $0 != ";" && $0 != "+" }
-        return started(command, Array(words), identify, through: through, searchPath: searchPath)
+        return started(command, Array(words), identify, searchPath: searchPath)
     }
 
     /// What `open` starts: the app `-a` names, or the one app it is given. Its operands are
     /// files and URLs, not commands, and an app runs the documents it opens as it likes: with
     /// a document, what runs is not named.
-    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, through: String?, searchPath: String) -> LaunchedCode {
+    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode {
         var app: String?
         var operands: [String] = []
         var index = 0
@@ -158,7 +163,7 @@ enum LaunchedCode: Equatable, Sendable {
         }
         let opened = app.map { operands.isEmpty ? $0 : nil } ?? (operands.count == 1 ? operands[0] : nil)
         guard let opened, opened.hasPrefix("/") else { return .undetermined }
-        return started(opened, [], identify, through: through, searchPath: searchPath)
+        return started(opened, [], identify, searchPath: searchPath)
     }
 
     /// What the interpreter at `executable` runs with `arguments`.

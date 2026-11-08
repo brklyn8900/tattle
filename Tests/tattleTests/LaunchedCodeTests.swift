@@ -4,23 +4,32 @@ import XCTest
 /// A launch item is signed, and a process named, by the code its command line runs: an
 /// argument that only looks like that code must not stand in for it.
 final class LaunchedCodeTests: XCTestCase {
-    /// The signer Startup shows for a command line, where the files in `apple` read as
-    /// Apple's, those in `identifiers` as Apple's with that signing identifier, and every
-    /// other file as signed by a publisher named for its path.
+    /// Apple's programs that run the code they are given, as they are on a Mac.
+    private static let applesWrappers: Set<String> = [
+        "/usr/bin/nohup", "/usr/bin/arch", "/usr/bin/caffeinate", "/usr/bin/time", "/usr/bin/nice", "/usr/bin/sandbox-exec",
+        "/usr/bin/env", "/usr/bin/script", "/usr/bin/login", "/usr/bin/open", "/usr/bin/xargs", "/usr/bin/find",
+        "/usr/bin/xcrun", "/usr/bin/sudo", "/usr/bin/screen",
+    ]
+
+    /// How a file reads: as Apple's when it is one of Apple's wrappers or in `apple`, as
+    /// Apple's with a signing identifier when `identifiers` gives one, and otherwise as signed
+    /// by a publisher named for its path.
+    private func reading(_ path: String, apple: Set<String> = [], identifiers: [String: String] = [:]) -> CodeSignature {
+        if let identifier = identifiers[path] { return CodeSignature(signer: .apple, identifier: identifier) }
+        return CodeSignature(signer: apple.contains(path) || Self.applesWrappers.contains(path) ? .apple : .developerID(name: path))
+    }
+
+    /// The signer Startup shows for a command line, with files read as `reading` reads them.
     private func signer(_ program: String, _ arguments: [String], apple: Set<String> = [], identifiers: [String: String] = [:],
                         environmentPath: String? = nil) -> CodeSignature.Signer? {
-        CodeSignature.read(program: program, arguments: arguments, environmentPath: environmentPath) { path in
-            if let identifier = identifiers[path] { return CodeSignature(signer: .apple, identifier: identifier) }
-            return CodeSignature(signer: apple.contains(path) ? .apple : .developerID(name: path))
+        CodeSignature.read(program: program, arguments: arguments, environmentPath: environmentPath) {
+            self.reading($0, apple: apple, identifiers: identifiers)
         }?.signer
     }
 
-    /// What a command line runs, read as Startup reads it, where only the files in `apple`
-    /// are Apple's.
-    private func code(_ program: String, _ arguments: [String], apple: Set<String> = []) -> LaunchedCode {
-        LaunchedCode.started(program: program, arguments: arguments) { path in
-            LaunchedCode.Identity(path: path, signature: CodeSignature(signer: apple.contains(path) ? .apple : .developerID(name: path)))
-        }
+    /// What a command line runs, read as Startup reads it, with files read as `reading` reads them.
+    private func code(_ program: String, _ arguments: [String]) -> LaunchedCode {
+        LaunchedCode.started(program: program, arguments: arguments) { LaunchedCode.Identity(path: $0, signature: self.reading($0)) }
     }
 
     private func script(_ path: String, run program: String) -> LaunchedCode {
@@ -144,12 +153,15 @@ final class LaunchedCodeTests: XCTestCase {
         }
     }
 
-    func testAProgramThatIsNotApplesNeverReadsAsApplesCode() {
+    func testAProgramThatIsNotApplesRunsItsOwnCodeWhateverItNames() {
         // A program named like a wrapper runs its own code, whatever it names.
         XCTAssertEqual(signer("/Users/x/nohup", ["/bin/ls"], apple: ["/bin/ls"]), .developerID(name: "/Users/x/nohup"))
         XCTAssertEqual(signer("/Users/x/env", ["/usr/bin/nice", "/bin/ls"], apple: ["/usr/bin/nice", "/bin/ls"]), .developerID(name: "/Users/x/env"))
+        XCTAssertEqual(signer("/Users/x/env", ["/Applications/Zoom.app/Contents/MacOS/zoom.us"]), .developerID(name: "/Users/x/env"), "not the publisher it names")
+        XCTAssertEqual(signer("/Users/x/nohup", ["agent"]), .developerID(name: "/Users/x/nohup"), "nor nothing when what it names is not found")
+        XCTAssertEqual(signer("/Users/x/env", ["-S", "payload"]), .developerID(name: "/Users/x/env"))
+        XCTAssertEqual(signer("/usr/bin/nohup", ["/Users/x/env", "/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .developerID(name: "/Users/x/env"))
         XCTAssertEqual(signer("/Users/x/nohup", ["/bin/sh", "-c", "payload"], apple: ["/bin/sh"]), .script, "a script reads as one whoever starts it")
-        XCTAssertEqual(signer("/Users/x/nohup", ["/x/agent"]), .developerID(name: "/x/agent"), "followed when what it names is not Apple's")
         XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .apple)
     }
 
@@ -207,7 +219,7 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "*.log", "-exec", "/x/agent", "{}", ";"]), .developerID(name: "/x/agent"))
         XCTAssertEqual(signer("/usr/bin/find", ["/x", "-execdir", "true", "+"]), .developerID(name: "/usr/bin/true"))
         XCTAssertEqual(signer("/usr/bin/find", ["/x", "-exec", "/bin/sh", "-c", "payload", ";"]), .script)
-        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "a"]), .developerID(name: "/usr/bin/find"), "find runs only its own code")
+        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "a"]), .apple, "find runs only its own code")
         XCTAssertNil(signer("/usr/bin/find", ["/x", "-exec", "/usr/bin/true", ";", "-ok", "/x/agent", ";"]), "two programs")
     }
 
