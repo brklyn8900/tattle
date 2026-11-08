@@ -75,6 +75,8 @@ done)
   then `libxcrun.dylib`, then an Xcode installation); whether a crafted one passes is
   unsettled (2026-11-07). Proposed: read a stub as undetermined when the job sets either
   (`LaunchedCode.swift`, `LaunchdItem.swift`).
+- `open -R /Applications/X.app` (reveal in Finder) reads as X running and shows X's signer,
+  though only Finder runs (`LaunchedCode.swift`).
 
 **From the review triage of 2026-11-07** (its "consider" list, verified at `0618f7e`; IDs
 are the triage's)
