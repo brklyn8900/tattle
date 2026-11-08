@@ -105,8 +105,9 @@ Preconditions:
   nothing and macOS wrote the crash report. Under a parent holding only a corpse-notification
   port it received exception 13, and `thread_create` and `mach_vm_write` on that task returned
   `KERN_INVALID_ARGUMENT`. On testmac, with a stand-in: the old drop (`EXC_MASK_ALL`) let a
-  crash-port parent `thread_create` in the child, and dropping the corpse port as well left no
-  crash report.
+  crash-port parent write the dying child's memory (`thread_create` succeeded, but the thread
+  never ran), dropping the corpse port as well left no crash report, and a corpse-port parent
+  could read the dead child's memory.
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).

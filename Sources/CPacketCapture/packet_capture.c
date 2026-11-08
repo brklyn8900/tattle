@@ -142,8 +142,9 @@ int tattle_broker_request(const char *service, int privileged, const char *ifnam
     // Whoever launched this process chose the task exception ports it inherited, and a trap
     // would hand them its task, and with it the descriptor. The broker cannot see them
     // (ADR-0003), so they go before any request. EXC_MASK_ALL leaves out EXC_CRASH, which hands
-    // over the dying task as live as any other. EXC_CORPSE_NOTIFY stays: it hands over only a
-    // read-only copy, and macOS's crash reports arrive through it.
+    // over the dying task with its memory still writable. EXC_CORPSE_NOTIFY stays, because
+    // macOS's crash reports arrive through it: it hands over the dead process, whose memory can
+    // be read but which holds no descriptor and runs no code.
     if (task_set_exception_ports(mach_task_self(), EXC_MASK_ALL | EXC_MASK_CRASH, MACH_PORT_NULL, EXCEPTION_DEFAULT, THREAD_STATE_NONE) != KERN_SUCCESS) {
         *status = -1;
         *err = EPERM;

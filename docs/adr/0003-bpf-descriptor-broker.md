@@ -74,9 +74,11 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    The only lever left to whoever launched the caller is the task exception ports the
    caller inherits, and the broker cannot see them. A trap would hand the caller's task to
    those ports. So Tattle drops its own exception ports before every request, the crash
-   port included. The corpse-notification port stays: it receives a read-only copy of the
-   dead process, with no descriptor and no way to run code, and macOS's crash reports
-   arrive through it.
+   port included. The corpse-notification port stays, because macOS's crash reports arrive
+   through it. Whoever holds it receives the dead process: no descriptor and no way to run
+   code in it, but all of its memory can be read, and that holds the last packets Tattle
+   read and the names it had. A launcher that holds the port can choose that moment by
+   killing Tattle. Crash reports are worth that.
 
    Every build of Tattle and of the broker, ad hoc included, is signed with the hardened
    runtime. An ad-hoc build changes its code hash on every rebuild, so it must install the
@@ -149,8 +151,9 @@ as root.
   sees only an interrupted connection, which the app could not tell from a crashed broker.
   And their lightweight form cannot say "no get-task-allow".
 - Tattle handles no exceptions of its own, so dropping its exception ports loses nothing
-  but an inherited handler for resource-limit reports. Crash reports still come through
-  the system's own port.
+  but an inherited handler for resource-limit reports. Crash reports come through the
+  corpse-notification port, which Tattle keeps as it inherited it. A launcher that put its
+  own port there gets the dead process instead, and macOS writes no report.
 - The sniffer code is the same as planned. It receives a descriptor instead of opening
   the file.
 - The broker is a second signed artifact to build, install and update. It is small
