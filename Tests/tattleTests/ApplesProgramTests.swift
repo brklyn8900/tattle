@@ -122,6 +122,19 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(item.identity, "team:ABCDE12345:com.acme.a")
     }
 
+    /// A plist's first word can be a wrapper, which says nothing about the code it starts.
+    func testALaunchItemBehindAWrapperIsNotKnownByTheWrapper() {
+        func item(_ target: String, _ signature: CodeSignature) -> StartupItem {
+            StartupItem(id: "a", group: .userAgents, name: "a", program: "/usr/bin/env", arguments: [target], trigger: "", state: .notLoaded,
+                        signature: signature, isLoginItem: false)
+        }
+        let unsigned = CodeSignature(signer: .unsigned)
+        XCTAssertNotEqual(item("/Users/x/good", unsigned).identity, item("/tmp/evil", unsigned).identity)
+        XCTAssertEqual(item("/Users/x/good", unsigned).identity, CodeIdentity.command("/usr/bin/env /Users/x/good"))
+        let acme = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345")
+        XCTAssertEqual(item("/Users/x/good", acme).identity, "team:ABCDE12345:com.acme.a", "a publisher's code, through any wrapper")
+    }
+
     func testWhereTheProgramRuns() {
         let apple = CodeSignature(signer: .apple)
         XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/usr/local/bin/mDNSResponder", signature: apple))

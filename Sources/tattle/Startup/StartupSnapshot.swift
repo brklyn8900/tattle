@@ -83,9 +83,14 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
-    /// What tells this item's code from another's of its label (`CodeIdentity`): its program's
-    /// signature, else its command line.
-    var identity: String? { CodeIdentity.of(signature, path: program) ?? runs.map(CodeIdentity.command) }
+    /// What tells this item's code from another's of its label (`CodeIdentity`): its
+    /// publisher's signature, else its command line. `signature` is of the code the line
+    /// reaches, and `program` its first word, which can be a wrapper: only a team says whose
+    /// code it is whichever file that is.
+    var identity: String? {
+        if signature?.teamIdentifier != nil, let published = CodeIdentity.of(signature, path: program) { return published }
+        return runs.map(CodeIdentity.command)
+    }
 
     /// Deterministic facts sent with an explain request and shown in the detail view.
     var facts: [Fact] {
