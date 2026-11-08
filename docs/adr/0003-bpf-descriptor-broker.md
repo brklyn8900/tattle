@@ -74,8 +74,8 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    The only lever left to whoever launched the caller is the task exception ports the
    caller inherits, and the broker cannot see them. A trap would hand the caller's task to
    those ports, and the code it then runs is Tattle, which the broker accepts. The launcher
-   can force that trap, for instance with a stack limit that runs out during Tattle's
-   startup. So Tattle drops its own exception ports at launch, in an initializer of its own
+   can force that trap, as a small inherited stack limit did during Tattle's startup. So
+   Tattle drops its own exception ports at launch, in an initializer of its own
    executable, before any of its other code runs, the crash port included. A test runner
    that loads the same code in a bundle keeps its ports. The corpse-notification port
    stays, because macOS's crash reports arrive through it. Whoever holds it receives the
@@ -84,10 +84,14 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    holds the port can choose that moment by killing Tattle. Crash reports are worth that.
 
    What runs before that initializer, the dynamic loader and the system libraries'
-   initializers, still runs with the launcher's ports. Checked on 2026-11-08 on an Intel
-   Mac with macOS 26.7.1: under an inherited stack limit of 56 KB or less, Tattle's startup
-   overflows in the dynamic loader and the launcher receives a task it can run code in.
-   From 64 KB up it receives nothing, or only the dead process.
+   initializers, still runs with the launcher's ports, and a trap there still hands the
+   launcher a task it can run code in. An inherited stack limit was one way to force it:
+   at 64 KB and below on Apple silicon, 56 KB and below on Intel, Tattle's startup ran out
+   of stack in the dynamic loader. So the app's binary fixes its main thread's stack size
+   (`make app`), and the kernel uses that size instead of the inherited limit. Checked on
+   2026-11-08 with the dev copy on Apple silicon (macOS 26.7.2) and on Intel (macOS
+   26.7.1): under each of 23 inherited stack limits from 8 KB to 1 MB, the launcher received
+   nothing. Other traps in the dynamic loader or a system library's initializer stay open.
 
    Every build of Tattle and of the broker, ad hoc included, is signed with the hardened
    runtime. An ad-hoc build changes its code hash on every rebuild, so it must install the

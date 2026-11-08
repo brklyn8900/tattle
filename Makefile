@@ -15,6 +15,11 @@ DEVDIR        := $(BUILD)/TattleDev.app
 # First Apple Development identity in the keychain; override with SIGN_IDENTITY=... if needed.
 # A stable identity keeps TCC grants across rebuilds; ad-hoc signing resets them every time.
 SIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $$2; exit}')
+# The main thread's stack size, fixed in the app's binary so that a stack limit Tattle inherits
+# cannot make its startup overflow before it drops its exception ports (ADR-0003). Only the
+# app's own link carries it: ld refuses it for the test bundle, which links the app's code too,
+# and a plain swift build links the app again without it.
+APP_STACK     := 0x800000
 
 .PHONY: build test app dev-app install run stop log clean
 
@@ -25,6 +30,7 @@ test:
 	swift test
 
 app: build
+	swift build -c $(CONFIG) --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK)
 	rm -rf $(APPDIR)
 	mkdir -p $(APPDIR)/Contents/MacOS $(APPDIR)/Contents/Resources
 	cp $(BIN) $(APPDIR)/Contents/MacOS/$(APP)
@@ -51,6 +57,8 @@ app: build
 	  ! otool -L $$f | tail -n +2 | grep -qvE '^[[:space:]]+(/usr/lib/|/System/Library/)' \
 	    || { echo "error: $$f links a library outside the system, which library validation refuses ad hoc" >&2; exit 1; }; \
 	done
+	@otool -l $(APPDIR)/Contents/MacOS/$(APP) | grep -A4 LC_MAIN | grep -q "stacksize $$(printf %d $(APP_STACK))" \
+	  || { echo "error: $(APPDIR)/Contents/MacOS/$(APP) does not fix its main thread's stack size" >&2; exit 1; }
 	@codesign -dv $(APPDIR) 2>&1 | grep -E '^(Authority|TeamIdentifier)' || true
 
 dev-app:
