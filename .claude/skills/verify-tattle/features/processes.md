@@ -46,9 +46,10 @@ Preconditions:
   processes · bash script` (macOS's `/bin/sh` runs bash), not a member of `macOS`; the
   detail has `Path /bin/bash`, `Signed by script, not signed`.
 - **Python.** As above, with `/usr/bin/python3`, `-c`, `import time; [time.sleep(5) for _
-  in iter(int, 1)]`. With the Command Line Tools it runs as their `Python.app`, so its row
-  is that app's: `Python, 1 process · Apple`, the bundle's signer. The detail has `Runs
-  with Python (<path>)`, `Signed by script, not signed`, `Interpreter signed by Apple`.
+  in iter(int, 1)]`. With the Command Line Tools it runs as the `Python.app` inside their
+  Python framework, which is not an app: its row reads `Python, 1 process · Python script`,
+  not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by script,
+  not signed`, `Interpreter signed by Apple`, and no `Part of`.
 - **Sort.** `$V ax press CPU` (the segment; the resources line's `CPU` text is not
   pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
 - **Marker process.** Start one the run owns: `nohup /bin/sleep 7777 >/dev/null 2>&1 &`
@@ -77,6 +78,9 @@ Preconditions:
   `2026-11-07T195705` (commit `32a5508`). Run `2026-11-07T195527` is the same journeys on
   `2fdbff2`, before them: no `sh` row, its two processes counted in `macOS` (547, against
   545 after), and the zsh group and the Python detail `Signed by Apple`.
+- The Python row proven 2026-11-07 on testmac, run `2026-11-07T212351` (commit `fef4f33`);
+  in run `2026-11-07T195705` (`32a5508`) it was the framework app's row, `Python, 1
+  process · Apple`.
 - testmac's display sleeps after a minute idle, which closes the panel and sets the
   session's `CGSSessionScreenIsLocked` with no password lock; hold `caffeinate -di` for
   the length of a run.
