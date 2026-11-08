@@ -46,13 +46,14 @@ final class SeedLoaderTests: XCTestCase {
         }
     }
 
-    /// Apple's host list (support.apple.com/101555) names these as what they serve, so no row
-    /// says the destination is hidden, and none calls them Private Relay.
+    /// Apple's host list (support.apple.com/101555) names what these serve, and none is Private
+    /// Relay. The two for Private Cloud Compute are third parties' relays, so they read as
+    /// relayed (ADR-0001); the one for Extensions is where the traffic goes.
     func testHostsAppleNamesReadAsWhatAppleSaysTheyAre() throws {
         _ = loader.load(from: repoSeeds)
         for (host, owner) in [("apple-relay.cloudflare.com", "Cloudflare"), ("apple-relay.fastly-edge.com", "Fastly")] {
             let rule = try XCTUnwrap(try rules.lookup(kind: .host, key: host), host)
-            XCTAssertEqual(ConnectionName.kind(forCategory: rule.category), .destination, host)
+            XCTAssertEqual(ConnectionName.kind(forCategory: rule.category), .relay, host)
             XCTAssertEqual(rule.owner, owner, "a third party runs Private Cloud Compute's relay")
             XCTAssertTrue(rule.purpose.contains("Private Cloud Compute"), host)
             XCTAssertFalse(rule.purpose.contains("Private Relay"), host)

@@ -28,7 +28,7 @@
       "pattern": "apple-relay.cloudflare.com",
       "owner": "Cloudflare",
       "purpose": "Apple lists this host for Private Cloud Compute, the servers behind Apple Intelligence. Requests reach them through a relay run by a third party, which hides this Mac's address from them.",
-      "category": "system",
+      "category": "relay",
       "risk": "low",
       "confidence": "high"
     },
@@ -38,7 +38,7 @@
       "pattern": "apple-relay.fastly-edge.com",
       "owner": "Fastly",
       "purpose": "Apple lists this host for Private Cloud Compute, the servers behind Apple Intelligence. Requests reach them through a relay run by a third party, which hides this Mac's address from them.",
-      "category": "system",
+      "category": "relay",
       "risk": "low",
       "confidence": "high"
     },
