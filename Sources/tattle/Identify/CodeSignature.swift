@@ -49,12 +49,18 @@ struct CodeSignature: Equatable, Sendable {
     /// through any wrapper; the script's when an interpreter runs a file at an absolute path;
     /// "script" when it runs code at no path the command line locates; nil when a wrapper's
     /// program is not named.
+    ///
+    /// A script never reads as Apple's: Apple's scripts carry no signature, and no
+    /// interpreter runs a signed binary as its script, so an Apple binary in the script's
+    /// place is an argument read there by mistake.
     static func read(program: String, arguments: [String], reading: (String) -> CodeSignature? = { read(path: $0) }) -> CodeSignature? {
         switch LaunchedCode.started(program: program, arguments: arguments) {
-        case .program(let path): reading(path)
-        case .script(let path, _) where path.hasPrefix("/"): reading(path)
-        case .script, .unnamed, .standardInput: CodeSignature(signer: .script)
-        case .undetermined: nil
+        case .program(let path): return reading(path)
+        case .script(let path, _) where path.hasPrefix("/"):
+            let signature = reading(path)
+            return signature?.signer == .apple ? CodeSignature(signer: .script) : signature
+        case .script, .unnamed, .standardInput: return CodeSignature(signer: .script)
+        case .undetermined: return nil
         }
     }
 

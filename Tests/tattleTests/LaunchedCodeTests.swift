@@ -4,12 +4,12 @@ import XCTest
 /// A launch item is signed, and a process named, by the code its command line runs: an
 /// argument that only looks like that code must not stand in for it.
 final class LaunchedCodeTests: XCTestCase {
-    /// The signer Startup shows for a command line when every file reads as Apple's, and
-    /// the files it read.
-    private func signer(_ program: String, _ arguments: [String]) -> (signer: CodeSignature.Signer?, read: [String]) {
-        var read: [String] = []
-        let signature = CodeSignature.read(program: program, arguments: arguments) { read.append($0); return CodeSignature(signer: .apple) }
-        return (signature?.signer, read)
+    /// The signer Startup shows for a command line, where the files in `apple` read as
+    /// Apple's and every other file as signed by a publisher named for its path.
+    private func signer(_ program: String, _ arguments: [String], apple: Set<String> = []) -> CodeSignature.Signer? {
+        CodeSignature.read(program: program, arguments: arguments) { path in
+            CodeSignature(signer: apple.contains(path) ? .apple : .developerID(name: path))
+        }?.signer
     }
 
     func testInlineCodeIsAScriptWhateverPathFollowsIt() {
@@ -27,9 +27,7 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/awk", ["{ print }", "/bin/ls"]),
         ]
         for (program, arguments) in commands {
-            let result = signer(program, arguments)
-            XCTAssertEqual(result.signer, .script, "\(program) \(arguments)")
-            XCTAssertEqual(result.read, [], "\(program) \(arguments)")
+            XCTAssertEqual(signer(program, arguments), .script, "\(program) \(arguments)")
         }
     }
 
@@ -46,17 +44,25 @@ final class LaunchedCodeTests: XCTestCase {
             ("/opt/homebrew/bin/python3.12", ["-u", "/x/a.py"], "/x/a.py"),
         ]
         for (program, arguments, script) in commands {
-            let result = signer(program, arguments)
-            XCTAssertEqual(result.signer, .apple, "\(program) \(arguments)")
-            XCTAssertEqual(result.read, [script], "\(program) \(arguments)")
+            XCTAssertEqual(signer(program, arguments), .developerID(name: script), "\(program) \(arguments)")
+        }
+    }
+
+    func testAScriptThatReadsAsApplesIsAnArgumentMistakenForIt() {
+        // Apple's scripts carry no signature, and no interpreter runs a signed binary as its
+        // script: an Apple binary in the script's place was read there by mistake.
+        let commands: [(String, [String])] = [
+            ("/opt/homebrew/bin/node", ["--diagnostic-dir", "/usr/bin/true", "/x/evil.js"]),
+            ("/bin/bash", ["/bin/ls"]),
+        ]
+        for (program, arguments) in commands {
+            XCTAssertEqual(signer(program, arguments, apple: ["/usr/bin/true", "/bin/ls"]), .script, "\(program) \(arguments)")
         }
     }
 
     func testAScriptTheCommandLineDoesNotLocateIsAScript() {
         for (program, arguments) in [("/bin/bash", ["run.sh"]), ("/bin/sh", []), ("/usr/bin/java", ["-cp", "/x", "Main"])] {
-            let result = signer(program, arguments)
-            XCTAssertEqual(result.signer, .script, "\(program) \(arguments)")
-            XCTAssertEqual(result.read, [], "\(program) \(arguments)")
+            XCTAssertEqual(signer(program, arguments), .script, "\(program) \(arguments)")
         }
     }
 
@@ -80,13 +86,9 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/nohup", ["/usr/bin/env", "python3", "/x/a.py"], "/x/a.py"),
         ]
         for (program, arguments, code) in commands {
-            let result = signer(program, arguments)
-            XCTAssertEqual(result.signer, .apple, "\(program) \(arguments)")
-            XCTAssertEqual(result.read, [code], "\(program) \(arguments)")
+            XCTAssertEqual(signer(program, arguments), .developerID(name: code), "\(program) \(arguments)")
         }
-        let inline = signer("/usr/bin/nohup", ["/bin/sh", "-c", "payload", "/bin/ls"])
-        XCTAssertEqual(inline.signer, .script)
-        XCTAssertEqual(inline.read, [])
+        XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/sh", "-c", "payload", "/bin/ls"]), .script)
     }
 
     func testAWrapperWhoseProgramIsNotNamedHasNoSigner() {
@@ -97,16 +99,12 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/nohup", []),
         ]
         for (program, arguments) in commands {
-            let result = signer(program, arguments)
-            XCTAssertNil(result.signer, "\(program) \(arguments)")
-            XCTAssertEqual(result.read, [], "\(program) \(arguments)")
+            XCTAssertNil(signer(program, arguments), "\(program) \(arguments)")
         }
     }
 
     func testAProgramIsSignedByItself() {
-        let result = signer("/bin/ls", ["-l", "/x/agent"])
-        XCTAssertEqual(result.signer, .apple)
-        XCTAssertEqual(result.read, ["/bin/ls"])
+        XCTAssertEqual(signer("/bin/ls", ["-l", "/x/agent"]), .developerID(name: "/bin/ls"))
     }
 
     func testAProcessRunningCodeThatIsNotItsExecutableIsMarked() {
@@ -133,9 +131,7 @@ final class LaunchedCodeTests: XCTestCase {
                                       arguments: ["java", "-jar", "/x/server.jar"], command: "java")
         XCTAssertEqual(named.name, "java")
         XCTAssertNil(named.interpreter, "a JVM's row is the program, not a script")
-        let job = signer("/usr/bin/java", ["-jar", "/x/server.jar"])
-        XCTAssertEqual(job.signer, .apple)
-        XCTAssertEqual(job.read, ["/x/server.jar"], "not Apple's /usr/bin/java")
+        XCTAssertEqual(signer("/usr/bin/java", ["-jar", "/x/server.jar"]), .developerID(name: "/x/server.jar"), "not Apple's /usr/bin/java")
     }
 
     func testInlineCodeLaunchdStartsIsNotPartOfMacOS() {
