@@ -106,8 +106,8 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/env", ["-u", "HOME", "PATH=/bin", "/x/agent"], "/x/agent"),
             ("/usr/bin/script", ["-q", "/dev/null", "/x/agent"], "/x/agent"),
             ("/usr/bin/login", ["-pf", "someone", "/x/agent"], "/x/agent"),
-            ("/usr/bin/open", ["-a", "/Applications/X.app", "/bin/ls"], "/Applications/X.app"),
-            ("/usr/bin/open", ["/bin/ls", "-a", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["-a", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["-a", "/Applications/X.app", "--args", "/bin/ls"], "/Applications/X.app"),
             ("/usr/bin/open", ["-g", "/Applications/X.app", "--args", "/bin/ls"], "/Applications/X.app"),
             ("/usr/bin/nohup", ["/usr/bin/env", "python3", "/x/a.py"], "/x/a.py"),
         ]
@@ -142,6 +142,12 @@ final class LaunchedCodeTests: XCTestCase {
         let commands: [(String, [String])] = [
             ("/usr/bin/open", ["-a", "Safari", "/bin/ls"]),
             ("/usr/bin/open", ["-b", "com.apple.Safari"]),
+            // An app runs the documents it is given as it likes; a document, by an app the
+            // command line does not name.
+            ("/usr/bin/open", ["-a", "/Applications/X.app", "/x/run.command"]),
+            ("/usr/bin/open", ["/x/run.command", "-a", "/Applications/X.app"]),
+            ("/usr/bin/open", ["/Applications/X.app", "/x/run.command"]),
+            ("/usr/bin/open", ["run.command"]),
             ("/usr/bin/env", ["-S", "/bin/sh -c payload", "/bin/ls"]),
             ("/usr/bin/nohup", []),
         ]

@@ -18,7 +18,8 @@ enum LaunchedCode: Equatable, Sendable {
     /// for it, or someone typing.
     case standardInput(interpreter: String)
     /// A wrapper running a program its command line does not name: an app by name or
-    /// bundle identifier, or a command inside an option's value.
+    /// bundle identifier, a document and whatever app opens it, or a command inside an
+    /// option's value.
     case undetermined
 
     /// Who a program is, for reading its command line. Apple's programs are known by their
@@ -71,13 +72,13 @@ enum LaunchedCode: Equatable, Sendable {
         if let grammar = grammar(of: identity.name, in: launchers) {
             return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
         }
+        if identity.name == "open" { return opened(arguments, identify, through: through) }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
             let code = running(executable: program, arguments: arguments, identity: identity)
             if case .program = code, identity.isApples, let through { return .program(through) }
             return code
         }
         switch scan(arguments, grammar) {
-        case .program(let path) where path.hasPrefix("/"): return started(path, [], identify, through: through)
         case .operand(var index):
             if grammar.operandsBeforeCommand == .one { index += 1 }
             if grammar.operandsBeforeCommand == .assignments {
@@ -85,8 +86,33 @@ enum LaunchedCode: Equatable, Sendable {
             }
             guard index < arguments.count else { return .undetermined }
             return started(arguments[index], Array(arguments[(index + 1)...]), identify, through: through)
-        case .program, .code, .file, .standardInput, .nothing: return .undetermined
+        case .code, .file, .standardInput, .nothing: return .undetermined
         }
+    }
+
+    /// What `open` starts: the app `-a` names, or the one app it is given. Its operands are
+    /// files and URLs, not commands, and an app runs the documents it opens as it likes: with
+    /// a document, what runs is not named.
+    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, through: String?) -> LaunchedCode {
+        var app: String?
+        var operands: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            index += 1
+            switch argument {
+            case "--args": index = arguments.count  // the rest is the app's
+            case "-a":
+                app = index < arguments.count ? arguments[index] : nil
+                index += 1
+            case "-b", "-u": return .undetermined
+            case "-s", "--env", "--stderr", "--stdin", "--stdout", "--arch": index += 1
+            default: if argument.count < 2 || !argument.hasPrefix("-") { operands.append(argument) }
+            }
+        }
+        let opened = app.map { operands.isEmpty ? $0 : nil } ?? (operands.count == 1 ? operands[0] : nil)
+        guard let opened, opened.hasPrefix("/") else { return .undetermined }
+        return started(opened, [], identify, through: through)
     }
 
     /// What the interpreter `name` runs with `arguments`.
@@ -98,7 +124,7 @@ enum LaunchedCode: Equatable, Sendable {
             return .script(path: arguments[index], interpreter: name)
         // An empty operand is what is left when a process rewrites its own arguments (a node
         // title), so the script is no longer named.
-        case .operand, .code, .program: return .unnamed(interpreter: name)
+        case .operand, .code: return .unnamed(interpreter: name)
         case .standardInput, .nothing: return .standardInput(interpreter: name)
         }
     }
@@ -117,8 +143,6 @@ enum LaunchedCode: Equatable, Sendable {
         case standardInput
         /// The option's value is the file the code is in.
         case file
-        /// The option's value is the program a wrapper runs.
-        case program
         /// The option takes a value, in the same word or the next.
         case value
         /// The option takes a value only in the same word ("-i.bak"), if at all.
@@ -141,17 +165,13 @@ enum LaunchedCode: Equatable, Sendable {
         var plusOptions = false
         /// The first operand is a script file, not code (awk) or a class (java).
         var operandIsScript = true
-        /// Options may follow operands, as in `open`.
-        var optionsAfterOperands = false
-        /// Ends the wrapper's own arguments, as `--args` does `open`'s.
-        var stop: String?
         /// What comes before the command a wrapper runs: `script`'s transcript file, `login`'s
         /// user, `env`'s assignments.
         var operandsBeforeCommand = OperandsBeforeCommand.none
     }
 
     private enum Found {
-        case code, standardInput, file(String), program(String), operand(Int), nothing
+        case code, standardInput, file(String), operand(Int), nothing
     }
 
     /// The first option that decides what runs, else the first operand.
@@ -170,7 +190,6 @@ enum LaunchedCode: Equatable, Sendable {
             case .code: return .code
             case .standardInput: return .standardInput
             case .file: return value(attached: attached).map(Found.file) ?? Found.nothing
-            case .program: return value(attached: attached).map(Found.program) ?? Found.nothing
             case .value: _ = value(attached: attached); return nil
             case .attachedValue, .octal, .octalOrHex: return nil
             }
@@ -178,16 +197,15 @@ enum LaunchedCode: Equatable, Sendable {
         while index < arguments.count {
             let argument = arguments[index]
             index += 1
-            if argument == grammar.stop { break }
             if argument == "--" {
-                if operand == nil, index < arguments.count { operand = index }
+                if index < arguments.count { operand = index }
                 break
             }
             if argument == "-" { return .standardInput }
             let isOption = argument.count > 1 && (argument.hasPrefix("-") || (grammar.plusOptions && argument.hasPrefix("+")))
             guard isOption else {
-                if operand == nil { operand = index - 1 }
-                if grammar.optionsAfterOperands { continue } else { break }
+                operand = index - 1
+                break
             }
             if argument.hasPrefix("--") || !grammar.grouped {
                 let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
@@ -276,9 +294,5 @@ enum LaunchedCode: Equatable, Sendable {
         "env": Grammar(options: ["-u": .value, "-P": .value, "-C": .value, "-S": .code], operandsBeforeCommand: .assignments),
         "script": Grammar(options: ["-t": .value, "-T": .value], operandsBeforeCommand: .one),
         "login": Grammar(options: ["-h": .value], operandsBeforeCommand: .one),
-        "open": Grammar(options: [
-            "-a": .program, "-b": .code, "-u": .code,
-            "-s": .value, "--env": .value, "--stderr": .value, "--stdin": .value, "--stdout": .value, "--arch": .value,
-        ], grouped: false, optionsAfterOperands: true, stop: "--args"),
     ]
 }
