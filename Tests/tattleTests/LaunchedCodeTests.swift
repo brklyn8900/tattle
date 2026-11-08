@@ -184,6 +184,14 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(signer("/usr/bin/screen", ["-S", "name", "-X", "stuff", "/x/agent"]), "a command to a running session")
     }
 
+    func testFindIsSignedByTheProgramItsExecRuns() {
+        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "*.log", "-exec", "/x/agent", "{}", ";"]), .developerID(name: "/x/agent"))
+        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-execdir", "true", "+"]), .developerID(name: "/usr/bin/true"))
+        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-exec", "/bin/sh", "-c", "payload", ";"]), .script)
+        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "a"]), .developerID(name: "/usr/bin/find"), "find runs only its own code")
+        XCTAssertNil(signer("/usr/bin/find", ["/x", "-exec", "/usr/bin/true", ";", "-ok", "/x/agent", ";"]), "two programs")
+    }
+
     func testAWrapperWhoseProgramIsNotNamedHasNoSigner() {
         let commands: [(String, [String])] = [
             ("/usr/bin/open", ["-a", "Safari", "/bin/ls"]),

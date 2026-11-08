@@ -100,6 +100,7 @@ enum LaunchedCode: Equatable, Sendable {
             return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
         }
         if identity.name == "open" { return opened(arguments, identify, through: through, searchPath: searchPath) }
+        if identity.name == "find", let code = found(arguments, identify, through: through, searchPath: searchPath) { return code }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
             let code = running(executable: program, arguments: arguments, identity: identity)
             if case .program = code, identity.isApples, let through { return .program(through) }
@@ -119,6 +120,17 @@ enum LaunchedCode: Equatable, Sendable {
             return started(command, Array(arguments[(index + 1)...]), identify, through: through, searchPath: searchPath)
         case .code, .file, .standardInput, .nothing: return .undetermined
         }
+    }
+
+    /// What `find` starts: the program its one `-exec`, `-execdir`, `-ok` or `-okdir` runs,
+    /// with the words up to ";" or "+". Nil without one, when find runs only its own code;
+    /// with more than one, what runs is not one program.
+    private static func found(_ arguments: [String], _ identify: (String) -> Identity, through: String?, searchPath: String) -> LaunchedCode? {
+        let runs = arguments.indices.filter { ["-exec", "-execdir", "-ok", "-okdir"].contains(arguments[$0]) }
+        guard let run = runs.first else { return nil }
+        guard runs.count == 1, run + 1 < arguments.count, let command = located(arguments[run + 1], on: searchPath) else { return .undetermined }
+        let words = arguments[(run + 2)...].prefix { $0 != ";" && $0 != "+" }
+        return started(command, Array(words), identify, through: through, searchPath: searchPath)
     }
 
     /// What `open` starts: the app `-a` names, or the one app it is given. Its operands are
