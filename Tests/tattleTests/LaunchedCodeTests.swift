@@ -424,6 +424,28 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer(other, []), .developerID(name: other), "a program that is not Apple's has its own signer")
     }
 
+    func testApplesSwiftToolsClangAndLdAreDeveloperToolsWhereverTheyAre() {
+        // A copy keeps Apple's signature, and loads what it is told to as the original does.
+        let lines: [(String, String, [String])] = [
+            ("/Users/x/bin/swift-frontend", "com.apple.swift-frontend", ["-frontend", "-c", "/x/a.swift", "-load-plugin-library", "/x/evil.dylib"]),
+            ("/Users/x/bin/swift-driver", "com.apple.swift-driver", ["-driver-use-frontend-path", "/x/frontend", "/x/a.swift"]),
+            ("/Users/x/bin/swift-package", "com.apple.swift-package", ["build"]),
+            ("/Users/x/bin/swift-build-tool", "com.apple.swift-build-tool", ["-f", "/x/build.yaml"]),
+            ("/Users/x/bin/swift-plugin-server", "com.apple.swift-plugin-server", []),
+            ("/Users/x/bin/sourcekit-lsp", "com.apple.sourcekit-lsp", []),
+            ("/Users/x/bin/cc", "com.apple.clang", ["-fplugin=/x/evil.dylib", "-c", "/x/a.c"]),
+            ("/Users/x/bin/ld", "com.apple.ld", ["-lto_library", "/x/evil.dylib", "/x/a.o"]),
+            ("/Users/x/bin/ld-classic", "com.apple.ld-classic", ["/x/a.o"]),
+        ]
+        for (program, identifier, arguments) in lines {
+            XCTAssertEqual(signer(program, arguments, identifiers: [program: identifier]), .unnamed, "\(program) \(arguments)")
+        }
+        let copy = ProcessEntry.name(path: "/Users/x/bin/cc", arguments: ["cc", "-c", "/x/a.c"], command: "cc",
+                                     signature: CodeSignature(signer: .apple, identifier: "com.apple.clang"))
+        XCTAssertEqual(copy.interpreter, "cc")
+        XCTAssertTrue(copy.runsUnnamedCode)
+    }
+
     func testALinkToApplesDeveloperToolIsTheTool() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let bin = folder.appending(path: "Fake.xctoolchain/usr/bin")

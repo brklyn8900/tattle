@@ -33,9 +33,9 @@ enum LaunchedCode: Equatable, Sendable {
         var name: String
         var isApples: Bool
         /// One of Apple's developer tools: in a toolchain, an Xcode or the Command Line Tools,
-        /// or one of the stubs in `/usr/bin` that run them. A compiler loads the plugins and
-        /// passes it is told to, a linker the libraries, a debugger the scripts, git a
-        /// repository's hooks.
+        /// one of the stubs in `/usr/bin` that run them, or Apple's Swift tools, clang or ld
+        /// wherever they are. A compiler loads the plugins and passes it is told to, a linker
+        /// the libraries, a debugger the scripts, git a repository's hooks.
         var isDeveloperTool: Bool
 
         /// `realPath` is `path` with its links resolved, which the kernel already does for a
@@ -50,7 +50,8 @@ enum LaunchedCode: Equatable, Sendable {
                 name = file
             }
             isDeveloperTool = isApples
-                && (identifier.map(Self.developerStubs.contains) == true || Self.isInDeveloperFolder(realPath ?? path))
+                && (identifier.map { Self.developerStubs.contains($0) || Self.developerIdentifiers.contains($0) } == true
+                    || Self.isInDeveloperFolder(realPath ?? path))
         }
 
         /// A toolchain is a `.xctoolchain` folder wherever it is installed. An Xcode is an app
@@ -73,6 +74,12 @@ enum LaunchedCode: Equatable, Sendable {
         ]
         /// They, and `/usr/bin/java`, which runs a Java runtime's: all are known by file name.
         private static let stubs = developerStubs.union(["com.apple.servertool"])
+        /// Apple's Swift tools, clang and ld, which a copy keeps outside the toolchain.
+        private static let developerIdentifiers: Set<String> = [
+            "com.apple.swift-frontend", "com.apple.swift-driver", "com.apple.swift-package", "com.apple.swift-build-tool",
+            "com.apple.swift-plugin-server", "com.apple.swift-help", "com.apple.swift-demangle", "com.apple.swift-format",
+            "com.apple.swift-stdlib-tool", "com.apple.sourcekit-lsp", "com.apple.clang", "com.apple.ld", "com.apple.ld-classic",
+        ]
     }
 
     /// What a running process runs: its executable's code, unless the executable is an
