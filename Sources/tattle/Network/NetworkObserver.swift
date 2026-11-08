@@ -219,7 +219,7 @@ final class NetworkObserver {
         // Owners are resolved once per pid and executable, from one process list per poll, off
         // the main thread; a pid whose connections all closed is forgotten so a reused pid is
         // resolved afresh.
-        let unknown = ConnectionOwner.unresolved(opened: Set(changes.opened.map(\.pid)), known: owners, executable: ProcessTable.pidPath)
+        let unknown = ConnectionOwner.unresolved(opened: Set(changes.opened.map(\.pid)), known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
         if !unknown.isEmpty {
             let signatures = signatures
             let resolved = await Task.detached(priority: .utility) { [processes] () -> [Int32: ConnectionOwner] in

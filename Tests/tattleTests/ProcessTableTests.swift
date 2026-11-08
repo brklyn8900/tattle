@@ -83,6 +83,13 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(ProcessEntry.scriptName("/Users/u/dev/app/server.js"), "server.js")
     }
 
+    func testTheKernelNamesAProcessAfterItsFile() throws {
+        let path = try XCTUnwrap(ProcessTable.pidPath(getpid()))
+        XCTAssertEqual(ProcessTable.commandName(getpid()), ProcessTable.commandName(ofExecutable: path))
+        XCTAssertEqual(ProcessTable.commandName(ofExecutable: "/x/a-very-long-executable-name"), "a-very-long-exec")
+        XCTAssertNil(ProcessTable.commandName(Int32.max), "no such process")
+    }
+
     func testParseArguments() {
         var bytes: [UInt8] = [3, 0, 0, 0]
         bytes += Array("/usr/bin/node".utf8) + [0, 0, 0]

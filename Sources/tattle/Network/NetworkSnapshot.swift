@@ -34,12 +34,15 @@ struct ConnectionOwner: Equatable, Sendable {
     static let unknown = ConnectionOwner(processName: "unknown process")
 
     /// The pids among `opened` whose owner has to be read: one not known yet, or one that has
-    /// replaced itself with another program, which keeps its pid. A pid whose executable cannot
-    /// be read has most likely exited, and what is known of it is better than nothing.
-    static func unresolved(opened: Set<Int32>, known: [Int32: ConnectionOwner], executable: (Int32) -> String?) -> Set<Int32> {
+    /// replaced itself with another program, which keeps its pid. A running program whose file
+    /// is gone has no path, and neither has a tool upgraded in place: the kernel's name for the
+    /// process tells them apart. Of a pid that has exited, what is known is better than nothing.
+    static func unresolved(opened: Set<Int32>, known: [Int32: ConnectionOwner], executable: (Int32) -> String?, commandName: (Int32) -> String?) -> Set<Int32> {
         opened.filter { pid in
             guard let owner = known[pid] else { return true }
-            return executable(pid).map { $0 != owner.path } ?? false
+            if let path = executable(pid) { return path != owner.path }
+            guard let known = owner.path, let name = commandName(pid) else { return false }
+            return name != ProcessTable.commandName(ofExecutable: known)
         }
     }
 

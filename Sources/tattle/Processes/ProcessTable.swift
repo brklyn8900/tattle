@@ -191,7 +191,7 @@ enum ProcessTable {
     private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (String) -> CodeSignature?) -> ProcessEntry? {
         guard Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         let pid = info.kp_proc.p_pid
-        let command = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        let command = commandName(of: info)
         let path = pidPath(pid)
         // KERN_PROCARGS2 refuses other users' processes, so only ask for our own.
         let own = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid()
@@ -255,6 +255,25 @@ enum ProcessTable {
             cursor += 1
         }
         return arguments
+    }
+
+    private static func commandName(of info: kinfo_proc) -> String {
+        withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }
+
+    /// The kernel's name for a process: the file name of the program it last started, cut to
+    /// `MAXCOMLEN` bytes. Nil when it has exited.
+    static func commandName(_ pid: Int32) -> String? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var length = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0, length > 0, Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
+        return commandName(of: info)
+    }
+
+    /// The name the kernel gives a process running the file at `path`.
+    static func commandName(ofExecutable path: String) -> String {
+        String(decoding: URL(fileURLWithPath: path).lastPathComponent.utf8.prefix(Int(MAXCOMLEN)), as: UTF8.self)
     }
 
     static func pidPath(_ pid: Int32) -> String? {

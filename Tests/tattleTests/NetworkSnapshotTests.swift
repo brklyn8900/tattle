@@ -189,7 +189,21 @@ final class NetworkSnapshotTests: XCTestCase {
         let owners: [Int32: ConnectionOwner] = [1: ConnectionOwner(processName: "a", path: "/x/a"), 2: ConnectionOwner(processName: "b", path: "/x/b"),
                                                 3: ConnectionOwner(processName: "c", path: "/x/c")]
         let running: [Int32: String] = [1: "/x/new", 2: "/x/b", 4: "/x/d"]
-        XCTAssertEqual(ConnectionOwner.unresolved(opened: [1, 2, 3, 4], known: owners, executable: { running[$0] }), [1, 4])
+        XCTAssertEqual(ConnectionOwner.unresolved(opened: [1, 2, 3, 4], known: owners, executable: { running[$0] }, commandName: { _ in nil }), [1, 4])
+    }
+
+    /// A program whose file is gone has no path, and neither has a tool upgraded in place or a
+    /// process that has exited: the kernel's name for it tells them apart.
+    func testAnOwnerIsReadAgainWhenItsPidRunsAProgramWhoseFileIsGone() {
+        let owners: [Int32: ConnectionOwner] = [
+            1: ConnectionOwner(processName: "job.sh", path: "/bin/bash"),
+            2: ConnectionOwner(processName: "tool", path: "/x/tool"),
+            3: ConnectionOwner(processName: "exited", path: "/x/exited"),
+            4: ConnectionOwner(processName: "read with no path"),
+            5: ConnectionOwner(processName: "long", path: "/x/a-very-long-executable-name"),
+        ]
+        let names: [Int32: String] = [1: "dropper", 2: "tool", 4: "dropper", 5: "a-very-long-exec"]
+        XCTAssertEqual(ConnectionOwner.unresolved(opened: [1, 2, 3, 4, 5], known: owners, executable: { _ in nil }, commandName: { names[$0] }), [1])
     }
 
     /// A host's answer is shown on every connection to that host, so the model is told about
