@@ -284,8 +284,9 @@ struct ProcessSnapshot: Equatable, Sendable {
                 let groupSignature: CodeSignature?
                 switch key.kind {
                 case .app(let bundle):
-                    // An app in a toolchain, an Xcode or the Command Line Tools is one of Apple's
-                    // developer tools, which runs what it is told, whoever signed the bundle.
+                    // An app Apple signed in a toolchain, an Xcode or the Command Line Tools is one
+                    // of Apple's developer tools, which runs what it is told; any other there keeps
+                    // its signer.
                     let signed = signature(bundle.path)
                     let isDeveloperTool = LaunchedCode.Identity(path: bundle.path, signature: signed).isDeveloperTool
                     groupSignature = isDeveloperTool ? CodeSignature(signer: .unnamed) : signed
