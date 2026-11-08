@@ -20,6 +20,11 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   not start with a TLS or HTTP handshake`, `the connection sent nothing in its first 20
   seconds`, `part of the handshake was missed`, `the handshake carried no server name`,
   `the QUIC handshake could not be read`, `a QUIC version Tattle cannot read`.
+- `net-signers`: a connection's detail names who signed the process that made it (`Signed
+  by`), and the app it is filed under apart when that differs (`App signed by`, `App team`).
+  A script reads `Signed by script, not signed`, with `Runs with` and `Interpreter signed
+  by`; one of Apple's developer tools reads `Signed by unnamed code`. History keeps both, in
+  `signer` and `appSigner`.
 - `net-history`: the same outcome in the `connection` table, written even when the
   connection closed before the outcome arrived.
 - `net-names-off`: without packet access, the header says `Destinations are addresses:
@@ -62,8 +67,43 @@ Preconditions:
 - **Log.** `$V log "<port1>|<port2>|<port3>"`: `no name for tcp/<port>><ip>:80:
   notHandshake` and `...: timeout` lines.
 
+- **A connection's own signer.** Every connection here goes to the Mac's own LAN address,
+  so nothing leaves it and no packet access is needed. With `IP=$(ipconfig getifaddr en0)`,
+  run from a script in a terminal app (Ghostty here): a listener on each of three ports,
+  `sleep 317 | nc -l $IP <port> > /dev/null &`, then:
+  - `sleep 317 | nc $IP 18081 > /dev/null &`. Detail: `Process nc`, `App Ghostty`, `Signed
+    by Apple`, `App signed by Mitchell Hashimoto`, `App team 24VZTF6M5V`.
+  - A renamed copy of Apple's interpreter: `cp <tools>/usr/bin/swift-frontend
+    <dir>/bin/updater`, `ln -s <tools>/usr/lib <dir>/lib`, then `<dir>/bin/updater -frontend
+    -sdk <sdk> <dir>/job.swift -interpret &`, where `<tools>` is
+    `/Library/Developer/CommandLineTools` and `job.swift` connects to `$IP:18082` and sleeps;
+    allow 30 s to compile. Detail: `Process job.swift`, `Runs with updater
+    (<dir>/bin/updater)`, `Signed by script, not signed`, `Interpreter signed by Apple`,
+    `Interpreter team 59GAB85EFG`, and the terminal's `App signed by`.
+  - One of Apple's developer tools: with an Apple-signed Xcode, `<Xcode>/Contents/Developer/
+    usr/bin/git ls-remote http://$IP:18083/x &`, which waits for a reply that does not come.
+    Detail: `Process git-remote-http`, `App Ghostty` (not Xcode), `Signed by unnamed code`,
+    `Interpreter signed by Apple`.
+
+  Press `Ghostty,` (its subtitle is the app's signer), then `--prefix "$IP:<port>,"`. `$V db
+  "select processName, appName, signer, appSigner from connection where remotePort in
+  (18081, 18082, 18083)"`: `nc | Ghostty | Apple | Mitchell Hashimoto`, `job.swift | Ghostty
+  | script, not signed | Mitchell Hashimoto`, `git-remote-http | Ghostty | unnamed code |
+  Mitchell Hashimoto`.
+
 ## Gotchas
 
+- `nc` quits at the end of its standard input, and a background job in a script has none:
+  feed it from `sleep`, or the connection is gone before the panel is read.
+- Copies of macOS's own programs are killed at launch. Apple's programs with a team
+  identifier run from anywhere, given the libraries their load paths expect: hence the
+  `lib` link for `swift-frontend`.
+- Xcode Service holds no connection, so its row in this tab rests on the unit test
+  (`testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode` in `NetworkSnapshotTests`).
+- A foreign executable inside a copied bundle rests on the unit test
+  (`testAConnectionIsSignedByItsOwnProcessAndItsAppApart`): on testmac a new binary put in a
+  copy of `Calculator.app`, unsigned or ad hoc, sat held at launch (state `S`, no CPU, and
+  a program that only returns never returned), so it never opened a connection to read.
 - The two unnamed rows look alike in the list; tell them apart by the `Process nc (pid
   ...)` fact against the pids `connect` printed.
 - The panel lists open connections only, and a closed connection's detail keeps the state
@@ -83,3 +123,7 @@ Preconditions:
   names a flow before the socket table shows it.
 - Connections already open when the dev copy started have no name (`open since before
   Tattle started`).
+- A connection's own signer proven 2026-11-08 on testmac, dev copy at `ebf12ca`, run
+  `2026-11-08T105543`, copied to `build/verify/runs/testmac-2026-11-08/`.
+- The relay and OHTTP rules read from the `rule` table at `ebf12ca` on testmac, run
+  `2026-11-08T104732`; no traffic to those hosts can be made on demand.

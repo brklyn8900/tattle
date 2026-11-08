@@ -4,15 +4,23 @@ Every detail in the four tabs ends in an explanation section. When the knowledge
 a rule for the item, the section shows it with its provenance (`Tattle's rules · risk low ·
 confidence high`). Otherwise it reads `No explanation yet.` with an `Explain` button, which
 sends one redacted prompt to the provider command configured in Settings and stores the
-answer as an unconfirmed rule (`Model answer, unconfirmed · ...`). Shipped rules about
-Apple's programs show only for Apple's own program by that name: Apple-signed, on the
-sealed system volume, and named for its own file.
+answer as an unconfirmed rule (`Model answer, unconfirmed · ...`), for the code it was
+given for: another program under the same name does not get it, confirmed or not. With
+nothing to tell that code by, such as unnamed code, the answer stays while the detail is
+open and is not kept. Shipped rules about Apple's programs show only for Apple's own program
+by that name: Apple-signed, on the sealed system volume, and named for its own file. A
+shipped rule with another publisher's name on it shows only for that publisher's program.
 
 ## Sub-features
 
 - `ex-rule`: a shipped or stored rule shown without asking.
 - `ex-apple-gate`: an impostor named after one of Apple's programs gets no shipped rule.
 - `ex-ask`: `Explain` runs the provider and shows its answer.
+- `ex-identity`: an answer shows only for the code it was given for; another program by
+  the name can be asked about, and keeps its own answer.
+- `ex-unkept`: an answer about code nothing identifies shows with no `Confirm` and is not
+  stored.
+- `ex-publisher`: the shipped `claude` rule shows for Anthropic's program only.
 - `ex-redaction`: the prompt carries the item and facts as one JSON line; the key keeps
   only address redaction (`<private-ip>`), facts and instructions get the full redaction.
 
@@ -54,6 +62,24 @@ Preconditions:
   The recorded prompt's data line has `"item":{"key":"<private-ip>","kind":"host"}` and
   no address; the detail reads `Model answer, unconfirmed`.
 
+- **An answer goes with its code.** With the fake provider, load a launch agent running
+  `/bin/sh <dir>/a/updater` (`while :; do sleep 5; done`). In Processes, press `updater,`:
+  `No explanation yet.`; press `Explain`, then `Confirm`: `Model answer, confirmed by you`.
+  Replace the agent with `/bin/sh <dir>/b/updater` and open its row: `No explanation yet.`;
+  `Explain` stores a second answer. Put `a` back: `Model answer, confirmed by you`. `$V db
+  "select pattern, identity, confirmed is not null from rule where source = 'llm'"`: two
+  rows, `script:<dir>/a/updater` confirmed and `script:<dir>/b/updater` not.
+- **An answer nothing can keep.** A launch agent running `/bin/sh -c "while :; do sleep 5;
+  done"`, row `sh,`: `Signed by unnamed code`, `No explanation yet.` `Explain` shows the
+  answer with no `Confirm`, and it is still there after the tab refreshes; `$V db "select
+  count(*) from rule where pattern = 'sh' and source = 'llm'"` is 0.
+- **The shipped `claude` rule.** Where a real Claude Code session runs, open the row holding
+  it (`Herdr Core,` here), then `--prefix "claude, pid <pid>"` (`claude, pid N · Anthropic
+  PBC`): the detail ends in `Claude Code, Anthropic's coding agent ...` and `Tattle's rules ·
+  risk low · confidence high`. A script under the name, `/bin/sh <dir>/claude` started from
+  a terminal app (its member row is `claude, pid N · bash script`), has `Signed by script,
+  not signed` and `No explanation yet.`
+
 ## Gotchas
 
 - Run each journey in one Bash call, from `$V tab` to the last read. The panel closes
@@ -72,3 +98,8 @@ Preconditions:
   signed `macOS Software Signing`), dev copy at `879a2ca`, run `2026-11-07T180918`: the
   `5353, mDNSResponder` detail has `Signed by Apple` and the rule; again at `32a5508`, run
   `2026-11-07T195705`.
+- An answer going with its code, and one nothing can keep, proven 2026-11-08 on testmac, dev
+  copy at `ebf12ca`, run `2026-11-08T104732`, copied to `build/verify/runs/testmac-2026-11-08/`.
+- The `claude` rule proven 2026-11-08 on the development Mac, where a real session runs,
+  dev copy at `ebf12ca`: the script under the name in run `2026-11-08T104814`, Anthropic's
+  program in run `2026-11-08T105317`.
