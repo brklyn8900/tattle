@@ -151,6 +151,24 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertFalse(AppBundle(path: "/System/Applications/Mail.app").isSystem)
     }
 
+    func testAnAppInsideAFrameworkIsNotAnApp() {
+        let tools = "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
+        XCTAssertNil(AppBundle.containing(tools), "the framework's helper, not an app anyone opened")
+        XCTAssertNil(AppBundle.containing("/Library/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python"))
+        let xcode = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
+        XCTAssertEqual(AppBundle.containing(xcode)?.path, "/Applications/Xcode.app", "inside an app, the app")
+
+        let named = ProcessEntry.name(path: tools, arguments: [tools, "-c", "payload"], command: "Python")
+        let entries = [
+            ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: tools, interpreter: named.interpreter, started: Date()),
+        ]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in CodeSignature(signer: .apple) }, responsible: { _ in nil })
+        let group = snapshot.group(id: "pid:700")
+        XCTAssertEqual(group?.kind, .process)
+        XCTAssertEqual(group?.leader?.signerText, "Python script", "the row's subtitle")
+    }
+
     func testFacts() {
         let item = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch).item(pid: 401)!
         let facts = Dictionary(item.facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })

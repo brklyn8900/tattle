@@ -12,10 +12,13 @@ struct AppBundle: Hashable, Sendable {
     var isSystem: Bool { path.hasPrefix("/System/Library/") || path.hasPrefix("/Library/Apple/") }
 
     /// The outermost .app on a path: a helper app nested inside Slack.app belongs to Slack.
+    /// An .app inside a framework is the framework's helper, not an app anyone opened: the
+    /// Python.app that runs Python's scripts, Tk's Wish.app.
     static func containing(_ path: String) -> AppBundle? {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         guard let index = components.firstIndex(where: { $0.hasSuffix(".app") && $0.count > 4 }),
-              index < components.count - 1 else { return nil }
+              index < components.count - 1,
+              !components[..<index].contains(where: { $0.hasSuffix(".framework") }) else { return nil }
         return AppBundle(path: components[...index].joined(separator: "/"))
     }
 }
