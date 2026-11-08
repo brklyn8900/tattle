@@ -58,6 +58,11 @@ struct CodeSignature: Equatable, Sendable {
         }
     }
 
+    /// The same signer, whichever of its programs each signature is on.
+    func isSameSigner(as other: CodeSignature?) -> Bool {
+        signer == other?.signer && teamIdentifier == other?.teamIdentifier
+    }
+
     /// How a launch item reads, from the code its command line runs (`LaunchedCode.started`):
     /// the program's signature, through any of Apple's wrappers, or the first program's on the
     /// way that is not Apple's; "script" when an interpreter runs a script, whatever file the

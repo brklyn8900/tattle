@@ -1,3 +1,4 @@
+import GRDB
 import XCTest
 @testable import tattle
 
@@ -65,7 +66,7 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(helper.displayName, "Slack")
         XCTAssertEqual(helper.processName, "Slack Helper")
         XCTAssertEqual(helper.groupID, "/Applications/Slack.app")
-        XCTAssertEqual(read, ["/Applications/Slack.app"], "the app bundle is signed, not each helper")
+        XCTAssertEqual(Set(read), [processes[101]!.path!, "/Applications/Slack.app"], "the helper's own file, and the app apart")
 
         let daemon = ConnectionOwner.resolve(pid: 300, in: processes, runningApp: { _ in nil }) { _ in CodeSignature(signer: .apple) }
         XCTAssertEqual(daemon.displayName, "trustd")
@@ -83,6 +84,90 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(orphan.displayName, "com.apple.WebKit.Networking", "no responsible process: the service stands alone")
         XCTAssertEqual(ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil }, responsible: { _ in 400 }, signature: { _ in nil }).displayName,
                        "com.apple.WebKit.Networking", "responsible for itself")
+    }
+
+    /// The app a connection is filed under says nothing about the code that made it: anything
+    /// run from an app's terminal, or put inside its bundle, would borrow the app's signer.
+    func testAConnectionIsSignedByItsOwnProcessAndItsAppApart() throws {
+        let terminal = "/Applications/iTerm.app"
+        let copied = "/Users/x/Copy/Slack.app"
+        let developer = CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER"), identifier: "com.googlecode.iterm2", teamIdentifier: "EXAMPLE123")
+        let slack = CodeSignature(signer: .developerID(name: "Slack Technologies"), identifier: "com.tinyspeck.slackmacgap", teamIdentifier: "BQR82RBBHL")
+        let signatures: [String: CodeSignature] = [
+            terminal: developer, "\(terminal)/Contents/MacOS/iTerm2": developer, "/usr/bin/curl": CodeSignature(signer: .apple, identifier: "com.apple.curl"),
+            copied: slack, "\(copied)/Contents/MacOS/dropper": CodeSignature(signer: .unsigned),
+        ]
+        let list = [
+            entry(700, 1, "\(terminal)/Contents/MacOS/iTerm2"), entry(701, 700, "/usr/bin/curl"), entry(702, 1, "\(copied)/Contents/MacOS/dropper"),
+        ]
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        func owner(_ pid: Int32) -> ConnectionOwner {
+            ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] })
+        }
+
+        let curl = owner(701)
+        XCTAssertEqual(curl.displayName, "iTerm", "filed under the terminal, as before")
+        XCTAssertEqual(curl.signature?.summary, "Apple")
+        XCTAssertEqual(curl.appSignature?.summary, "EXAMPLE DEVELOPER")
+        var facts = Dictionary(LiveConnection(connection: connection(701, "1.1.1.1"), owner: curl, isNew: false).facts(now: t0).map { ($0.name, $0.value) },
+                               uniquingKeysWith: { a, _ in a })
+        XCTAssertEqual(facts["Signed by"], "Apple")
+        XCTAssertEqual(facts["App signed by"], "EXAMPLE DEVELOPER")
+        XCTAssertEqual(facts["App team"], "EXAMPLE123")
+        XCTAssertNil(facts["Team"], "Apple's curl has none, and the terminal's is not its")
+
+        let dropper = owner(702)
+        XCTAssertEqual(dropper.displayName, "Slack")
+        XCTAssertEqual(dropper.signature?.summary, "unsigned", "a file put in a copied bundle does not read as the bundle's")
+        XCTAssertEqual(dropper.appSignature?.summary, "Slack Technologies")
+
+        let same = owner(700)
+        facts = Dictionary(LiveConnection(connection: connection(700, "1.1.1.1"), owner: same, isNew: false).facts(now: t0).map { ($0.name, $0.value) },
+                           uniquingKeysWith: { a, _ in a })
+        XCTAssertEqual(facts["Signed by"], "EXAMPLE DEVELOPER")
+        XCTAssertNil(facts["App signed by"], "said once when the app's signer is the process's")
+
+        let snapshot = NetworkSnapshot(connections: [
+            LiveConnection(connection: connection(701, "1.1.1.1"), owner: curl, isNew: false),
+        ], takenAt: t0)
+        XCTAssertEqual(snapshot.groups.first?.signature?.summary, "EXAMPLE DEVELOPER", "the row is the app's")
+    }
+
+    func testHistoryKeepsTheProcesssSignerAndItsAppsApart() throws {
+        let owner = ConnectionOwner(processName: "curl", path: "/usr/bin/curl", app: AppBundle(path: "/Applications/iTerm.app"),
+                                    signature: CodeSignature(signer: .apple), appSignature: CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER")))
+        let store = ConnectionStore(database: try AppDatabase.inMemory())
+        let live = LiveConnection(connection: connection(701, "1.1.1.1"), owner: owner, isNew: false,
+                                  outcome: .named(ConnectionName(name: "example.com", source: .sni, kind: .destination)))
+        let saved = try store.open(ConnectionRecord(live))
+        XCTAssertEqual(saved.signer, "Apple")
+        XCTAssertEqual(saved.appSigner, "EXAMPLE DEVELOPER")
+        XCTAssertEqual(saved.appPath, "/Applications/iTerm.app")
+        XCTAssertEqual(saved.name, "example.com")
+        XCTAssertEqual(saved.nameSource, "sni")
+    }
+
+    /// Before the process's own signer was read, a row under an app held the app's.
+    func testAnOldRowsSignerUnderAnAppMovesToTheAppsColumn() throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(queue, upTo: "v3-connections")
+        try queue.write { db in
+            for (key, appPath) in [("under-app", "/Applications/iTerm.app" as String?), ("alone", nil)] {
+                try db.execute(sql: """
+                    INSERT INTO connection (key, proto, pid, uid, processName, appPath, signer, localPort, remoteAddress, remotePort, isIPv6, scope, firstSeen, lastSeen, preExisting)
+                    VALUES (?, 'tcp', 1, 501, 'curl', ?, 'EXAMPLE DEVELOPER', 1, '1.1.1.1', 443, 0, 'remote', 0, 0, 0)
+                    """, arguments: [key, appPath])
+            }
+        }
+        try AppDatabase.migrator.migrate(queue)
+        try queue.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT key, signer, appSigner FROM connection ORDER BY key")
+            XCTAssertEqual(rows.map { $0["key"] as String }, ["alone", "under-app"])
+            XCTAssertEqual(rows[0]["signer"] as String?, "EXAMPLE DEVELOPER", "no app: it was the process's own")
+            XCTAssertNil(rows[0]["appSigner"] as String?)
+            XCTAssertNil(rows[1]["signer"] as String?, "the process's own signer was never read")
+            XCTAssertEqual(rows[1]["appSigner"] as String?, "EXAMPLE DEVELOPER")
+        }
     }
 
     func testGroupsAndCounts() {

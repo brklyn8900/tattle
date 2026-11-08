@@ -12,7 +12,10 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
     var processName: String
     var appName: String?
     var appPath: String?
+    /// Who signed the process.
     var signer: String?
+    /// Who signed the app it is filed under.
+    var appSigner: String?
     var localPort: UInt16
     var remoteAddress: String
     var remotePort: UInt16
@@ -25,7 +28,7 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
     var name: String?
     var nameSource: String?
 
-    init(_ connection: Connection, processName: String, appName: String? = nil, appPath: String? = nil, signer: String? = nil) {
+    init(_ connection: Connection, processName: String, appName: String? = nil, appPath: String? = nil, signer: String? = nil, appSigner: String? = nil) {
         key = connection.id
         proto = connection.proto
         pid = connection.pid
@@ -34,6 +37,7 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
         self.appName = appName
         self.appPath = appPath
         self.signer = signer
+        self.appSigner = appSigner
         localPort = connection.localPort
         remoteAddress = connection.remoteAddress
         remotePort = connection.remotePort
@@ -43,6 +47,15 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
         lastSeen = connection.lastSeen
         ended = connection.ended
         preExisting = connection.preExisting
+    }
+}
+
+extension ConnectionRecord {
+    init(_ live: LiveConnection) {
+        self.init(live.connection, processName: live.owner.processName, appName: live.owner.app?.name, appPath: live.owner.app?.path,
+                  signer: live.owner.signature?.summary, appSigner: live.owner.appSignature?.summary)
+        name = live.name?.name
+        nameSource = live.name?.source.rawValue ?? live.unnamedReason?.code
     }
 }
 

@@ -46,7 +46,7 @@ struct AppDatabase: Sendable {
         self.writer = writer
     }
 
-    private static var migrator: DatabaseMigrator {
+    static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1-rules") { db in
             try db.create(table: "rule") { t in
@@ -101,6 +101,11 @@ struct AppDatabase: Sendable {
             try db.create(index: "connection_remote", on: "connection", columns: ["remoteAddress"])
             try db.create(index: "connection_firstSeen", on: "connection", columns: ["firstSeen"])
             try db.create(index: "connection_open", on: "connection", columns: ["key"], condition: Column("ended") == nil)
+        }
+        migrator.registerMigration("v4-connection-app-signer") { db in
+            try db.alter(table: "connection") { $0.add(column: "appSigner", .text) }
+            // A row under an app held the app's signer; the process's own was never read.
+            try db.execute(sql: "UPDATE connection SET appSigner = signer, signer = NULL WHERE appPath IS NOT NULL")
         }
         return migrator
     }

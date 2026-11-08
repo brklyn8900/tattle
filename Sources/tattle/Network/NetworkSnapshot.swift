@@ -5,18 +5,23 @@ struct ConnectionOwner: Equatable, Sendable {
     var processName: String
     var path: String?
     var app: AppBundle?
+    /// Who signed the process that made the connection.
     var signature: CodeSignature?
+    /// Who signed the app the connection is filed under. The app only started the process, or
+    /// holds it in its bundle, so this says nothing about the process's own code.
+    var appSignature: CodeSignature?
 
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
+    /// The row is the app when there is one, else the process.
+    var groupSignature: CodeSignature? { app == nil ? signature : appSignature }
     var isApplesProgram: Bool { ApplesProgram.isNamed(displayName, path: path, signature: signature) }
 
     static let unknown = ConnectionOwner(processName: "unknown process")
 
     /// Resolves a pid against a process list, attributing helpers to their app the same
-    /// way the Processes tab does. `signature` reads the app bundle, or the executable
-    /// when there is no app.
+    /// way the Processes tab does. `signature` reads the executable, and the app bundle.
     static func resolve(
         pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), signature: (String) -> CodeSignature?
@@ -24,8 +29,9 @@ struct ConnectionOwner: Equatable, Sendable {
         guard let entry = byPid[pid] else { return ConnectionOwner(processName: "pid \(pid)") }
         var memo: [Int32: AppBundle?] = [:]
         let app = ProcessSnapshot.app(of: pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
-        let signed = (app?.path ?? entry.path).flatMap(signature)
-        return ConnectionOwner(processName: entry.name, path: entry.path, app: app, signature: signed)
+        return ConnectionOwner(
+            processName: entry.name, path: entry.path, app: app,
+            signature: entry.path.flatMap(signature), appSignature: app.flatMap { signature($0.path) })
     }
 }
 
@@ -102,9 +108,12 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
             Fact(name: "Process", value: "\(owner.processName) (pid \(connection.pid))"),
         ]
         if let app = owner.app, app.name != owner.processName { facts.append(Fact(name: "App", value: app.name)) }
-        if let signature = owner.signature {
-            facts.append(.signedBy(signature))
-            if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
+        var signers = [(owner.signature, "Signed by", "Team")]
+        if let app = owner.appSignature, !app.isSameSigner(as: owner.signature) { signers.append((app, "App signed by", "App team")) }
+        for (signature, label, teamLabel) in signers {
+            guard let signature else { continue }
+            facts.append(.signedBy(signature, as: label))
+            if let team = signature.teamIdentifier { facts.append(Fact(name: teamLabel, value: team)) }
         }
         facts.append(.runsAs(connection.uid))
         if connection.preExisting {
@@ -172,7 +181,7 @@ struct NetworkSnapshot: Equatable, Sendable {
         for live in connections.sorted(by: { $0.connection.firstSeen > $1.connection.firstSeen }) {
             let id = live.owner.groupID
             if byID[id] == nil {
-                byID[id] = ConnectionGroup(id: id, name: live.owner.displayName, signature: live.owner.signature, connections: [])
+                byID[id] = ConnectionGroup(id: id, name: live.owner.displayName, signature: live.owner.groupSignature, connections: [])
                 order.append(id)
             }
             byID[id]!.connections.append(live)

@@ -11,7 +11,7 @@ once every line is ticked)
 - [x] 9 (TX, T1, T2): the test target builds and the suite can gate on Xcode 27.2. fix-1-tests.
 - [x] 1 (A1, A7) and 2 (A2a-e): Apple's binaries read as Apple; a command line's signer is
   the code it runs. fix-2-signer.
-- [ ] 3 (A3, A8): a connection is signed by its own process. fix-3-identity.
+- [x] 3 (A3, A8): a connection is signed by its own process. fix-3-identity.
 - [ ] 8 (K1a, K1b): rules answer only for the identity they were given for. fix-3-identity.
 - [ ] 16 (K3, K4): relay rules and stale names match Apple's documentation. fix-3-identity.
 - [ ] 4 (B1): the exception-port drop covers EXC_CRASH and corpse notifications.

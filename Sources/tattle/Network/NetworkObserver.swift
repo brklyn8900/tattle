@@ -266,12 +266,7 @@ final class NetworkObserver {
     private func record(opened: [LiveConnection], closed: [Connection], now: Date) {
         do {
             for live in opened {
-                var record = ConnectionRecord(
-                    live.connection, processName: live.owner.processName, appName: live.owner.app?.name,
-                    appPath: live.owner.app?.path, signer: live.owner.signature?.summary)
-                record.name = live.name?.name
-                record.nameSource = live.name?.source.rawValue ?? live.unnamedReason?.code
-                try store.open(record)
+                try store.open(ConnectionRecord(live))
             }
             for connection in closed {
                 try store.close(key: connection.id, lastSeen: connection.lastSeen, ended: connection.ended ?? now)
