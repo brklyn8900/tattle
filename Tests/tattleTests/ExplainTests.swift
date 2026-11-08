@@ -494,6 +494,21 @@ final class ExplainerTests: XCTestCase {
         XCTAssertEqual(reads.count, 2, "a new version")
     }
 
+    /// A file that could not be read can be readable later, once its folder is allowed.
+    func testAFailedReadIsNotRemembered() async throws {
+        final class Reads: @unchecked Sendable { var count = 0 }
+        let reads = Reads()
+        let digests = FileDigests(read: { _ in
+            reads.count += 1
+            return reads.count == 1 ? nil : "digest"
+        })
+        let file = try temporaryFile("one")
+        let first = await digests.digest(of: file.path)
+        XCTAssertNil(first)
+        let second = await digests.digest(of: file.path)
+        XCTAssertEqual(second, "digest")
+    }
+
     func testAnAnswerAboutCodeNothingIdentifiesIsShownButNotKept() async throws {
         let rule = try await explainer(FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#))
             .ask(ExplainRequest(kind: .process, key: "node"))

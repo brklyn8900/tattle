@@ -43,7 +43,10 @@ final class FileDigests {
         let read = read
         let digest = Task.detached(priority: .utility) { read(path) }
         known[path] = (version, digest)
-        return await digest.value
+        let value = await digest.value
+        // A file that could not be read can be readable later, once its folder is allowed.
+        if value == nil, known[path]?.version == version { known[path] = nil }
+        return value
     }
 
     /// Through one buffer, so a large file costs time and no memory. Opened without blocking:
