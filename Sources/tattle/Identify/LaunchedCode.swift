@@ -157,7 +157,8 @@ enum LaunchedCode: Equatable, Sendable {
 
     /// What `open` starts: the app `-a` names, or the one app it is given. Its operands are
     /// files and URLs, not commands, and an app runs the documents it opens as it likes: with
-    /// a document, what runs is not named.
+    /// a document, what runs is not named. With `-e`, `-t`, `-f`, `-R` or `-h`, another app
+    /// opens what it is given: TextEdit, the default text editor, Finder, a header's app.
     private static func opened(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode {
         var app: String?
         var operands: [String] = []
@@ -167,12 +168,27 @@ enum LaunchedCode: Equatable, Sendable {
             index += 1
             switch argument {
             case "--args": index = arguments.count  // the rest is the app's
-            case "-a":
-                app = index < arguments.count ? arguments[index] : nil
-                index += 1
-            case "-b", "-u": return .undetermined
-            case "-s", "--env", "--stderr", "--stdin", "--stdout", "--arch": index += 1
-            default: if argument.count < 2 || !argument.hasPrefix("-") { operands.append(argument) }
+            case "--env", "--stderr", "--stdin", "--stdout", "--arch": index += 1
+            case _ where argument.count < 2 || !argument.hasPrefix("-"): operands.append(argument)
+            case _ where argument.hasPrefix("--"): continue
+            default:
+                // Letters group, as getopt reads them ("-gR"); -a and -s take the rest of the
+                // word, else the next.
+                var letters = argument.dropFirst()
+                while let letter = letters.popFirst() {
+                    switch letter {
+                    case "b", "u", "e", "t", "f", "R", "h": return .undetermined
+                    case "a", "s":
+                        var value: String? = String(letters)
+                        if letters.isEmpty {
+                            value = index < arguments.count ? arguments[index] : nil
+                            index += 1
+                        }
+                        if letter == "a" { app = value }
+                        letters.removeAll()
+                    default: continue
+                    }
+                }
             }
         }
         let opened: String?

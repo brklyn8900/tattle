@@ -134,6 +134,9 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["-a", "/Applications/X.app", "--args", "/bin/ls"], "/Applications/X.app"),
             ("/usr/bin/open", ["-g", "/Applications/X.app", "--args", "/bin/ls"], "/Applications/X.app"),
             ("/usr/bin/open", ["/Applications/X.app/"], "/Applications/X.app/"),
+            // Letters group, as getopt reads them, and -a takes the rest of its word.
+            ("/usr/bin/open", ["-ga", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["-a/Applications/X.app"], "/Applications/X.app"),
         ]
         for (program, arguments, code) in commands {
             XCTAssertEqual(signer(program, arguments), .developerID(name: code), "\(program) \(arguments)")
@@ -237,6 +240,14 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["/x/run.command"]),
             ("/usr/bin/open", ["-e", "/x/notes.txt"]),
             ("/usr/bin/open", ["/bin/ls"]),
+            // TextEdit, the default text editor, Finder or a header's app opens what is given.
+            ("/usr/bin/open", ["-t", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["-e", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["-f", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["-R", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["-h", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["-gR", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["-gb", "com.apple.Safari"]),
             ("/usr/bin/env", ["-S", "/bin/sh -c payload", "/bin/ls"]),
             ("/usr/bin/nohup", []),
             // xargs adds words from its standard input to the command it runs.
