@@ -67,7 +67,7 @@ final class ProcessSnapshotTests: XCTestCase {
         let script = snapshot.group(id: "pid:600")!
         XCTAssertEqual(script.kind, .process, "a script run by Apple's shell is the user's, not macOS")
         XCTAssertEqual(script.leader?.signerText, "sh script")
-        XCTAssertEqual(script.leader?.facts.prefix(3).map(\.name), ["Process", "Runs with", "Interpreter signed by"])
+        XCTAssertEqual(script.leader?.facts.prefix(4).map(\.name), ["Process", "Runs with", "Signed by", "Interpreter signed by"])
         XCTAssertEqual(snapshot.group(id: "/Applications/Comet.app")?.members.map(\.pid), [500, 501],
                        "the code-sign clone main process joins the helpers under the installed bundle")
 

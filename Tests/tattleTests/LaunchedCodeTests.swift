@@ -232,6 +232,22 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer("/usr/bin/java", ["-jar", "/x/server.jar"]), .developerID(name: "/x/server.jar"), "not Apple's /usr/bin/java")
     }
 
+    func testAProcessRunningAScriptIsSignedAsAScriptAndItsInterpreterApart() {
+        let named = ProcessEntry.name(path: "/bin/bash", arguments: ["bash", "-c", "curl x | sh", "/usr/bin/true"], command: "bash")
+        let entries = [
+            ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: "/bin/bash", interpreter: named.interpreter, started: Date()),
+        ]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in CodeSignature(signer: .apple) }, responsible: { _ in nil })
+        let group = snapshot.group(id: "pid:700")
+        XCTAssertEqual(group?.facts.first { $0.name == "Signed by" }?.value, "script, not signed", "the detail and the prompt")
+        XCTAssertEqual(group?.isApplesProgram, false, "no shipped rule about Apple's bash")
+        let item = snapshot.item(pid: 700)
+        XCTAssertEqual(item?.facts.first { $0.name == "Signed by" }?.value, "script, not signed")
+        XCTAssertEqual(item?.facts.first { $0.name == "Interpreter signed by" }?.value, "Apple")
+        XCTAssertEqual(item?.isApplesProgram, false)
+    }
+
     func testInlineCodeLaunchdStartsIsNotPartOfMacOS() {
         let named = ProcessEntry.name(path: "/bin/zsh", arguments: ["zsh", "-c", "while :; do sleep 1; done"], command: "zsh")
         let entries = [

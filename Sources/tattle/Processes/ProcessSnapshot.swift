@@ -28,7 +28,8 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var uid: UInt32
     var name: String
     var path: String?
-    /// Set when an interpreter runs a script: the signature is then the interpreter's.
+    /// Set when the process runs code that is not its executable's: a script, inline code,
+    /// or standard input under launchd (`ProcessEntry.interpreter`).
     var interpreter: String?
     /// Known for the user's own processes. Tells two copies of one program apart: two
     /// shells, two servers, two agent sessions.
@@ -38,7 +39,10 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// Cores busy since the previous snapshot: 1.0 is one core fully used, as in
     /// Activity Monitor. Nil until there is a previous reading of this process.
     var cpu: Double?
+    /// Who signed the code the process runs: its executable, or no one for a script.
     var signature: CodeSignature?
+    /// The executable's signature when it is an interpreter running a script.
+    var interpreterSignature: CodeSignature?
     /// The app the process belongs to, by its own path or by an ancestor's.
     var app: AppBundle?
 
@@ -46,7 +50,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
     /// Part of macOS: signed by Apple as its own code, or the kernel. A script is not,
     /// whoever signed its interpreter.
-    var isPartOfMacOS: Bool { pid == 0 || (interpreter == nil && signature?.signer == .apple) }
+    var isPartOfMacOS: Bool { pid == 0 || signature?.signer == .apple }
     var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 
     /// What the row says after the name: "node script", the signer, or that the
@@ -77,8 +81,9 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
         } else if let path {
             facts.append(Fact(name: "Path", value: path))
         }
-        if let signature {
-            facts.append(.signedBy(signature, as: interpreter == nil ? "Signed by" : "Interpreter signed by"))
+        for (signature, label) in [(signature, "Signed by"), (interpreterSignature, "Interpreter signed by")] {
+            guard let signature else { continue }
+            facts.append(.signedBy(signature, as: label))
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
         if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
@@ -236,6 +241,7 @@ struct ProcessSnapshot: Equatable, Sendable {
         items.reserveCapacity(entries.count)
         var apps: [Int32: AppBundle?] = [:]
         for entry in entries {
+            let executableSignature = entry.path.flatMap(signature)
             var cpu: Double?
             if elapsed > 0.5, let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
                let now = entry.usage?.cpuSeconds, let then = before.usage?.cpuSeconds {
@@ -246,7 +252,8 @@ struct ProcessSnapshot: Equatable, Sendable {
                 uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter,
                 workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
-                signature: entry.path.flatMap(signature),
+                signature: entry.interpreter == nil ? executableSignature : CodeSignature(signer: .script),
+                interpreterSignature: entry.interpreter == nil ? nil : executableSignature,
                 app: app(of: entry.pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &apps)))
         }
 
