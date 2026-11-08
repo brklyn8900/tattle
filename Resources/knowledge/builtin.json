@@ -77,7 +77,7 @@
       "match": "glob",
       "pattern": "ControlCenter:*",
       "owner": "Apple",
-      "purpose": "AirPlay Receiver: this Mac can be an AirPlay target for other devices. Switched off under System Settings, General, AirDrop & Continuity.",
+      "purpose": "AirPlay Receiver: this Mac can be an AirPlay target for other devices. Switched off under System Settings, General, AirDrop & Continuity (AirDrop & Handoff before macOS 26).",
       "category": "sharing",
       "risk": "low",
       "confidence": "high"
