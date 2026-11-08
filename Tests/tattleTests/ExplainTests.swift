@@ -40,10 +40,19 @@ final class RedactorTests: XCTestCase {
     /// "/Users/eve/..." is another account's folder, not the home "/Users/u" plus "ve/...".
     func testHomeMatchesOnAPathBoundary() {
         let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        XCTAssertEqual(short.redact("/Users/eve/Library/x"), "/Users/eve/Library/x")
+        XCTAssertEqual(short.redact("/Users/eve/Library/x"), "/Users/<other-user>/Library/x")
         XCTAssertEqual(short.redact("/Users/u/Library/x and /Users/u"), "<home>/Library/x and <home>")
         XCTAssertEqual(short.redact(#"{"key":"/Users/u"}"#), #"{"key":"<home>"}"#)
-        XCTAssertEqual(short.redact("/Users/u.old/x"), "/Users/u.old/x")
+        XCTAssertEqual(short.redact("/Users/u.old/x"), "/Users/<other-user>/x")
+    }
+
+    func testOtherAccountsFoldersAndDiskNamesAreReplaced() {
+        XCTAssertEqual(redactor.redact("/Users/other/bin/x, /users/Other and /Users/Shared/x"), "/Users/<other-user>/bin/x, /Users/<other-user> and /Users/Shared/x")
+        XCTAssertEqual(redactor.redact("/Users/Sharedstuff/x"), "/Users/<other-user>/x")
+        XCTAssertEqual(redactor.redact("/Volumes/My Passport/bin/x (2 arguments, not sent)"), "/Volumes/<volume>/bin/x (2 arguments, not sent)")
+        XCTAssertEqual(redactor.redact("node (/Volumes/Data/app.js)"), "node (/Volumes/<volume>/app.js)")
+        XCTAssertEqual(redactor.redact("/Volumes/Backup/Users/other/x"), "/Volumes/<volume>/Users/<other-user>/x")
+        XCTAssertEqual(redactor.redact("/System/Volumes/Preboot/x, /tmp/Volumes/y"), "/System/Volumes/Preboot/x, /tmp/Volumes/y")
     }
 
     func testMachineNames() {
@@ -219,8 +228,8 @@ final class PromptTests: XCTestCase {
     }
 
     func testPathsAreNotSlashEscaped() {
-        let prompt = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: "/Users/username/App"), redactor: .addressesOnly)
-        XCTAssertTrue(prompt.contains("/Users/username/App"))
+        let prompt = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: "/opt/tool/App"), redactor: .addressesOnly)
+        XCTAssertTrue(prompt.contains("/opt/tool/App"))
         XCTAssertFalse(prompt.contains("\\/"))
     }
 

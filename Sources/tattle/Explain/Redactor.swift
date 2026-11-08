@@ -2,8 +2,8 @@ import Foundation
 import SystemConfiguration
 
 /// Replaces what would identify this Mac or its user before a prompt leaves the machine:
-/// the home path, the username, private and local IP addresses, the machine's names, and
-/// Tailscale names, which identify the account.
+/// the home path, the username, private and local IP addresses, the machine's names,
+/// Tailscale names, which identify the account, other accounts' folders and disk names.
 struct Redactor: Sendable {
     var home: String
     var username: String
@@ -96,7 +96,15 @@ struct Redactor: Sendable {
         out = out.replacingOccurrences(
             of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
             with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
-        return Self.redactAddresses(redactUsername(out))
+        return Self.redactAddresses(Self.redactFolders(redactUsername(out)))
+    }
+
+    /// Another account's folder names that account, and a disk's name is the user's own words.
+    /// A disk's name can hold spaces, so it runs to the next slash. /Users/Shared is no account.
+    private static func redactFolders(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "(?i)(?<![\\w.-])/Volumes/[^/\\n\")]+", with: "/Volumes/<volume>", options: .regularExpression)
+            .replacingOccurrences(of: "(?i)/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
     }
 
     /// For text written for the model rather than captured: the login and the machine's names
