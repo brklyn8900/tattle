@@ -40,6 +40,15 @@ final class CodeIdentityTests: XCTestCase {
         XCTAssertEqual(CodeSignature.started(program: "/bin/sh", arguments: ["-c", "echo"], reading: apple).version, .line, "the code is in the line")
     }
 
+    /// An inode number is unsigned and 64 bits wide, and what a mounted file system gives is its own.
+    func testAFileVersionTakesAnyInodeNumber() {
+        var info = stat()
+        info.st_ino = .max
+        let huge = FileVersion(info)
+        info.st_ino = .max - 1
+        XCTAssertNotEqual(FileVersion(info), huge)
+    }
+
     /// The same version of the file reads the same, and a file is hashed whole.
     func testDigestsOfRealFiles() throws {
         let file = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)

@@ -16,7 +16,7 @@ struct FileVersion: Equatable, Sendable {
 
     init(_ info: stat) {
         isRegularFile = info.st_mode & S_IFMT == S_IFREG
-        values = [Int(info.st_dev), Int(info.st_ino), Int(info.st_size), info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec,
+        values = [Int(info.st_dev), Int(truncatingIfNeeded: info.st_ino), Int(info.st_size), info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec,
                   info.st_ctimespec.tv_sec, info.st_ctimespec.tv_nsec]
     }
 }
