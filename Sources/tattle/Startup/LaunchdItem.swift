@@ -34,6 +34,9 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     var program: String?
     /// Arguments after the executable.
     var arguments: [String]
+    /// The PATH the plist sets for the job (`EnvironmentVariables`); nil when the job runs
+    /// with launchd's own.
+    var environmentPath: String? = nil
     var triggers: [Trigger]
     /// `Disabled` in the plist. launchd's own override state comes from launchctl.
     var disabled: Bool
@@ -69,6 +72,7 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
 
         return LaunchdItem(
             label: label, scope: scope, plistURL: url, program: program, arguments: arguments,
+            environmentPath: (plist["EnvironmentVariables"] as? [String: Any])?["PATH"] as? String,
             triggers: Trigger.triggers(in: plist),
             disabled: plist["Disabled"] as? Bool ?? false,
             associatedBundleIdentifiers: plist["AssociatedBundleIdentifiers"] as? [String]

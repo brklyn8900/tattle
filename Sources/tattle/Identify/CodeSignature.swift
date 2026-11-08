@@ -53,8 +53,12 @@ struct CodeSignature: Equatable, Sendable {
     /// A script never reads as Apple's: Apple's scripts carry no signature, and no
     /// interpreter runs a signed binary as its script, so an Apple binary in the script's
     /// place is an argument read there by mistake.
-    static func read(program: String, arguments: [String], reading: (String) -> CodeSignature? = { read(path: $0) }) -> CodeSignature? {
-        switch LaunchedCode.started(program: program, arguments: arguments, identify: { LaunchedCode.Identity(path: $0, signature: reading($0)) }) {
+    static func read(
+        program: String, arguments: [String], environmentPath: String? = nil,
+        reading: (String) -> CodeSignature? = { read(path: $0) }
+    ) -> CodeSignature? {
+        let identify = { LaunchedCode.Identity(path: $0, signature: reading($0)) }
+        switch LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify) {
         case .program(let path): return reading(path)
         case .script(let path, _) where path.hasPrefix("/"):
             let signature = reading(path)

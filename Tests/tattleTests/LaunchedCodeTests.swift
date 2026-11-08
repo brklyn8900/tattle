@@ -7,8 +7,9 @@ final class LaunchedCodeTests: XCTestCase {
     /// The signer Startup shows for a command line, where the files in `apple` read as
     /// Apple's, those in `identifiers` as Apple's with that signing identifier, and every
     /// other file as signed by a publisher named for its path.
-    private func signer(_ program: String, _ arguments: [String], apple: Set<String> = [], identifiers: [String: String] = [:]) -> CodeSignature.Signer? {
-        CodeSignature.read(program: program, arguments: arguments) { path in
+    private func signer(_ program: String, _ arguments: [String], apple: Set<String> = [], identifiers: [String: String] = [:],
+                        environmentPath: String? = nil) -> CodeSignature.Signer? {
+        CodeSignature.read(program: program, arguments: arguments, environmentPath: environmentPath) { path in
             if let identifier = identifiers[path] { return CodeSignature(signer: .apple, identifier: identifier) }
             return CodeSignature(signer: apple.contains(path) ? .apple : .developerID(name: path))
         }?.signer
@@ -136,6 +137,27 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer("/Users/x/nohup", ["/bin/sh", "-c", "payload"], apple: ["/bin/sh"]), .script, "a script reads as one whoever starts it")
         XCTAssertEqual(signer("/Users/x/nohup", ["/x/agent"]), .developerID(name: "/x/agent"), "followed when what it names is not Apple's")
         XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .apple)
+    }
+
+    func testAProgramNamedWithoutAPathIsFoundAsTheJobFindsIt() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let ls = folder.appending(path: "ls")
+        try Data("#!/bin/sh\n".utf8).write(to: ls)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ls.path)
+
+        XCTAssertEqual(signer("true", []), .developerID(name: "/usr/bin/true"), "launchd looks a bare program up on its standard path")
+        XCTAssertEqual(signer("/usr/bin/nohup", ["true"]), .developerID(name: "/usr/bin/true"))
+        XCTAssertEqual(signer("/usr/bin/nohup", ["ls"], environmentPath: "\(folder.path):/bin"), .developerID(name: ls.path), "on the PATH the plist sets")
+        XCTAssertEqual(signer("/usr/bin/env", ["PATH=\(folder.path):/bin", "ls"]), .developerID(name: ls.path), "on the PATH env sets")
+        XCTAssertEqual(signer("ls", [], environmentPath: "\(folder.path):/bin"), .developerID(name: "/bin/ls"), "launchd's own lookup ignores the job's PATH")
+        // Relative to a working directory the command line does not give.
+        XCTAssertNil(signer("/usr/bin/nohup", ["bin/ls"]))
+        XCTAssertNil(signer("bin/ls", []))
+        XCTAssertNil(signer("/usr/bin/nohup", ["ls"], environmentPath: ":/bin"), "an empty PATH entry is the working directory")
+        XCTAssertNil(signer("/usr/bin/env", ["-P", folder.path, "ls"]))
+        XCTAssertNil(signer("/usr/bin/nohup", ["no-such-program-anywhere"]))
     }
 
     func testAWrapperWhoseProgramIsNotNamedHasNoSigner() {

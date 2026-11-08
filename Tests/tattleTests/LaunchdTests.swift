@@ -24,6 +24,9 @@ final class LaunchdTests: XCTestCase {
         XCTAssertFalse(b.disabled)
         let script = try parse("<key>Label</key><string>c</string><key>Program</key><string>/bin/sh</string><key>ProgramArguments</key><array><string>/bin/sh</string><string>/x.sh</string></array>")
         XCTAssertEqual(script.arguments, ["/x.sh"])
+        XCTAssertNil(script.environmentPath)
+        let path = try parse("<key>Label</key><string>d</string><key>Program</key><string>/bin/x</string><key>EnvironmentVariables</key><dict><key>PATH</key><string>/x:/bin</string></dict>")
+        XCTAssertEqual(path.environmentPath, "/x:/bin")
     }
 
     func testRejectsMissingLabelAndNonDictionary() {

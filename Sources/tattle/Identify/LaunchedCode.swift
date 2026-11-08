@@ -61,18 +61,44 @@ enum LaunchedCode: Equatable, Sendable {
     /// A program that is not Apple's runs its own code, whatever its name and arguments say,
     /// so a command line through one never reaches Apple's program: that program reads as
     /// the one that named it.
-    static func started(program: String, arguments: [String], identify: (String) -> Identity) -> LaunchedCode {
-        started(program, arguments, identify, through: nil)
+    ///
+    /// launchd finds a program named without a path on `standardPath`; a wrapper finds one on
+    /// the job's PATH, `environmentPath` when the plist sets it.
+    static func started(program: String, arguments: [String], environmentPath: String? = nil, identify: (String) -> Identity) -> LaunchedCode {
+        guard let program = located(program, on: standardPath) else { return .undetermined }
+        return started(program, arguments, identify, through: nil, searchPath: environmentPath ?? standardPath)
     }
 
-    /// `through` is the first program on the way that is not Apple's.
-    private static func started(_ program: String, _ arguments: [String], _ identify: (String) -> Identity, through: String?) -> LaunchedCode {
+    /// launchd's `_PATH_STDPATH`, which is also the PATH a job runs with unless its plist
+    /// sets one.
+    static let standardPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+    /// The file a command runs: an absolute path as it is, a bare name where execvp finds it
+    /// on `searchPath`. Nil for a path relative to the working directory, which the command
+    /// line does not give, for a search that would look there (an empty or relative entry),
+    /// and for a name found nowhere.
+    private static func located(_ command: String, on searchPath: String) -> String? {
+        if command.hasPrefix("/") { return command }
+        guard !command.isEmpty, !command.contains("/") else { return nil }
+        for directory in searchPath.split(separator: ":", omittingEmptySubsequences: false) {
+            guard directory.hasPrefix("/") else { return nil }
+            let candidate = "\(directory)/\(command)"
+            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
+    /// `through` is the first program on the way that is not Apple's; `searchPath` is where a
+    /// wrapper finds a program named without a path.
+    private static func started(
+        _ program: String, _ arguments: [String], _ identify: (String) -> Identity, through: String?, searchPath: String
+    ) -> LaunchedCode {
         let identity = identify(program)
         let through = through ?? (identity.isApples ? nil : program)
         if let grammar = grammar(of: identity.name, in: launchers) {
             return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
         }
-        if identity.name == "open" { return opened(arguments, identify, through: through) }
+        if identity.name == "open" { return opened(arguments, identify, through: through, searchPath: searchPath) }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
             let code = running(executable: program, arguments: arguments, identity: identity)
             if case .program = code, identity.isApples, let through { return .program(through) }
@@ -80,12 +106,16 @@ enum LaunchedCode: Equatable, Sendable {
         }
         switch scan(arguments, grammar) {
         case .operand(var index):
+            var searchPath = searchPath
             if grammar.operandsBeforeCommand == .one { index += 1 }
             if grammar.operandsBeforeCommand == .assignments {
-                while index < arguments.count, arguments[index].contains("=") { index += 1 }
+                while index < arguments.count, arguments[index].contains("=") {
+                    if arguments[index].hasPrefix("PATH=") { searchPath = String(arguments[index].dropFirst(5)) }
+                    index += 1
+                }
             }
-            guard index < arguments.count else { return .undetermined }
-            return started(arguments[index], Array(arguments[(index + 1)...]), identify, through: through)
+            guard index < arguments.count, let command = located(arguments[index], on: searchPath) else { return .undetermined }
+            return started(command, Array(arguments[(index + 1)...]), identify, through: through, searchPath: searchPath)
         case .code, .file, .standardInput, .nothing: return .undetermined
         }
     }
@@ -93,7 +123,7 @@ enum LaunchedCode: Equatable, Sendable {
     /// What `open` starts: the app `-a` names, or the one app it is given. Its operands are
     /// files and URLs, not commands, and an app runs the documents it opens as it likes: with
     /// a document, what runs is not named.
-    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, through: String?) -> LaunchedCode {
+    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, through: String?, searchPath: String) -> LaunchedCode {
         var app: String?
         var operands: [String] = []
         var index = 0
@@ -112,7 +142,7 @@ enum LaunchedCode: Equatable, Sendable {
         }
         let opened = app.map { operands.isEmpty ? $0 : nil } ?? (operands.count == 1 ? operands[0] : nil)
         guard let opened, opened.hasPrefix("/") else { return .undetermined }
-        return started(opened, [], identify, through: through)
+        return started(opened, [], identify, through: through, searchPath: searchPath)
     }
 
     /// What the interpreter `name` runs with `arguments`.
@@ -291,7 +321,8 @@ enum LaunchedCode: Equatable, Sendable {
         ]),
         "sandbox-exec": Grammar(options: ["-f": .value, "-n": .value, "-p": .value, "-D": .value]),
         "arch": Grammar(options: ["-arch": .value, "-d": .value, "-e": .value], grouped: false),
-        "env": Grammar(options: ["-u": .value, "-P": .value, "-C": .value, "-S": .code], operandsBeforeCommand: .assignments),
+        // env's -P names where to look for the program, a search that is not followed.
+        "env": Grammar(options: ["-u": .value, "-P": .code, "-C": .value, "-S": .code], operandsBeforeCommand: .assignments),
         "script": Grammar(options: ["-t": .value, "-T": .value], operandsBeforeCommand: .one),
         "login": Grammar(options: ["-h": .value], operandsBeforeCommand: .one),
     ]
