@@ -462,6 +462,29 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertEqual(Array(lines.dropFirst()), ["dropped-at-launch 1", "exception-ports 0", "corpse-ports 1"], "the corpse port is how macOS's crash reports arrive")
     }
 
+    /// Tattle keeps the corpse port for crash reports, so a launcher can hold it. What that
+    /// launcher gets is the dead process: its memory to read, and no code to run or files to
+    /// reach (ADR-0003).
+    func testACorpseLetsItsHolderReadMemoryAndNothingElse() throws {
+        let hardened = try caller(.hardened)
+        let process = Process()
+        process.executableURL = hardened.url
+        process.arguments = ["--hold-corpse", hardened.url.path, "--wait"]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        waitForExit(process)
+        let lines = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .split(separator: "\n").map(String.init)
+        XCTAssertEqual(Array(lines.prefix(4)), ["exception \(EXC_CORPSE_NOTIFY)", "read allowed", "write refused", "thread refused"])
+        XCTAssertGreaterThan(count(in: lines, "descriptors-before"), 0, "the live program's files are listed")
+        XCTAssertEqual(count(in: lines, "descriptors-after"), 0, "the dead program has none")
+    }
+
+    private func count(in lines: [String], _ name: String) -> Int {
+        lines.first { $0.hasPrefix(name + " ") }.flatMap { Int($0.dropFirst(name.count + 1)) } ?? -1
+    }
+
     /// The test runner loads the code in a bundle, so it keeps the ports it was started with.
     func testTheTestRunnerKeepsItsExceptionPorts() {
         XCTAssertEqual(tattle_launch_exception_ports_dropped(), -1)

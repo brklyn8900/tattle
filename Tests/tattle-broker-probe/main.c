@@ -20,13 +20,29 @@
 // "accepted" means a descriptor this process could prepare and filter, so it appears only
 // where the capture devices are readable; with root-only devices an accepted caller prints
 // "open-failed 13".
+//
+//   tattle-broker-probe --hold-corpse <program> [<argument>...]
+//
+// Holds a corpse-notification port of its own, which <program> inherits; Tattle keeps that port
+// (ADR-0003). Starts <program>, waits for its first output, aborts it, and prints what the dead
+// process it then receives allows: "exception <n>", "read allowed|refused", "write
+// allowed|refused", "thread allowed|refused", then "descriptors-before <n>" and
+// "descriptors-after <n>", the open files the kernel lists for <program> before and after.
+//
+//   tattle-broker-probe --wait
+//
+// Prints "waiting" and waits to be killed.
 
 #include "packet_capture.h"
 
 #include <dispatch/dispatch.h>
 #include <errno.h>
+#include <libproc.h>
 #include <stdbool.h>
 #include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,10 +100,99 @@ static int send_then_exec(const char *service, const char *ifname, char **progra
     return 1;
 }
 
+extern char **environ;
+
+// An exception message as MACH_EXCEPTION_CODES delivers it, with room for the trailer.
+#pragma pack(4)
+typedef struct {
+    mach_msg_header_t header;
+    mach_msg_body_t body;
+    mach_msg_port_descriptor_t thread;
+    mach_msg_port_descriptor_t task;
+    NDR_record_t ndr;
+    exception_type_t exception;
+    mach_msg_type_number_t code_count;
+    int64_t code[2];
+    mach_msg_max_trailer_t trailer;
+} exception_message;
+#pragma pack()
+
+static int open_files(pid_t pid) {
+    struct proc_fdinfo files[256];
+    int bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, files, sizeof files);
+    return bytes > 0 ? bytes / (int)sizeof files[0] : 0;
+}
+
+static int hold_corpse(char **program) {
+    alarm(30);  // never outlive a test that went wrong
+    mach_port_t port = MACH_PORT_NULL;
+    if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &port) != KERN_SUCCESS
+        || mach_port_insert_right(mach_task_self(), port, port, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS
+        || task_set_exception_ports(mach_task_self(), EXC_MASK_CORPSE_NOTIFY, port, EXCEPTION_DEFAULT | MACH_EXCEPTION_CODES,
+                                    THREAD_STATE_NONE) != KERN_SUCCESS) {
+        fprintf(stderr, "cannot hold a corpse port\n");
+        return 1;
+    }
+    int out[2];
+    if (pipe(out) != 0) return 1;
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, out[0]);
+    posix_spawn_file_actions_addclose(&actions, out[1]);
+    pid_t pid = 0;
+    int spawned = posix_spawn(&pid, program[0], &actions, NULL, program, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(out[1]);
+    if (spawned != 0) {
+        fprintf(stderr, "posix_spawn: %s\n", strerror(spawned));
+        return 1;
+    }
+    char line[32];
+    if (read(out[0], line, sizeof line) <= 0) {
+        fprintf(stderr, "no output from %s\n", program[0]);
+        return 1;
+    }
+    int before = open_files(pid);
+    kill(pid, SIGABRT);
+    exception_message message;
+    memset(&message, 0, sizeof message);
+    if (mach_msg(&message.header, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof message, port, 10000, MACH_PORT_NULL) != MACH_MSG_SUCCESS) {
+        printf("nothing\n");
+        return 0;
+    }
+    task_t corpse = message.task.name;
+    printf("exception %d\n", message.exception);
+    mach_vm_address_t address = 0;
+    mach_vm_size_t size = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object = MACH_PORT_NULL;
+    uint32_t word = 0;
+    mach_vm_size_t got = 0;
+    bool readable = mach_vm_region(corpse, &address, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object) == KERN_SUCCESS
+        && mach_vm_read_overwrite(corpse, address, sizeof word, (mach_vm_address_t)&word, &got) == KERN_SUCCESS;
+    printf("read %s\n", readable ? "allowed" : "refused");
+    printf("write %s\n", mach_vm_write(corpse, address, (vm_offset_t)&word, sizeof word) == KERN_SUCCESS ? "allowed" : "refused");
+    thread_act_t thread = MACH_PORT_NULL;
+    printf("thread %s\n", thread_create(corpse, &thread) == KERN_SUCCESS ? "allowed" : "refused");
+    printf("descriptors-before %d\n", before);
+    printf("descriptors-after %d\n", open_files(pid));
+    // No wait: the program cannot finish dying until this port goes, with this process.
+    return 0;
+}
+
 int main(int argc, char **argv) {
     // What this program holds when its own code starts, before it asks anything.
     int held = exception_ports(EXC_MASK_ALL | EXC_MASK_CRASH);
     int corpse = exception_ports(EXC_MASK_CORPSE_NOTIFY);
+    if (argc >= 3 && strcmp(argv[1], "--hold-corpse") == 0) return hold_corpse(&argv[2]);
+    if (argc == 2 && strcmp(argv[1], "--wait") == 0) {
+        printf("waiting\n");
+        fflush(stdout);
+        pause();
+        return 0;
+    }
     unsigned delay = 0;
     bool show_ports = false;
     bool usable = argc >= 3;
@@ -99,7 +204,9 @@ int main(int argc, char **argv) {
     }
     if (!usable) {
         fprintf(stderr, "usage: tattle-broker-probe <service> <interface> [--delay <seconds>] [--exception-ports]\n"
-                        "       tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]\n");
+                        "       tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]\n"
+                        "       tattle-broker-probe --hold-corpse <program> [<argument>...]\n"
+                        "       tattle-broker-probe --wait\n");
         return 2;
     }
     if (delay > 0) sleep(delay);
