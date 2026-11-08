@@ -36,9 +36,9 @@ Every surface runs the same pipeline on a different source:
 Code signature via `SecCodeCopySigningInformation`: Apple, a Team ID with the organization
 name read from the leaf certificate, or unsigned. Helpers are attributed to their app by
 walking the parent chain and by path containment (`Slack Helper (GPU)` lives inside
-`Slack.app`). macOS also tracks a "responsible process" for TCC, but the only call that
-reads it is private; it is a fallback to consider if attribution gaps show up, not a
-dependency.
+`Slack.app`). A service launchd started for an app has neither, so it is filed under the
+"responsible process" macOS tracks for TCC, which only a private call reads
+([ADR-0004](adr/0004-process-responsibility-private-calls.md)).
 
 ### Ports
 

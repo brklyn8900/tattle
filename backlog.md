@@ -67,16 +67,14 @@ once every line is ticked)
 - [ ] 17 and decisions 4-6: docs match the code. fix-8-docs.
 - [ ] 18 (D6): the author's name only in author-credit fields. fix-8-docs.
 
-**Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a) is
-done)
+**Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
+and (d) are done)
 
 - (b) A `make test` wall-clock limit with cleanup of what a killed run leaves behind. Each
   launched process already waits at most 60 s. Yes/no when raised.
 - (c) Agreed (2026-10-26): on testmac, run the packet-access checks not yet proven (second
   account against the installed daemon, Cancel, Install for this account), then remove
   "to run on testmac" from `features/packet-access.md`.
-- (d) `ResponsibleProcess` resolves a private libquarantine symbol by dlsym in an app whose
-  rule is Apple frameworks only: decide whether that needs an ADR.
 - (e) After Remove, the Startup tab keeps the broker's "Allowed in the background" row until
   Refresh: its refresh runs before macOS rewrites the background-items file, about a minute
   later.
