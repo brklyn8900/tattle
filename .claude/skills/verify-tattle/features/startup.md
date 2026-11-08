@@ -104,7 +104,8 @@ Preconditions:
   reads `launch item, not signed`, not `Apple`; the detail has `Signed by launch item, not
   signed` and `Runs Apple's sqlite3` (`ls`). Apple's own jobs, under `/System/Library`, are
   counted, not listed. A helper with no plist keeps its signer: `PasswordsMenuBarExtra`
-  reads `Apple`.
+  reads `Apple`. With `RootDirectory` in the plist (`/bin/ls /`, not loaded) the row reads
+  the same and the detail has no `Runs Apple's`: the path does not say which file runs.
 - **xcrun.** On testmac, not loaded: `<dir>/lldb /bin/ls -b -s <dir>/cmds`, where `lldb` is a
   symlink to `/usr/bin/xcrun`, and `/usr/bin/xcrun ls`: `unnamed code`. `/usr/bin/xcrun swift
   <dir>/a.swift`: `script, not signed`.
@@ -157,6 +158,8 @@ Preconditions:
   `b5e5e2c`). In run `2026-11-08T090623` (`0a31fdc`) the `sqlite3`, `ls` and two xcrun rows
   read `Apple`. The registered items proven on the user's Mac, run `2026-11-08T090639`
   (`b5e5e2c`); in run `2026-11-08T090557` (`0a31fdc`) they read `Apple`. The `open -ga` row
-  is unit-tested at this reading, not run again.
+  is unit-tested at this reading, not run again. `RootDirectory` proven on testmac, run
+  `2026-11-08T092645` (`be0e8f0`); in run `2026-11-08T092551` (`c701e4f`) its detail had
+  `Runs Apple's ls`.
   Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
   only.
