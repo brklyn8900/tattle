@@ -38,8 +38,17 @@ Preconditions:
   `/bin/zsh`, `-c`, `while :; do sleep 5; done`, `/usr/bin/true`, and `launchctl bootstrap
   gui/$(id -u)` it. Its row reads `zsh, N processes · zsh script`, not a member of `macOS`
   and not named `true`; press it, then `--prefix "zsh, pid <pid>"` when its `sleep` child
-  makes it a group. The detail has `Runs with zsh (/bin/zsh)`, `Interpreter signed by
+  makes it a group. The group's detail has `Signed by script, not signed`; the member's
+  has `Runs with zsh (/bin/zsh)`, `Signed by script, not signed`, `Interpreter signed by
   Apple`, `Parent launchd (pid 1)`. Afterwards `launchctl bootout` it and delete the plist.
+- **Standard input under launchd.** As above, with `ProgramArguments` `/bin/sh` and
+  `StandardInPath` a file holding `while :; do sleep 5; done`. Its row reads `sh, 2
+  processes · bash script` (macOS's `/bin/sh` runs bash), not a member of `macOS`; the
+  detail has `Path /bin/bash`, `Signed by script, not signed`.
+- **Python.** As above, with `/usr/bin/python3`, `-c`, `import time; [time.sleep(5) for _
+  in iter(int, 1)]`. With the Command Line Tools it runs as their `Python.app`, so its row
+  is that app's: `Python, 1 process · Apple`, the bundle's signer. The detail has `Runs
+  with Python (<path>)`, `Signed by script, not signed`, `Interpreter signed by Apple`.
 - **Sort.** `$V ax press CPU` (the segment; the resources line's `CPU` text is not
   pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
 - **Marker process.** Start one the run owns: `nohup /bin/sleep 7777 >/dev/null 2>&1 &`
@@ -64,6 +73,10 @@ Preconditions:
   `2026-11-07T180918` (commit `879a2ca`); run `2026-11-07T175830` is the same journeys on
   `b2a39de`, before the fix (637 rows, a macOS row of 10). Copies in this Mac's
   `build/verify/runs/testmac-2026-11-07/`.
+- Standard input, Python and a script's own signer proven 2026-11-07 on testmac, run
+  `2026-11-07T195705` (commit `32a5508`). Run `2026-11-07T195527` is the same journeys on
+  `2fdbff2`, before them: no `sh` row, its two processes counted in `macOS` (547, against
+  545 after), and the zsh group and the Python detail `Signed by Apple`.
 - testmac's display sleeps after a minute idle, which closes the panel and sets the
   session's `CGSSessionScreenIsLocked` with no password lock; hold `caffeinate -di` for
   the length of a run.

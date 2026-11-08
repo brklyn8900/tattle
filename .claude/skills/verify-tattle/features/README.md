@@ -48,8 +48,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
   Proven 2026-10-25; a command line's signer 2026-11-07.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
-  CPU, and Quit. Proven 2026-10-25; the macOS row and a script started by launchd
-  2026-11-07.
+  CPU, and Quit. Proven 2026-10-25; the macOS row, a script started by launchd, standard
+  input under launchd and Python 2026-11-07.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27.

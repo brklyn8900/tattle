@@ -53,7 +53,20 @@ Preconditions:
   - `/usr/bin/nohup <dir>/agent 600`: `ad hoc signed`;
   - `Program` `/bin/sh` with `ProgramArguments` `/bin/sh <dir>/probe.sh`: `Runs /bin/sh
     <dir>/probe.sh`, argv[0] not repeated, and `unsigned`;
-  - `/usr/bin/perl5.34 <dir>/probe.pl`: `unsigned`.
+  - `/usr/bin/perl5.34 <dir>/probe.pl`: `unsigned`;
+  - `<dir>/nohup /bin/ls`, where `nohup` is a copy of `agent`: `ad hoc signed`, its own
+    signer, not Apple's `ls`;
+  - `<dir>/h -c <code>`, where `h` is a symlink to `/bin/zsh`: `script, not signed`;
+  - `/usr/bin/nohup bin/ls` with `WorkingDirectory` `<dir>`: no `Signed by`;
+  - `/usr/bin/nohup sleep 600`: `Apple`, `/bin/sleep` found on the PATH;
+  - `/usr/bin/open -a /System/Applications/Utilities/Terminal.app <dir>/probe.command`: no
+    `Signed by`;
+  - `/usr/bin/find <dir> -name none -exec <dir>/agent {} ;`: `ad hoc signed`;
+  - `/bin/zsh -O <dir>/probe.sh /bin/ls`: `unsigned`, the script's;
+  - `/usr/bin/perl -lne /bin/ls /bin/ls` and `/usr/bin/python3 +run.py /bin/ls`: `script,
+    not signed`;
+  - `~/.local/node/bin/node --diagnostic-dir /usr/bin/true <dir>/evil.js`: `script, not
+    signed`.
   Delete the plists and the folder afterwards.
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
   `Open at login` and background groups are missing: record that precondition as unmet.
@@ -73,3 +86,8 @@ Preconditions:
   `879a2ca`); on `b2a39de`, run `2026-11-07T175830`, all four rows read `macOS Software
   Signing` and the Program row read `Runs /bin/sh /bin/sh ...`. Copies in this Mac's
   `build/verify/runs/testmac-2026-11-07/`.
+- All of the signer journey proven again 2026-11-07 on testmac, run `2026-11-07T195705`
+  (commit `32a5508`). Run `2026-11-07T195527` is the same on `2fdbff2`: the copy named
+  `nohup`, the symlink, the relative path, `open` with a document, `find`, `zsh -O`, `perl
+  -lne`, `python3 +run.py` and the node decoy all read `Apple`, and `nohup sleep` read
+  `unsigned`.

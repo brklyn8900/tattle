@@ -70,4 +70,5 @@ Preconditions:
   ask and redaction.
 - Shipped rule proven again 2026-11-07 on testmac (macOS 26.7.1, where Apple's binaries are
   signed `macOS Software Signing`), dev copy at `879a2ca`, run `2026-11-07T180918`: the
-  `5353, mDNSResponder` detail has `Signed by Apple` and the rule.
+  `5353, mDNSResponder` detail has `Signed by Apple` and the rule; again at `32a5508`, run
+  `2026-11-07T195705`.
