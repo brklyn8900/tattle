@@ -184,30 +184,48 @@ enum LaunchedCode: Equatable, Sendable {
         var operands: [String] = []
         var index = 0
         while index < arguments.count {
-            let argument = arguments[index]
+            var argument = arguments[index]
             index += 1
-            switch argument {
-            case "--args": index = arguments.count  // the rest is the app's
-            case "--env", "--stderr", "--stdin", "--stdout", "--arch": index += 1
-            case _ where argument.count < 2 || !argument.hasPrefix("-"): operands.append(argument)
-            case _ where argument.hasPrefix("--"): continue
-            default:
-                // Letters group, as getopt reads them ("-gR"); -a and -s take the rest of the
-                // word, else the next.
-                var letters = argument.dropFirst()
-                while let letter = letters.popFirst() {
-                    switch letter {
-                    case "b", "u", "e", "t", "f", "R", "h": return .undetermined
-                    case "a", "s":
-                        var value: String? = String(letters)
-                        if letters.isEmpty {
-                            value = index < arguments.count ? arguments[index] : nil
-                            index += 1
-                        }
-                        if letter == "a" { app = value }
-                        letters.removeAll()
-                    default: continue
+            if argument == "--args" { break }  // the rest is the app's
+            if argument == "--" {  // the rest are files
+                operands += arguments[index...]
+                break
+            }
+            guard argument.count > 1, argument.hasPrefix("-") else {
+                operands.append(argument)
+                continue
+            }
+            if argument.hasPrefix("--") {
+                // A long option, by its name or a prefix of only one name ("--rev"), with a
+                // value after "=" or in the next word, reads as its letter, as getopt_long reads
+                // it. open refuses any other, and opens nothing.
+                let parts = argument.dropFirst(2).split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                let names = (Array(openLongOptions.keys) + openLongValues).filter { $0.hasPrefix(parts[0]) }
+                guard let name = names.first(where: { $0 == parts[0] }) ?? (names.count == 1 ? names.first : nil) else {
+                    return .undetermined
+                }
+                guard let letter = openLongOptions[name] else {
+                    if parts.count == 1 { index += 1 }
+                    continue
+                }
+                if parts.count > 1, !openValueLetters.contains(letter) { return .undetermined }
+                argument = "-\(letter)" + (parts.count > 1 ? parts[1] : "")
+            }
+            // Letters group, as getopt reads them ("-gR"); one that takes a value takes the rest
+            // of the word, else the next.
+            var letters = argument.dropFirst()
+            while let letter = letters.popFirst() {
+                switch letter {
+                case "b", "u", "e", "t", "f", "R", "h": return .undetermined
+                case _ where openValueLetters.contains(letter):
+                    var value: String? = String(letters)
+                    if letters.isEmpty {
+                        value = index < arguments.count ? arguments[index] : nil
+                        index += 1
                     }
+                    if letter == "a" { app = value }
+                    letters.removeAll()
+                default: continue
                 }
             }
         }
@@ -220,6 +238,15 @@ enum LaunchedCode: Equatable, Sendable {
         guard let opened, opened.hasPrefix("/") else { return .undetermined }
         return started(opened, [], identify, searchPath: searchPath)
     }
+
+    /// open's options from its usage (`open --help`): the letters that take a value, the long
+    /// options and the letters they stand for, and the long options with a value and no letter.
+    private static let openValueLetters: Set<Character> = ["a", "s", "i", "o"]
+    private static let openLongOptions: [String: Character] = [
+        "fresh": "F", "reveal": "R", "wait-apps": "W", "new": "n", "hide": "j", "background": "g", "header": "h",
+        "url": "u", "stdin": "i", "stdout": "o",
+    ]
+    private static let openLongValues = ["stderr", "env", "arch"]
 
     /// What the interpreter `name` runs with `arguments`.
     private static func interpreted(by name: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {

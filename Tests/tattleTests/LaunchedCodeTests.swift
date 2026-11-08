@@ -139,6 +139,14 @@ final class LaunchedCodeTests: XCTestCase {
             // Letters group, as getopt reads them, and -a takes the rest of its word.
             ("/usr/bin/open", ["-ga", "/Applications/X.app"], "/Applications/X.app"),
             ("/usr/bin/open", ["-a/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["-i", "/x/in", "-o", "/x/out", "/Applications/X.app"], "/Applications/X.app"),
+            // Long options read as their letters, by a prefix of only one name too, as
+            // getopt_long reads them.
+            ("/usr/bin/open", ["--fresh", "--background", "--hide", "--wait-apps", "--new", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["--back", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["--stdin", "/x/in", "--stdout=/x/out", "--stderr", "/x/err", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["--env", "A=1", "--ar", "arm64", "/Applications/X.app"], "/Applications/X.app"),
+            ("/usr/bin/open", ["--", "/Applications/X.app"], "/Applications/X.app"),
         ]
         for (program, arguments, code) in commands {
             XCTAssertEqual(signer(program, arguments), .developerID(name: code), "\(program) \(arguments)")
@@ -254,6 +262,16 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["-h", "/System/Applications/Calculator.app"]),
             ("/usr/bin/open", ["-gR", "/System/Applications/Calculator.app"]),
             ("/usr/bin/open", ["-gb", "com.apple.Safari"]),
+            ("/usr/bin/open", ["--reveal", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["--rev", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["--header", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["--url", "file:///System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["--url=file:///System/Applications/Calculator.app"]),
+            // open refuses a long option it does not know, the prefix of two, or a value for one
+            // that takes none, and opens nothing.
+            ("/usr/bin/open", ["--bogus", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["--h", "/System/Applications/Calculator.app"]),
+            ("/usr/bin/open", ["--new=1", "/System/Applications/Calculator.app"]),
             ("/usr/bin/env", ["-S", "/bin/sh -c payload", "/bin/ls"]),
             ("/usr/bin/nohup", []),
             // xargs adds words from its standard input to the command it runs.
