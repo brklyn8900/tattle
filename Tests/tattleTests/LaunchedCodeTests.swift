@@ -8,7 +8,7 @@ final class LaunchedCodeTests: XCTestCase {
     private static let applesWrappers: Set<String> = [
         "/usr/bin/nohup", "/usr/bin/arch", "/usr/bin/caffeinate", "/usr/bin/time", "/usr/bin/nice", "/usr/bin/sandbox-exec",
         "/usr/bin/env", "/usr/bin/script", "/usr/bin/login", "/usr/bin/open", "/usr/bin/xargs", "/usr/bin/find",
-        "/usr/bin/xcrun", "/usr/bin/sudo", "/usr/bin/screen",
+        "/usr/bin/sudo", "/usr/bin/screen",
     ]
 
     /// How a file reads: as Apple's when it is one of Apple's wrappers or in `apple`, as
@@ -202,7 +202,6 @@ final class LaunchedCodeTests: XCTestCase {
 
     func testMoreOfApplesProgramsRunTheCodeTheyAreGiven() {
         let commands: [(String, [String], String)] = [
-            ("/usr/bin/xcrun", ["--sdk", "macosx", "/x/tool"], "/x/tool"),
             ("/usr/bin/sudo", ["-u", "root", "/x/agent"], "/x/agent"),
             ("/usr/bin/sudo", ["--user", "root", "/x/agent"], "/x/agent"),
             ("/usr/bin/sudo", ["--prompt", "/bin/ls", "/x/agent"], "/x/agent"),
@@ -388,6 +387,24 @@ final class LaunchedCodeTests: XCTestCase {
         let elsewhere = ProcessEntry.name(path: "/Users/x/bin/tool", arguments: ["tool", "-frontend", "-interpret", "/x/a.swift"],
                                           command: "tool", signature: apple)
         XCTAssertEqual(elsewhere.name, "a.swift", "Apple's frontend is known by its signing identifier wherever it is")
+    }
+
+    func testXcrunIsOneOfApplesDeveloperTools() {
+        var identifiers = Self.developerIdentifiers
+        identifiers["/usr/bin/xcrun"] = "com.apple.xcrun"
+        identifiers["/Users/x/lldb"] = "com.apple.xcrun"
+        identifiers["/Users/x/swift"] = "com.apple.xcrun"
+        identifiers["/bin/ls"] = "com.apple.ls"
+        identifiers["/usr/bin/leaks"] = "com.apple.dt.SamplingTools.leaks"
+        // It looks in a developer folder before the PATH.
+        XCTAssertEqual(signer("/usr/bin/xcrun", ["leaks", "/bin/ls"], identifiers: identifiers), .unnamed)
+        XCTAssertEqual(signer("/usr/bin/xcrun", ["ls"], identifiers: identifiers), .unnamed)
+        XCTAssertEqual(signer("/usr/bin/xcrun", ["--sdk", "macosx", "/x/tool"], identifiers: identifiers), .unnamed)
+        // Under another name it is that tool, and the arguments are the tool's.
+        XCTAssertEqual(signer("/Users/x/lldb", ["/bin/ls", "-b", "-s", "/x/cmds"], identifiers: identifiers), .unnamed)
+        // A script it runs is a script.
+        XCTAssertEqual(signer("/usr/bin/xcrun", ["swift", "/x/a.swift"], identifiers: identifiers), .script)
+        XCTAssertEqual(signer("/Users/x/swift", ["/x/a.swift"], identifiers: identifiers), .script)
     }
 
     func testApplesDeveloperToolsRunUnnamedCodeUnlessTheyRunAScript() {

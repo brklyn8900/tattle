@@ -67,10 +67,10 @@ enum LaunchedCode: Equatable, Sendable {
 
         /// Apple's stubs that run the developer tool their own file name chooses, from the
         /// Xcode or the Command Line Tools xcode-select chose (`/usr/bin/python3`, `swift`,
-        /// `git`, `xcodebuild`, `devicectl`).
+        /// `git`, `xcodebuild`, `devicectl`), and xcrun, which does under another name.
         private static let developerStubs: Set<String> = [
             "com.apple.dt.xcode_select.tool-shim-public", "com.apple.dt.xcode_select.xtool-shim-public",
-            "com.apple.dt.xcode_select.libdevtool-shim-public",
+            "com.apple.dt.xcode_select.libdevtool-shim-public", "com.apple.xcrun",
         ]
         /// They, and `/usr/bin/java`, which runs a Java runtime's: all are known by file name.
         private static let stubs = developerStubs.union(["com.apple.servertool"])
@@ -137,7 +137,11 @@ enum LaunchedCode: Equatable, Sendable {
         let code = followed(program, arguments, identity, identify, searchPath: searchPath)
         switch code {
         case .script, .unnamed, .standardInput: return code
-        case .program, .undetermined: return identity.isApples ? code : .program(program)
+        case .program, .undetermined:
+            // A table can follow a developer tool only to a script: xcrun looks for what it
+            // names in a developer folder before the PATH.
+            if identity.isDeveloperTool { return .unnamed(interpreter: URL(fileURLWithPath: program).lastPathComponent) }
+            return identity.isApples ? code : .program(program)
         }
     }
 
