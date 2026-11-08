@@ -44,10 +44,8 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         if let path {
             switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, invokedAs: arguments?.first,
                                         identity: LaunchedCode.Identity(path: path, signature: signature)) {
-            // "node ." runs the package in its working directory, which the path does not name.
-            case .script(let script, let name) where !script.hasSuffix("/") && ![".", ".."].contains(script.split(separator: "/").last ?? "."):
-                return (scriptName(script), name)
-            case .script(_, let name), .unnamed(let name): interpreter = name
+            case .script(let script, let name): return (scriptName(script), name)
+            case .unnamed(let name): interpreter = name
             case .standardInput(let name) where startedByLaunchd: interpreter = name
             case .program, .standardInput, .undetermined: break
             }

@@ -281,6 +281,9 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(package.interpreter, "node")
         XCTAssertEqual(ProcessEntry.name(path: "/opt/node/bin/node", arguments: ["node", "dist/"], command: "node").name, "node")
         XCTAssertEqual(ProcessEntry.name(path: "/opt/node/bin/node", arguments: ["node", ".."], command: "node").name, "node")
+        for folder in [".", "./", "..", "../", "dist/", "/x/app/."] {
+            XCTAssertEqual(code("/opt/node/bin/node", [folder]), .unnamed(interpreter: "node"), "\(folder) is not a script file")
+        }
         let unreadable = ProcessEntry.name(path: "/bin/bash", arguments: nil, command: "bash")
         XCTAssertEqual(unreadable.name, "bash")
         XCTAssertEqual(unreadable.interpreter, "bash", "another user's arguments cannot be read, so what its shell runs is unknown")

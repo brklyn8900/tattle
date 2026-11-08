@@ -13,8 +13,8 @@ enum LaunchedCode: Equatable, Sendable {
     /// An interpreter running a script file, at the path the command line gives.
     case script(path: String, interpreter: String)
     /// An interpreter running code the command line does not name as a file: inline (`-c`,
-    /// `-e`), a module or class by name, or in arguments that cannot be read; or a compiler
-    /// running a plugin.
+    /// `-e`), a module or class by name, a package by its folder, or in arguments that cannot
+    /// be read; or a compiler running a plugin.
     case unnamed(interpreter: String)
     /// An interpreter reading its code from standard input: a pipe, a file launchd opens
     /// for it, or someone typing.
@@ -205,15 +205,20 @@ enum LaunchedCode: Equatable, Sendable {
     private static func interpreted(by name: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
         guard let arguments else { return .unnamed(interpreter: name) }
         switch scan(arguments, grammar) {
-        case .file(let path): return .script(path: path, interpreter: name)
-        case .operand(let index) where grammar.operandIsScript && !arguments[index].isEmpty:
-            return .script(path: arguments[index], interpreter: name)
-        // An empty operand is what is left when a process rewrites its own arguments (a node
-        // title), so the script is no longer named.
+        case .file(let path): return scriptFile(path, interpreter: name)
+        case .operand(let index) where grammar.operandIsScript: return scriptFile(arguments[index], interpreter: name)
         case .operand, .code: return .unnamed(interpreter: name)
         case .standardInput: return .standardInput(interpreter: name)
         case .nothing: return grammar.readsStandardInput ? .standardInput(interpreter: name) : .unnamed(interpreter: name)
         }
+    }
+
+    /// The script file at `path`, which a folder is not: "node ." runs the package in its
+    /// working directory, which the path does not name. Nor is the empty word a process leaves
+    /// when it rewrites its own arguments (a node title).
+    private static func scriptFile(_ path: String, interpreter: String) -> LaunchedCode {
+        let isFolder = path.hasSuffix("/") || [".", ".."].contains(path.split(separator: "/").last ?? ".")
+        return path.isEmpty || isFolder ? .unnamed(interpreter: interpreter) : .script(path: path, interpreter: interpreter)
     }
 
     // MARK: - Swift
@@ -251,9 +256,9 @@ enum LaunchedCode: Equatable, Sendable {
         }
         if isFrontend, arguments.contains("-interpret") {
             switch scan(arguments, swiftOptions) {
-            case .operand(let index) where !arguments[index].isEmpty: return .script(path: arguments[index], interpreter: name)
+            case .operand(let index): return scriptFile(arguments[index], interpreter: name)
             case .standardInput: return .standardInput(interpreter: name)
-            case .operand, .code, .file, .nothing: return .unnamed(interpreter: name)
+            case .code, .file, .nothing: return .unnamed(interpreter: name)
             }
         }
         if !isFrontend, tool == "swift" { return interpreted(by: name, arguments: arguments, swiftOptions) }
