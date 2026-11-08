@@ -107,6 +107,9 @@ Preconditions:
   counted, not listed. A helper with no plist keeps its signer: `PasswordsMenuBarExtra`
   reads `Apple`. With `RootDirectory` in the plist (`/bin/ls /`, not loaded) the row reads
   the same and the detail has no `Runs Apple's`: the path does not say which file runs.
+  A copy of `/bin/ls` named `softwareupdated`, run directly, through `/usr/bin/nohup` and by
+  a path out of `/usr` (`/usr/..<dir>/softwareupdated`), not loaded: the row reads the same,
+  with no `Runs Apple's`. A link to `/bin/ls` named `SafariUpdater`: `Runs Apple's ls`.
   Afterwards `launchctl bootout` the two loaded agents and delete the plists.
 - **xcrun.** On testmac, not loaded: `<dir>/lldb /bin/ls -b -s <dir>/cmds`, where `lldb` is a
   symlink to `/usr/bin/xcrun`, and `/usr/bin/xcrun ls`: `unnamed code`. `/usr/bin/xcrun swift
@@ -164,3 +167,6 @@ Preconditions:
   is unit-tested at this reading, not run again. `RootDirectory` proven on testmac, run
   `2026-11-08T092645` (`be0e8f0`); in run `2026-11-08T092551` (`c701e4f`) its detail had
   `Runs Apple's ls`.
+  The copy, the link and the path out of `/usr` proven on testmac, run `2026-11-08T100408`
+  (`b3a99b9`); in run `2026-11-08T100308` (`6db6203`) they had `Runs Apple's softwareupdated`
+  and `Runs Apple's SafariUpdater`.
