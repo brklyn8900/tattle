@@ -169,6 +169,22 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(group?.leader?.signerText, "Python script", "the row's subtitle")
     }
 
+    func testAScriptIsNotPartOfTheAppItsInterpreterLivesIn() {
+        let python = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
+        let git = "/Applications/Xcode.app/Contents/Developer/usr/bin/git"
+        let named = ProcessEntry.name(path: python, arguments: [python, "-c", "payload"], command: "Python")
+        let entries = [
+            ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: python, interpreter: named.interpreter, started: Date()),
+            ProcessEntry(pid: 701, parentPid: 1, uid: 501, name: "git", path: git, started: Date()),
+        ]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in CodeSignature(signer: .apple) }, responsible: { $0 })
+        XCTAssertNil(snapshot.item(pid: 700)?.app, "Xcode's Python runs the script, which is not Xcode's")
+        XCTAssertEqual(snapshot.group(id: "pid:700")?.kind, .process)
+        XCTAssertEqual(snapshot.group(id: "pid:700")?.leader?.signerText, "Python script", "the row's subtitle")
+        XCTAssertEqual(snapshot.item(pid: 701)?.app?.path, "/Applications/Xcode.app", "Xcode's own tools are Xcode's")
+    }
+
     func testFacts() {
         let item = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch).item(pid: 401)!
         let facts = Dictionary(item.facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })

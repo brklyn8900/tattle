@@ -284,8 +284,8 @@ struct ProcessSnapshot: Equatable, Sendable {
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
     }
 
-    /// The app a process belongs to: the bundle on its own path, else the one Launch
-    /// Services opened it from, else the nearest ancestor's, else, for a service that
+    /// The app a process belongs to: the bundle on its own path unless it runs a script,
+    /// else the one Launch Services opened it from, else the nearest ancestor's, else, for a service that
     /// launchd started on an app's behalf (Safari's networking service, say), the app
     /// macOS holds responsible for it. Memoized, since whole trees share an answer. The
     /// Network tab uses it too, to put a helper's connection under its app.
@@ -298,8 +298,9 @@ struct ProcessSnapshot: Equatable, Sendable {
         guard let entry = byPid[pid] else { return nil }
         // Launch Services registers some command-line processes too (node servers that
         // open a browser, say) and then reports the bare executable as their bundle;
-        // only a real .app counts.
-        var result = entry.path.flatMap(AppBundle.containing)
+        // only a real .app counts. An interpreter inside an app (Xcode's Python, make and
+        // swift) says nothing about whose script it runs.
+        var result = (entry.interpreter == nil ? entry.path.flatMap(AppBundle.containing) : nil)
             ?? runningApp(pid).flatMap { $0.hasSuffix(".app") ? AppBundle(path: $0) : nil }
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {
             result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
