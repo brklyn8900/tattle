@@ -59,9 +59,21 @@ done)
   the fields it uses: `Takes.code` now means inline code for an interpreter and a command
   not followed for a wrapper.
 - In Processes, a copy of one of Apple's other tools outside its usual place keeps Apple's
-  signature and reads as Apple's program, whatever it is told to load: only Apple's Swift tools, clang
-  and ld are known as developer tools by signing identifier wherever they are
+  signature and reads as Apple's program, whatever it is told to load: only Apple's Swift
+  tools, clang and ld are known as developer tools by signing identifier wherever they are.
+  Apple's tools with a team identifier also honor `DYLD_` variables, as macOS's own programs
+  do not: the Command Line Tools' `lldb` did from a shell, not tried under launchd
   (`LaunchedCode.swift`).
+- Processes reads as Apple's the code an Apple process runs inside itself: `jsc -e`, a vim
+  script, a pipe into bash under cron (`LaunchedCode.swift`, `ProcessTable.swift`).
+- A launch item through `/usr/bin/sudo` reads as `unsigned`: sudo cannot be read by the user
+  (`r-s--x--x`), so Apple's signature on it cannot be either (`CodeSignature.swift`).
+- An agent an app registers with SMAppService reads by its executable: the
+  `ProgramArguments` in the plist inside the app are not read (`StartupSnapshot.swift`).
+- A detail's "Interpreter signed by" and "Interpreter team" name clang, git and Xcode Service
+  as interpreters, which they are not (`ProcessSnapshot.swift`).
+- `ProcessEntry`'s `interpreter` and `runsUnnamedCode` are one state in two fields, which
+  allows unnamed code with no interpreter: one enum would hold it (`ProcessTable.swift`).
 - `testALockedFileFailsOneInstallAndWedgesNone` checks that the stage held a locked copy
   when the install failed, which holds only where ditto copies a locked file: macOS 26.7.2
   does, and on 2026-10-26 this Mac's ditto failed on it, so on such a system the check
