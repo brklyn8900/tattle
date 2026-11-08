@@ -113,6 +113,30 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertNil(CodeSignature.read(path: unsigned.path).codeHash)
     }
 
+    /// A signature's hash says which version of the code this is, so what decides whether to
+    /// read it again cannot be a date anyone can set back.
+    func testASignatureIsReadAgainForAFileReplacedUnderItsOldDate() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        func write(_ content: String) throws {
+            try Data(content.utf8).write(to: file)
+            try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+        }
+        final class Reads: @unchecked Sendable { var count = 0 }
+        let reads = Reads()
+        let cache = SignatureCache(read: { _ in
+            reads.count += 1
+            return CodeSignature(signer: .adHoc, codeHash: String(reads.count))
+        })
+
+        try write("one")
+        XCTAssertEqual(cache.signature(at: file.path)?.codeHash, "1")
+        XCTAssertEqual(cache.signature(at: file.path)?.codeHash, "1", "the same version is read once")
+        try write("two")
+        XCTAssertEqual(cache.signature(at: file.path)?.codeHash, "2")
+    }
+
     func testACertificateNotIssuedByAppleClaimsNothing() throws {
         let fixtures = try XCTUnwrap(Bundle.module.url(forResource: "forged-signatures", withExtension: nil))
         for name in ["forged-software-signing", "forged-developer-id"] {

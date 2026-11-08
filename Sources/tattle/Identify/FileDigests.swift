@@ -1,6 +1,26 @@
 import CryptoKit
 import Foundation
 
+/// What differs between two versions of a file. Anyone can set a modification date back; the
+/// change time and the inode are the system's.
+struct FileVersion: Equatable, Sendable {
+    let isRegularFile: Bool
+    private let values: [Int]
+
+    /// Of the file a link leads to. Nil when the path cannot be read.
+    init?(path: String) {
+        var info = stat()
+        guard stat(path, &info) == 0 else { return nil }
+        self.init(info)
+    }
+
+    init(_ info: stat) {
+        isRegularFile = info.st_mode & S_IFMT == S_IFREG
+        values = [Int(info.st_dev), Int(info.st_ino), Int(info.st_size), info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec,
+                  info.st_ctimespec.tv_sec, info.st_ctimespec.tv_nsec]
+    }
+}
+
 /// The SHA-256 of the files identities rest on (`CodeIdentity.contentFile`), each read once per
 /// version of the file. Only the explain step asks, for an answer looked up for an open detail
 /// or being stored, so a poll reads no file's content.
@@ -9,7 +29,7 @@ import Foundation
 /// request changes at every refresh, sooner than a large file takes to read.
 @MainActor
 final class FileDigests {
-    private var known: [String: (version: [Int], digest: Task<String?, Never>)] = [:]
+    private var known: [String: (version: FileVersion, digest: Task<String?, Never>)] = [:]
     private let read: @Sendable (String) -> String?
 
     init(read: @escaping @Sendable (String) -> String? = FileDigests.sha256(of:)) {
@@ -18,21 +38,12 @@ final class FileDigests {
 
     /// Nil for anything but a regular file that can be read.
     func digest(of path: String) async -> String? {
-        guard let version = Self.version(of: path) else { return nil }
+        guard let version = FileVersion(path: path), version.isRegularFile else { return nil }
         if let known = known[path], known.version == version { return await known.digest.value }
         let read = read
         let digest = Task.detached(priority: .utility) { read(path) }
         known[path] = (version, digest)
         return await digest.value
-    }
-
-    /// What differs between two versions of a file. Anyone can set a modification date back;
-    /// the change time and the inode are the system's.
-    private static func version(of path: String) -> [Int]? {
-        var info = stat()
-        guard stat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return nil }
-        return [Int(info.st_dev), Int(info.st_ino), Int(info.st_size), info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec,
-                info.st_ctimespec.tv_sec, info.st_ctimespec.tv_nsec]
     }
 
     /// Through one buffer, so a large file costs time and no memory. Opened without blocking:

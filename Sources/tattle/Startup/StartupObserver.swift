@@ -35,16 +35,21 @@ final class StartupObserver {
 }
 
 /// Signature reads cost up to a tenth of a second per app, so each path is read once per
-/// modification date.
+/// version of the file.
 final class SignatureCache: @unchecked Sendable {
     private let lock = NSLock()
-    private var cache: [String: (modified: Date?, signature: CodeSignature)] = [:]
+    private var cache: [String: (version: FileVersion?, signature: CodeSignature)] = [:]
+    private let read: @Sendable (String) -> CodeSignature
+
+    init(read: @escaping @Sendable (String) -> CodeSignature = { CodeSignature.read(path: $0) }) {
+        self.read = read
+    }
 
     func signature(at path: String) -> CodeSignature? {
-        let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
-        if let hit = lock.withLock({ cache[path] }), hit.modified == modified { return hit.signature }
-        let signature = CodeSignature.read(path: path)
-        lock.withLock { cache[path] = (modified, signature) }
+        let version = FileVersion(path: path)
+        if let hit = lock.withLock({ cache[path] }), hit.version == version { return hit.signature }
+        let signature = read(path)
+        lock.withLock { cache[path] = (version, signature) }
         return signature
     }
 }
