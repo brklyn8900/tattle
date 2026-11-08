@@ -227,6 +227,14 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try key(.launchItem, "dev-backup"), "dev-backup", "a machine name matches only as a whole host name")
     }
 
+    /// Instructions are prose: a Mac named "Mac" or a user called data must not rewrite them.
+    /// What cannot be a word still goes.
+    func testInstructionsLoseOnlyTheHomePathAndAddresses() {
+        let redactor = Redactor(home: "/Users/data", username: "data", machineNames: ["Mac"])
+        let prompt = Prompt.build(instructions: "A Mac's owner reads data from /Users/data/x on 10.0.0.5.", request: ExplainRequest(kind: .port, key: "5000"), redactor: redactor)
+        XCTAssertTrue(prompt.hasPrefix("A Mac's owner reads data from <home>/x on <private-ip>.\n"), prompt)
+    }
+
     func testPanelOnlyFactsAndPromptValues() throws {
         let facts = [
             Fact(name: "Working in", value: "~/dev/client-acme", inPrompt: false),

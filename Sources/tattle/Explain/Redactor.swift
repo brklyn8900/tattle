@@ -90,6 +90,12 @@ struct Redactor: Sendable {
         return Self.redactAddresses(redactUsername(out))
     }
 
+    /// For text written for the model rather than captured: the login and the machine's names
+    /// match as words, so a Mac named "Mac" would rewrite "a Mac's owner".
+    func redactProse(_ text: String) -> String {
+        Redactor(home: home, username: "", machineNames: []).redact(text)
+    }
+
     /// The username never matches as a label of a dotted name, so "mail.google.com" stays
     /// whole for a user called mail. A dot that ends a sentence does not join a label.
     ///
