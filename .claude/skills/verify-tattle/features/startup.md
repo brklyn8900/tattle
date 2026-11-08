@@ -83,7 +83,12 @@ Preconditions:
     Mac, where macOS names each of these rows `Xcode`: Xcode's toolchain's `swiftc`, the
     same compile job through it, loaded, `xcodebuild -version` from its developer folder,
     and its `lldb-rpc-server` (in `Contents/SharedFrameworks`); Xcode's own
-    `Contents/MacOS/Xcode` reads `App Store`, its signer;
+    `Contents/MacOS/Xcode` reads `App Store`, its signer. Copies of the Command Line
+    Tools' `clang`, `ld` and `swift-frontend` in `<dir>/bin`, which keep their signing
+    identifiers: `clang -c <dir>/input.c -o <dir>/input.o`, loaded, `clang
+    -fplugin=<dir>/evil.dylib -c <dir>/a.c`, `ld -lto_library <dir>/evil.dylib <dir>/a.o`,
+    and `swift-frontend -frontend -c <dir>/a.swift -load-plugin-library
+    <dir>/evil.dylib`;
   - `/usr/bin/open -t`, `-R`, `-gR`, `--reveal`, `--rev` and `--header` with
     `/System/Applications/Calculator.app`: no `Signed by`; `/usr/bin/open -ga` with it:
     `Apple`;
@@ -131,6 +136,8 @@ Preconditions:
   `2026-11-08T010801` is the same on `1ab9f0b`: every row `Apple` but `/usr/bin/swift
   <dir>/loop.swift`'s. The Xcode rows proven on the user's Mac, run `2026-11-08T010935`
   (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) the four that are not Xcode itself
-  read `Apple`. Copies of testmac's in this Mac's `build/verify/runs/testmac-2026-11-08/`.
+  read `Apple`. The copies of `clang`, `ld` and `swift-frontend` proven on testmac, run
+  `2026-11-08T014224` (`a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) all four read
+  `Apple`. Copies of testmac's in this Mac's `build/verify/runs/testmac-2026-11-08/`.
   Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
   only.

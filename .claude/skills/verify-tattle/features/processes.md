@@ -72,6 +72,15 @@ Preconditions:
   toolchain's `swiftc` (the user's Mac) the detail has `Runs with swift-frontend (<Xcode's
   toolchain>/usr/bin/swift-frontend)`, `Signed by unnamed code`, `Interpreter signed by
   Apple`, `Parent launchd (pid 1)`, and no `Part of`.
+- **A copy of a developer tool.** As above, with a copy of the Command Line Tools'
+  `clang` in `<dir>/bin`, `-c <dir>/input.c -o <dir>/input.o`, where `input.c` is a
+  `mkfifo`. The copy keeps its signing identifier, `com.apple.clang`, which reads as one of
+  Apple's developer tools wherever it is: its row reads `clang, 2 processes · clang,
+  unnamed code` (the driver and its `-cc1`), not a member of `macOS`.
+- **An app among the developer tools.** With Xcode (the user's Mac), its `Xcode Service.app`,
+  under `Contents/Developer/Library/Xcode/Agents/`, while it runs: its row reads `Xcode
+  Service, 1 process · unnamed code`, not its bundle's signer. The detail has `Signed by
+  unnamed code`, `Interpreter signed by Apple`, `Interpreter team 59GAB85EFG`.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
   · node script`, not `.`. With node.js's own build (testmac's `~/.local/node`), the detail
@@ -126,6 +135,11 @@ Preconditions:
   swift-frontend script`. Through Xcode's toolchain on the user's Mac, row and detail, run
   `2026-11-08T010935` (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) it had no row of
   its own. Inline code and Python's `-c` as `unnamed code` are unit-tested only.
+- The copy of clang proven 2026-11-08 on testmac, its row, run `2026-11-08T014224` (commit
+  `a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) it had no row of its own. Its detail
+  was not saved. Xcode Service's row proven 2026-11-08 on the user's Mac, run
+  `2026-11-08T013950` (`a8e6f29`); in run `2026-11-08T013910` (`e06b5dd`) it read `Xcode
+  Service, 1 process · Apple`, its detail already `Signed by unnamed code`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,
