@@ -37,7 +37,8 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         var interpreter: String?
         if let path {
-            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }) {
+            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) },
+                                        identity: LaunchedCode.Identity(path: path, signature: nil)) {
             case .script(let script, let name): return (scriptName(script), name)
             case .unnamed(let name): interpreter = name
             case .program, .standardInput, .undetermined: break

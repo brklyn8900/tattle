@@ -21,33 +21,70 @@ enum LaunchedCode: Equatable, Sendable {
     /// bundle identifier, or a command inside an option's value.
     case undetermined
 
+    /// Who a program is, for reading its command line. Apple's programs are known by their
+    /// signing identifier, which a symlink, another name or another case leaves as it is;
+    /// anyone else's by file name, which says nothing about what the file holds.
+    struct Identity: Equatable, Sendable {
+        /// The name the option tables know it by.
+        var name: String
+        var isApples: Bool
+
+        init(path: String, signature: CodeSignature?) {
+            let file = URL(fileURLWithPath: path).lastPathComponent
+            isApples = signature?.signer == .apple
+            if isApples, let identifier = signature?.identifier, !Self.stubs.contains(identifier),
+               let last = identifier.split(separator: ".").last {
+                name = String(last)
+            } else {
+                name = file
+            }
+        }
+
+        /// Apple's stubs that run the developer tool their own file name chooses
+        /// (`/usr/bin/python3`, `make`, `swift`, `java`), under one identifier.
+        private static let stubs: Set<String> = ["com.apple.dt.xcode_select.tool-shim-public", "com.apple.servertool"]
+    }
+
     /// What a running process runs: its executable's code, unless the executable is an
     /// interpreter. A wrapper has by then replaced itself with the program or started it as
     /// a process of its own. `arguments` follow argv[0], nil when they cannot be read.
-    static func running(executable: String, arguments: [String]?) -> LaunchedCode {
-        let name = URL(fileURLWithPath: executable).lastPathComponent
-        guard let grammar = grammar(of: name, in: interpreters) else { return .program(executable) }
-        return interpreted(by: name, arguments: arguments, grammar)
+    static func running(executable: String, arguments: [String]?, identity: Identity) -> LaunchedCode {
+        guard let grammar = grammar(of: identity.name, in: interpreters) else { return .program(executable) }
+        return interpreted(by: URL(fileURLWithPath: executable).lastPathComponent, arguments: arguments, grammar)
     }
 
     /// What a command line starts: through any wrappers (`nohup`, `caffeinate`, `env`) to
     /// the program they run, and through java to the jar it runs, then as `running` reads
     /// it. `arguments` follow argv[0].
-    static func started(program: String, arguments: [String]) -> LaunchedCode {
-        let name = URL(fileURLWithPath: program).lastPathComponent
-        if let grammar = grammar(of: name, in: launchers) { return interpreted(by: name, arguments: arguments, grammar) }
-        guard let grammar = grammar(of: name, in: wrappers) else {
-            return running(executable: program, arguments: arguments)
+    ///
+    /// A program that is not Apple's runs its own code, whatever its name and arguments say,
+    /// so a command line through one never reaches Apple's program: that program reads as
+    /// the one that named it.
+    static func started(program: String, arguments: [String], identify: (String) -> Identity) -> LaunchedCode {
+        started(program, arguments, identify, through: nil)
+    }
+
+    /// `through` is the first program on the way that is not Apple's.
+    private static func started(_ program: String, _ arguments: [String], _ identify: (String) -> Identity, through: String?) -> LaunchedCode {
+        let identity = identify(program)
+        let through = through ?? (identity.isApples ? nil : program)
+        if let grammar = grammar(of: identity.name, in: launchers) {
+            return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
+        }
+        guard let grammar = grammar(of: identity.name, in: wrappers) else {
+            let code = running(executable: program, arguments: arguments, identity: identity)
+            if case .program = code, identity.isApples, let through { return .program(through) }
+            return code
         }
         switch scan(arguments, grammar) {
-        case .program(let path) where path.hasPrefix("/"): return started(program: path, arguments: [])
+        case .program(let path) where path.hasPrefix("/"): return started(path, [], identify, through: through)
         case .operand(var index):
             if grammar.operandsBeforeCommand == .one { index += 1 }
             if grammar.operandsBeforeCommand == .assignments {
                 while index < arguments.count, arguments[index].contains("=") { index += 1 }
             }
             guard index < arguments.count else { return .undetermined }
-            return started(program: arguments[index], arguments: Array(arguments[(index + 1)...]))
+            return started(arguments[index], Array(arguments[(index + 1)...]), identify, through: through)
         case .program, .code, .file, .standardInput, .nothing: return .undetermined
         }
     }

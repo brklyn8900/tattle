@@ -5,10 +5,12 @@ import XCTest
 /// argument that only looks like that code must not stand in for it.
 final class LaunchedCodeTests: XCTestCase {
     /// The signer Startup shows for a command line, where the files in `apple` read as
-    /// Apple's and every other file as signed by a publisher named for its path.
-    private func signer(_ program: String, _ arguments: [String], apple: Set<String> = []) -> CodeSignature.Signer? {
+    /// Apple's, those in `identifiers` as Apple's with that signing identifier, and every
+    /// other file as signed by a publisher named for its path.
+    private func signer(_ program: String, _ arguments: [String], apple: Set<String> = [], identifiers: [String: String] = [:]) -> CodeSignature.Signer? {
         CodeSignature.read(program: program, arguments: arguments) { path in
-            CodeSignature(signer: apple.contains(path) ? .apple : .developerID(name: path))
+            if let identifier = identifiers[path] { return CodeSignature(signer: .apple, identifier: identifier) }
+            return CodeSignature(signer: apple.contains(path) ? .apple : .developerID(name: path))
         }?.signer
     }
 
@@ -89,6 +91,27 @@ final class LaunchedCodeTests: XCTestCase {
             XCTAssertEqual(signer(program, arguments), .developerID(name: code), "\(program) \(arguments)")
         }
         XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/sh", "-c", "payload", "/bin/ls"]), .script)
+    }
+
+    func testApplesProgramIsKnownByItsSigningIdentifierWhateverItsPathIsCalled() {
+        let commands: [(String, [String], [String: String])] = [
+            ("/Users/x/agent", ["-c", "payload"], ["/Users/x/agent": "com.apple.zsh"]),
+            ("/bin/BASH", ["-c", "payload"], ["/bin/BASH": "com.apple.bash"]),
+            ("/Users/x/run", ["/x/agent"], ["/Users/x/run": "com.apple.nohup", "/x/agent": "com.apple.zsh"]),
+            ("/usr/bin/python3", ["-c", "payload"], ["/usr/bin/python3": "com.apple.dt.xcode_select.tool-shim-public"]),
+        ]
+        for (program, arguments, identifiers) in commands {
+            XCTAssertEqual(signer(program, arguments, identifiers: identifiers), .script, "\(program) \(arguments)")
+        }
+    }
+
+    func testAProgramThatIsNotApplesNeverReadsAsApplesCode() {
+        // A program named like a wrapper runs its own code, whatever it names.
+        XCTAssertEqual(signer("/Users/x/nohup", ["/bin/ls"], apple: ["/bin/ls"]), .developerID(name: "/Users/x/nohup"))
+        XCTAssertEqual(signer("/Users/x/env", ["/usr/bin/nice", "/bin/ls"], apple: ["/usr/bin/nice", "/bin/ls"]), .developerID(name: "/Users/x/env"))
+        XCTAssertEqual(signer("/Users/x/nohup", ["/bin/sh", "-c", "payload"], apple: ["/bin/sh"]), .script, "a script reads as one whoever starts it")
+        XCTAssertEqual(signer("/Users/x/nohup", ["/x/agent"]), .developerID(name: "/x/agent"), "followed when what it names is not Apple's")
+        XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .apple)
     }
 
     func testAWrapperWhoseProgramIsNotNamedHasNoSigner() {

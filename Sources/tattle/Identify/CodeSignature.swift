@@ -54,7 +54,7 @@ struct CodeSignature: Equatable, Sendable {
     /// interpreter runs a signed binary as its script, so an Apple binary in the script's
     /// place is an argument read there by mistake.
     static func read(program: String, arguments: [String], reading: (String) -> CodeSignature? = { read(path: $0) }) -> CodeSignature? {
-        switch LaunchedCode.started(program: program, arguments: arguments) {
+        switch LaunchedCode.started(program: program, arguments: arguments, identify: { LaunchedCode.Identity(path: $0, signature: reading($0)) }) {
         case .program(let path): return reading(path)
         case .script(let path, _) where path.hasPrefix("/"):
             let signature = reading(path)
