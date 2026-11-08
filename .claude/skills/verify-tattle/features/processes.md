@@ -49,7 +49,19 @@ Preconditions:
   in iter(int, 1)]`. With the Command Line Tools it runs as the `Python.app` inside their
   Python framework, which is not an app: its row reads `Python, 1 process · Python script`,
   not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by script,
-  not signed`, `Interpreter signed by Apple`, and no `Part of`.
+  not signed`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
+  developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
+  must not hold it: the row and the detail read the same. testmac has only the Command Line
+  Tools, so this case runs on the user's Mac, with a probe the run loads and removes.
+- **Swift.** As above, with `/usr/bin/swift`, `<dir>/loop.swift` (`import Foundation`,
+  `while true { sleep(5) }`); give it 30 s to compile. It runs as `swift-frontend -frontend
+  -interpret <dir>/loop.swift ...`: its row reads `loop.swift, 1 process · swift-frontend
+  script`, not a member of `macOS`. The detail has `Runs with swift-frontend (<path>)`,
+  `Signed by script, not signed`, `Interpreter signed by Apple`.
+- **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
+  folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
+  · node script`, not `.`. With node.js's own build (testmac's `~/.local/node`), the detail
+  has `Interpreter signed by Node.js Foundation` and `Interpreter team HX7739G8FX`.
 - **Sort.** `$V ax press CPU` (the segment; the resources line's `CPU` text is not
   pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
 - **Marker process.** Start one the run owns: `nohup /bin/sleep 7777 >/dev/null 2>&1 &`
@@ -81,6 +93,17 @@ Preconditions:
 - The Python row proven 2026-11-07 on testmac, run `2026-11-07T212351` (commit `fef4f33`);
   in run `2026-11-07T195705` (`32a5508`) it was the framework app's row, `Python, 1
   process · Apple`.
+- Swift, a package by its folder and the interpreter's team proven 2026-11-07 on testmac,
+  run `2026-11-07T224519` (commit `9a0f53e`). Run `2026-11-07T224338` is the same journeys
+  on `2ec0b40`, before them: no swift row (its process counted in `macOS`, 553 against 552
+  after), the node row named `.`, and node's team as `Team`.
+- The Python row with Xcode as the developer folder proven 2026-11-07 on the user's Mac, run
+  `2026-11-07T224359` (commit `9a0f53e`); in run `2026-11-07T224701` (`2ec0b40`) it was a
+  member of `Xcode, 7 processes · App Store`, its detail `Part of Xcode`.
+- An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
+  pressing one.
+- On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,
+  `2026-11-07T224152`) when something else took focus; retrying each reading got through.
 - testmac's display sleeps after a minute idle, which closes the panel and sets the
   session's `CGSSessionScreenIsLocked` with no password lock; hold `caffeinate -di` for
   the length of a run.

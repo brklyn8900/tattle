@@ -52,17 +52,27 @@ Preconditions:
   - `/bin/zsh -c <code> /usr/bin/true`: `script, not signed`;
   - `/usr/bin/nohup <dir>/agent 600`: `ad hoc signed`;
   - `Program` `/bin/sh` with `ProgramArguments` `/bin/sh <dir>/probe.sh`: `Runs /bin/sh
-    <dir>/probe.sh`, argv[0] not repeated, and `unsigned`;
-  - `/usr/bin/perl5.34 <dir>/probe.pl`: `unsigned`;
+    <dir>/probe.sh`, argv[0] not repeated, and `script, not signed`;
+  - `/usr/bin/perl5.34 <dir>/probe.pl`: `script, not signed`;
+  - `/bin/sh <binary>`, where the binary is a Developer ID app's (Ghostty's on testmac):
+    `script, not signed`, not the app's signer;
   - `<dir>/nohup /bin/ls`, where `nohup` is a copy of `agent`: `ad hoc signed`, its own
     signer, not Apple's `ls`;
+  - `<dir>/env <binary>`, with `env` a copy of `agent` and the Developer ID binary above,
+    and `<dir>/nohup agent`, which names nothing on the PATH: `ad hoc signed`, their own;
   - `<dir>/h -c <code>`, where `h` is a symlink to `/bin/zsh`: `script, not signed`;
   - `/usr/bin/nohup bin/ls` with `WorkingDirectory` `<dir>`: no `Signed by`;
   - `/usr/bin/nohup sleep 600`: `Apple`, `/bin/sleep` found on the PATH;
-  - `/usr/bin/open -a /System/Applications/Utilities/Terminal.app <dir>/probe.command`: no
-    `Signed by`;
+  - `/usr/bin/open -a /System/Applications/Utilities/Terminal.app <dir>/probe.command` and
+    `/usr/bin/open <dir>/probe.command`: no `Signed by`;
+  - `/usr/bin/xargs /usr/bin/open -a /System/Applications/Utilities/Terminal.app`, with
+    `StandardInPath` a file naming `<dir>/probe.command`, and `/usr/bin/xargs
+    /usr/bin/find <dir> -maxdepth 0`: no `Signed by`;
+  - `/Library/Developer/CommandLineTools/usr/bin/swift <dir>/loop.swift` (the toolchain's
+    `swift`, a symlink to `swift-frontend`) and `/usr/bin/swift <dir>/loop.swift`:
+    `script, not signed`;
   - `/usr/bin/find <dir> -name none -exec <dir>/agent {} ;`: `ad hoc signed`;
-  - `/bin/zsh -O <dir>/probe.sh /bin/ls`: `unsigned`, the script's;
+  - `/bin/zsh -O <dir>/probe.sh /bin/ls`: `script, not signed`;
   - `/usr/bin/perl -lne /bin/ls /bin/ls` and `/usr/bin/python3 +run.py /bin/ls`: `script,
     not signed`;
   - `~/.local/node/bin/node --diagnostic-dir /usr/bin/true <dir>/evil.js`: `script, not
@@ -91,3 +101,8 @@ Preconditions:
   `nohup`, the symlink, the relative path, `open` with a document, `find`, `zsh -O`, `perl
   -lne`, `python3 +run.py` and the node decoy all read `Apple`, and `nohup sleep` read
   `unsigned`.
+- All of the signer journey proven again 2026-11-07 on testmac, run `2026-11-07T224519`
+  (commit `9a0f53e`). Run `2026-11-07T224338` is the same on `2ec0b40`: both xargs rows
+  read `Apple`, the `sh` and `env` decoys `Mitchell Hashimoto` (Ghostty's signer), the
+  script files `unsigned`, the toolchain's `swift` `Apple`, `open` with a document
+  `unsigned`, and `nohup agent` had no `Signed by`.
