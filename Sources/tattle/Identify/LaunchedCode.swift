@@ -60,6 +60,7 @@ enum LaunchedCode: Equatable, Sendable {
         private static func isInDeveloperFolder(_ path: String) -> Bool {
             if path.hasPrefix("/Library/Developer/CommandLineTools/") { return true }
             if path.split(separator: "/").contains(where: { $0.hasSuffix(".xctoolchain") }) { return true }
+            let path = path + "/"  // an app's own bundle counts
             guard let end = path.range(of: ".app/") else { return false }
             let developer = String(path[..<end.lowerBound]) + ".app/Contents/Developer"
             return path.hasPrefix(developer + "/") || FileManager.default.fileExists(atPath: developer)

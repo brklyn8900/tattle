@@ -506,6 +506,9 @@ final class LaunchedCodeTests: XCTestCase {
         let identifiers = [server.path: "com.apple.lldb-rpc-server", other.path: "com.apple.Other"]
         XCTAssertEqual(signer(server.path, [], identifiers: identifiers), .unnamed)
         XCTAssertEqual(signer(other.path, [], identifiers: identifiers), .launchItem(applesProgram: "Other"), "an app without a developer folder is not an Xcode")
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.dt.Xcode")
+        XCTAssertTrue(LaunchedCode.Identity(path: folder.appending(path: "Renamed.app").path, signature: apple).isDeveloperTool, "the Xcode itself, by its bundle")
+        XCTAssertFalse(LaunchedCode.Identity(path: folder.appending(path: "Other.app").path, signature: apple).isDeveloperTool)
         let named = ProcessEntry.name(path: server.path, arguments: [server.path], command: "lldb-rpc-server",
                                       signature: CodeSignature(signer: .apple, identifier: "com.apple.lldb-rpc-server"))
         XCTAssertTrue(named.runsUnnamedCode)
