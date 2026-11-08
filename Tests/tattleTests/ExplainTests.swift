@@ -502,6 +502,26 @@ final class ExplainerTests: XCTestCase {
         XCTAssertEqual(try store.rules(), [])
     }
 
+    /// An answer that was not kept stays on screen across refreshes, and goes when the row
+    /// comes to hold other code.
+    func testAnAnswerNotKeptStaysOnlyForTheCodeItWasGivenFor() {
+        let answer = Rule(kind: .process, pattern: "node", purpose: "x", source: .llm)
+        let nothing = ExplainRequest(kind: .process, key: "node")
+        XCTAssertEqual(ExplainSection.unkept(answer, givenFor: nil, request: nothing), answer)
+        XCTAssertNil(ExplainSection.unkept(answer, givenFor: nil, request: ExplainRequest(kind: .process, key: "node", identity: "team:A:x")),
+                     "the row now holds one program")
+        XCTAssertNil(ExplainSection.unkept(answer, givenFor: nil, request: ExplainRequest(kind: .process, key: "other")))
+
+        let unreadable: CodeIdentity = CodeIdentity(text: "unsigned:/x/a", contentFile: "/x/a")
+        XCTAssertEqual(ExplainSection.unkept(answer, givenFor: unreadable, request: ExplainRequest(kind: .process, key: "node", identity: unreadable)), answer,
+                       "not kept because its file cannot be read, and the same code still")
+        XCTAssertNil(ExplainSection.unkept(answer, givenFor: unreadable, request: ExplainRequest(kind: .process, key: "node", identity: .script(at: "/x/b"))))
+
+        var kept = answer
+        kept.id = 1
+        XCTAssertNil(ExplainSection.unkept(kept, givenFor: nil, request: nothing), "the knowledge base speaks for a kept one")
+    }
+
     func testAHostAnswerIsAboutTheHostWhoeverConnects() async throws {
         let explainer = explainer(FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#))
         let rule = try await explainer.ask(ExplainRequest(kind: .host, key: "a.example"))

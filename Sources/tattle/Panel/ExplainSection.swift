@@ -6,6 +6,11 @@ struct ExplainSection: View {
     let request: ExplainRequest
     let state: AppState
     @State private var rule: Rule?
+    /// The code `rule` was asked about, when the answer was the model's in this view.
+    @State private var answered: CodeIdentity?
+    /// The code on screen. A running task sees the `request` it started with, so an answer
+    /// that arrives late is checked against this.
+    @State private var shown: CodeIdentity?
     @State private var busy = false
     @State private var error: String?
 
@@ -59,20 +64,31 @@ struct ExplainSection: View {
     }
 
     private func load() async {
-        // An answer not kept (no id) stays for as long as this item's view does.
-        let unkept = rule.flatMap { $0.id == nil && $0.pattern == request.key ? $0 : nil }
+        shown = request.identity
+        let unkept = Self.unkept(rule, givenFor: answered, request: request)
         let found = try? await state.explainer.lookup(request)
         guard !Task.isCancelled else { return }
         rule = found ?? unkept
     }
 
+    /// The answer that stays when the knowledge base has none: one not kept (no id), for as
+    /// long as the view holds the code it was given for.
+    static func unkept(_ rule: Rule?, givenFor identity: CodeIdentity?, request: ExplainRequest) -> Rule? {
+        guard let rule, rule.id == nil, rule.pattern == request.key, identity == request.identity else { return nil }
+        return rule
+    }
+
     private func ask() {
         busy = true
         error = nil
+        let asked = request.identity
         Task {
             defer { busy = false }
             do {
-                rule = try await state.explainer.ask(request)
+                let answer = try await state.explainer.ask(request)
+                guard shown == asked else { return }
+                rule = answer
+                answered = asked
             } catch {
                 self.error = describe(error)
             }
