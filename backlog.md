@@ -3,6 +3,17 @@
 - Notifications for what's new: an opt-in macOS notification on first contact with a
   destination, a new listening port, or a new startup item. Needs a PRD change. After the
   search bar (agreed 2026-11-07).
+- Invert the opt-in identity gate for rules: a rule about a program, from any source, needs
+  an identity unless Apple's gate covers it. Today only `llm` rules and `builtin` rules with
+  an owner do, and no shipped rule falls outside that.
+- A bundle's signature is cached by the folder's modification date. Replacing an executable
+  inside the bundle does not change that date, so the app's row can keep a stale reading.
+- One naming step shared by Network and Processes: Network lists processes without their
+  signatures, then names each owner again.
+- An app's group row shows the app's signer when one of its connections comes from a foreign
+  executable. The connection's own row reads right.
+- Confirmed program answers from before identities stay as dead rows: they have no identity,
+  so they are never shown, and a confirmed rule never expires.
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
