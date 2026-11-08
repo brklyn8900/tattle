@@ -156,7 +156,8 @@ enum LaunchedCode: Equatable, Sendable {
         // An empty operand is what is left when a process rewrites its own arguments (a node
         // title), so the script is no longer named.
         case .operand, .code: return .unnamed(interpreter: name)
-        case .standardInput, .nothing: return .standardInput(interpreter: name)
+        case .standardInput: return .standardInput(interpreter: name)
+        case .nothing: return grammar.readsStandardInput ? .standardInput(interpreter: name) : .unnamed(interpreter: name)
         }
     }
 
@@ -170,8 +171,9 @@ enum LaunchedCode: Equatable, Sendable {
     // MARK: - Options
 
     private enum Takes {
-        /// The code is in the command line (inline, a module by name, a command in the
-        /// option's value), or the option says where to find the program (`env -P`).
+        /// What runs is not the operand as given: code in the command line (inline, a module
+        /// by name, a command in the option's value), the operands run by a shell or a session
+        /// (`sudo -s`, `screen -X`), or a program found where the option says (`env -P`).
         case code
         /// The code comes from standard input.
         case standardInput
@@ -199,6 +201,9 @@ enum LaunchedCode: Equatable, Sendable {
         var plusOptions = false
         /// The first operand is a script file, not code (awk) or a class (java).
         var operandIsScript = true
+        /// Without code named, the interpreter reads standard input; make reads the makefile
+        /// in its working directory.
+        var readsStandardInput = true
         /// What comes before the command a wrapper runs: `script`'s transcript file, `login`'s
         /// user, `env`'s assignments.
         var operandsBeforeCommand = OperandsBeforeCommand.none
@@ -297,6 +302,20 @@ enum LaunchedCode: Equatable, Sendable {
         ], grouped: false),
         "osascript": Grammar(options: ["-e": .code, "-l": .value, "-s": .value]),
         "tclsh": Grammar(options: ["-encoding": .value], grouped: false),
+        "wish": Grammar(options: [
+            "-encoding": .value, "-colormap": .value, "-display": .value, "-geometry": .value,
+            "-name": .value, "-use": .value, "-visual": .value,
+        ], grouped: false),
+        "swift": Grammar(options: [
+            "-e": .code, "-D": .value, "-F": .value, "-I": .value, "-L": .value, "-j": .value,
+            "-module-name": .value, "-sdk": .value, "-target": .value, "-Xcc": .value, "-Xlinker": .value,
+            "-Xfrontend": .value, "-swift-version": .value, "-enable-upcoming-feature": .value,
+            "-plugin-path": .value, "-load-plugin-library": .value, "-load-plugin-executable": .value,
+        ], grouped: false),
+        "make": Grammar(options: [
+            "-f": .file, "--file": .file, "--makefile": .file, "-C": .value, "--directory": .value,
+            "-I": .value, "--include-dir": .value, "-o": .value, "--old-file": .value, "-W": .value, "--what-if": .value,
+        ], operandIsScript: false, readsStandardInput: false),
         "expect": Grammar(options: ["-c": .code, "-f": .file, "-b": .file, "-D": .value], grouped: false),
         "awk": Grammar(options: ["-f": .file, "-v": .value, "-F": .value], operandIsScript: false),
     ]
@@ -329,5 +348,14 @@ enum LaunchedCode: Equatable, Sendable {
         "env": Grammar(options: ["-u": .value, "-P": .code, "-C": .value, "-S": .code], operandsBeforeCommand: .assignments),
         "script": Grammar(options: ["-t": .value, "-T": .value], operandsBeforeCommand: .one),
         "login": Grammar(options: ["-h": .value], operandsBeforeCommand: .one),
+        "xcrun": Grammar(options: ["-sdk": .value, "--sdk": .value, "-toolchain": .value, "--toolchain": .value], grouped: false),
+        "sudo": Grammar(options: [
+            "-C": .value, "-D": .value, "-g": .value, "-h": .value, "-p": .value, "-R": .value, "-r": .value,
+            "-T": .value, "-t": .value, "-U": .value, "-u": .value, "-e": .code, "-i": .code, "-s": .code,
+        ], operandsBeforeCommand: .assignments),
+        "screen": Grammar(options: [
+            "-c": .value, "-e": .value, "-h": .value, "-p": .value, "-S": .value, "-s": .value,
+            "-T": .value, "-t": .value, "-X": .code,
+        ]),
     ]
 }

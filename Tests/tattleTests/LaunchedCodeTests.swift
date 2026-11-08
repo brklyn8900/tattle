@@ -160,6 +160,30 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(signer("/usr/bin/nohup", ["no-such-program-anywhere"]))
     }
 
+    func testMoreOfApplesProgramsRunTheCodeTheyAreGiven() {
+        let commands: [(String, [String], String)] = [
+            ("/usr/bin/xcrun", ["--sdk", "macosx", "/x/tool"], "/x/tool"),
+            ("/usr/bin/sudo", ["-u", "root", "/x/agent"], "/x/agent"),
+            ("/usr/bin/screen", ["-dmS", "name", "/x/agent"], "/x/agent"),
+            ("/usr/bin/make", ["-C", "/x", "-f", "/x/Makefile", "all"], "/x/Makefile"),
+            ("/usr/bin/swift", ["-I", "/bin", "/x/a.swift"], "/x/a.swift"),
+            ("/usr/bin/wish", ["-geometry", "10x10", "/x/a.tcl"], "/x/a.tcl"),
+        ]
+        for (program, arguments, code) in commands {
+            XCTAssertEqual(signer(program, arguments), .developerID(name: code), "\(program) \(arguments)")
+        }
+        let scripts: [(String, [String])] = [
+            ("/usr/bin/make", ["-C", "/x", "all"]),
+            ("/usr/bin/make", []),
+            ("/usr/bin/swift", ["-e", "print(1)", "/bin/ls"]),
+        ]
+        for (program, arguments) in scripts {
+            XCTAssertEqual(signer(program, arguments), .script, "\(program) \(arguments)")
+        }
+        XCTAssertNil(signer("/usr/bin/sudo", ["-s", "/x/agent"]), "a shell runs the command")
+        XCTAssertNil(signer("/usr/bin/screen", ["-S", "name", "-X", "stuff", "/x/agent"]), "a command to a running session")
+    }
+
     func testAWrapperWhoseProgramIsNotNamedHasNoSigner() {
         let commands: [(String, [String])] = [
             ("/usr/bin/open", ["-a", "Safari", "/bin/ls"]),
