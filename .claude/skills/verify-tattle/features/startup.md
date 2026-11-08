@@ -63,7 +63,7 @@ Preconditions:
     and `<dir>/nohup agent`, which names nothing on the PATH: `ad hoc signed`, their own;
   - `<dir>/h -c <code>`, where `h` is a symlink to `/bin/zsh`: `unnamed code`;
   - `/usr/bin/nohup bin/ls` with `WorkingDirectory` `<dir>`: no `Signed by`;
-  - `/usr/bin/nohup sleep 600`: `Apple`, `/bin/sleep` found on the PATH;
+  - `/usr/bin/nohup sleep 600`: `launch item, not signed`, `/bin/sleep` found on the PATH;
   - `/usr/bin/open -a /System/Applications/Utilities/Terminal.app <dir>/probe.command` and
     `/usr/bin/open <dir>/probe.command`: no `Signed by`;
   - `/usr/bin/xargs /usr/bin/open -a /System/Applications/Utilities/Terminal.app`, with
@@ -99,6 +99,7 @@ Preconditions:
     /bin/ls`: `script, not signed`;
   - `~/.local/node/bin/node --diagnostic-dir /usr/bin/true <dir>/evil.js`: `script, not
     signed`.
+  Delete the plists and the folder afterwards.
 - **A launch item running Apple's program.** On testmac, in `~/Library/LaunchAgents/`:
   `/usr/bin/sqlite3 -cmd '.shell sleep 1197' :memory:` and `/bin/ls /`, both loaded. Each row
   reads `launch item, not signed`, not `Apple`; the detail has `Signed by launch item, not
@@ -106,14 +107,14 @@ Preconditions:
   counted, not listed. A helper with no plist keeps its signer: `PasswordsMenuBarExtra`
   reads `Apple`. With `RootDirectory` in the plist (`/bin/ls /`, not loaded) the row reads
   the same and the detail has no `Runs Apple's`: the path does not say which file runs.
+  Afterwards `launchctl bootout` the two loaded agents and delete the plists.
 - **xcrun.** On testmac, not loaded: `<dir>/lldb /bin/ls -b -s <dir>/cmds`, where `lldb` is a
   symlink to `/usr/bin/xcrun`, and `/usr/bin/xcrun ls`: `unnamed code`. `/usr/bin/xcrun swift
-  <dir>/a.swift`: `script, not signed`.
+  <dir>/a.swift`: `script, not signed`. Delete the plists and the folder afterwards.
 - **A registered item among the developer tools.** On the user's Mac:
   `ProvisoningProfileQuicklookExtension.appex` (in `Xcode.app/Contents/PlugIns`) and
   `uuid.mdimporter` (in `Xcode.app/Contents/Library/Spotlight`), both signed by Apple inside
   an App Store Xcode, read `unnamed code`.
-  Delete the plists and the folder afterwards.
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
   `Open at login` and background groups are missing: record that precondition as unmet.
 
@@ -154,6 +155,8 @@ Preconditions:
   read `Apple`. The copies of `clang`, `ld` and `swift-frontend` proven on testmac, run
   `2026-11-08T014224` (`a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) all four read
   `Apple`. Copies of testmac's in this Mac's `build/verify/runs/testmac-2026-11-08/`.
+  Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
+  only.
 - The launch item rule and xcrun proven 2026-11-08 on testmac, run `2026-11-08T090736` (commit
   `b5e5e2c`). In run `2026-11-08T090623` (`0a31fdc`) the `sqlite3`, `ls` and two xcrun rows
   read `Apple`. The registered items proven on the user's Mac, run `2026-11-08T090639`
@@ -161,5 +164,3 @@ Preconditions:
   is unit-tested at this reading, not run again. `RootDirectory` proven on testmac, run
   `2026-11-08T092645` (`be0e8f0`); in run `2026-11-08T092551` (`c701e4f`) its detail had
   `Runs Apple's ls`.
-  Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
-  only.
