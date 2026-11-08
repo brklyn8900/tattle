@@ -128,7 +128,7 @@ struct Redactor: Sendable {
     private static func redactFolders(_ text: String) -> String {
         text
             .replacingOccurrences(of: "(?i)(?<![\\w.-])/Volumes/[^/\\n\")]+", with: "/Volumes/<volume>", options: .regularExpression)
-            .replacingOccurrences(of: "(?i)/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
+            .replacingOccurrences(of: "(?i)(?<![\\w.-])/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
     }
 
     /// The login matches only as written, so the login "code" leaves the app "Code" alone.

@@ -47,6 +47,15 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(short.redact("/Users/u.old/x", as: .program), "/Users/<other-user>/x")
     }
 
+    /// Only a path that starts at the top is another account's folder. A project's users/
+    /// directory is not.
+    func testUsersMatchesOnlyAtAPathsStart() {
+        XCTAssertEqual(redactor.redact("node /srv/api/users/server.js", as: .program), "node /srv/api/users/server.js")
+        XCTAssertEqual(redactor.redact("/var/db/dslocal/nodes/Default/users/root.plist", as: .program), "/var/db/dslocal/nodes/Default/users/root.plist")
+        XCTAssertEqual(redactor.redact("node (/opt/app/Users/x.js)", as: .program), "node (/opt/app/Users/x.js)")
+        XCTAssertEqual(redactor.redact("node (/Users/other/x.js) and file:///Users/other/y", as: .program), "node (/Users/<other-user>/x.js) and file:///Users/<other-user>/y")
+    }
+
     func testOtherAccountsFoldersAndDiskNamesAreReplaced() {
         XCTAssertEqual(redactor.redact("/Users/other/bin/x, /users/Other and /Users/Shared/x", as: .program), "/Users/<other-user>/bin/x, /Users/<other-user> and /Users/Shared/x")
         XCTAssertEqual(redactor.redact("/Users/Sharedstuff/x", as: .program), "/Users/<other-user>/x")
