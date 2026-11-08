@@ -256,7 +256,7 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(row.facts(now: t0).first { $0.name == "Runs as" }?.value, "you (\(login))", "the panel is unchanged")
         XCTAssertFalse(sent.contains("Username Doe"), sent)
         XCTAssertFalse(sent.contains("you ("), sent)
-        XCTAssertTrue(sent.contains("Apple Development"), sent)
+        XCTAssertFalse(sent.contains("Apple Development"), "nor is the owner's signer told about a host: \(sent)")
     }
 
     func testEveryDnsNameIsMarkedWhateverItsKind() {

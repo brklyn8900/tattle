@@ -129,18 +129,14 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         facts += [
             Fact(name: "Protocol", value: connection.proto.rawValue.uppercased() + (connection.stateText.map { ", \($0)" } ?? "")),
             Fact(name: "Reach", value: connection.scope == .local ? "this network" : "the internet"),
-            Fact(name: "Process", value: "\(owner.processName) (pid \(connection.pid))"),
         ]
-        if let interpreter = owner.interpreter, let path = owner.path { facts.append(Fact(name: "Runs with", value: "\(interpreter) (\(path))")) }
-        if let app = owner.app, app.name != owner.processName { facts.append(Fact(name: "App", value: app.name)) }
-        var signers = [(owner.signature, "Signed by", "Team"), (owner.interpreterSignature, "Interpreter signed by", "Interpreter team")]
-        if let app = owner.appSignature, !app.isSameSigner(as: owner.signature) { signers.append((app, "App signed by", "App team")) }
-        for (signature, label, teamLabel) in signers {
-            guard let signature else { continue }
-            facts.append(.signedBy(signature, as: label))
-            if let team = signature.teamIdentifier { facts.append(Fact(name: teamLabel, value: team)) }
+        // The model is asked what the host is, and its answer is shown on every connection to
+        // the host: what it hears of this connection's owner it would say of theirs.
+        facts += ownerFacts.map { fact in
+            var fact = fact
+            fact.inPrompt = false
+            return fact
         }
-        facts.append(.runsAs(connection.uid))
         if connection.preExisting {
             facts.append(Fact(name: "Since", value: "before Tattle started looking"))
         } else {
@@ -153,6 +149,22 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         } else if let unnamedReason {
             facts.append(Fact(name: "No name", value: unnamedReason.text))
         }
+        return facts
+    }
+
+    /// Who made the connection.
+    private var ownerFacts: [Fact] {
+        var facts = [Fact(name: "Process", value: "\(owner.processName) (pid \(connection.pid))")]
+        if let interpreter = owner.interpreter, let path = owner.path { facts.append(Fact(name: "Runs with", value: "\(interpreter) (\(path))")) }
+        if let app = owner.app, app.name != owner.processName { facts.append(Fact(name: "App", value: app.name)) }
+        var signers = [(owner.signature, "Signed by", "Team"), (owner.interpreterSignature, "Interpreter signed by", "Interpreter team")]
+        if let app = owner.appSignature, !app.isSameSigner(as: owner.signature) { signers.append((app, "App signed by", "App team")) }
+        for (signature, label, teamLabel) in signers {
+            guard let signature else { continue }
+            facts.append(.signedBy(signature, as: label))
+            if let team = signature.teamIdentifier { facts.append(Fact(name: teamLabel, value: team)) }
+        }
+        facts.append(.runsAs(connection.uid))
         return facts
     }
 

@@ -183,6 +183,21 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertNil(owner(811).groupIdentity)
     }
 
+    /// A host's answer is shown on every connection to that host, so the model is told about
+    /// the host: what it hears of this connection's owner it would say of theirs.
+    func testAHostIsExplainedWithoutTheProgramThatConnected() throws {
+        let team = CodeSignature(signer: .developerID(name: "Acme"), teamIdentifier: "ABCDE12345")
+        let owner = ConnectionOwner(processName: "job.py", path: "/opt/python3", interpreter: "python3", app: AppBundle(path: "/Applications/Slack.app"),
+                                    signature: team, interpreterSignature: team, appSignature: CodeSignature(signer: .developerID(name: "Slack"), teamIdentifier: "BQR82RBBHL"))
+        let facts = LiveConnection(connection: connection(1, "1.1.1.1"), owner: owner, isNew: false).facts(now: t0)
+        let told = Set(facts.filter(\.inPrompt).map(\.name))
+        for name in ["Process", "Runs with", "App", "Signed by", "Team", "Interpreter signed by", "Interpreter team", "App signed by", "App team", "Runs as"] {
+            XCTAssertTrue(facts.contains { $0.name == name }, "the panel shows \(name)")
+            XCTAssertFalse(told.contains(name), "the model is not told \(name)")
+        }
+        XCTAssertTrue(told.isSuperset(of: ["Destination", "Protocol", "Reach"]), "\(told)")
+    }
+
     /// A process that took a name shares its row: the newest connection's signer alone would
     /// read as Apple's with the impostor's connections inside.
     func testARowWhoseConnectionsDifferNamesNoSigner() throws {
