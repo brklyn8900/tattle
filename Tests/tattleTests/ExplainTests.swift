@@ -64,6 +64,14 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev."), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
     }
 
+    /// macOS stores a curly apostrophe in the computer name; other text often has a straight one.
+    func testAMachineNameMatchesEitherApostrophe() {
+        for name in ["Username’s Computer", "Username's Computer"] {
+            let username = Redactor(home: "/Users/username", username: "username", machineNames: [name])
+            XCTAssertEqual(username.redact("Username's Computer and Username’s Computer"), "<machine> and <machine>", name)
+        }
+    }
+
     func testAFullHostnameIsANameAndItsFirstLabelGoesUnderEachDomain() {
         let names = Redactor.machineNames(
             computerName: "Username’s Computer", localHostName: "Users-Computer",

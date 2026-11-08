@@ -81,10 +81,13 @@ struct Redactor: Sendable {
         }
         // A machine name matches only as a whole host name, so on a Mac called dev
         // "Apple Development" stays whole. It matches only as the first label, so
-        // "pages.dev" stays whole and "dev.lan" reads <machine>.lan.
+        // "pages.dev" stays whole and "dev.lan" reads <machine>.lan. Either apostrophe matches:
+        // macOS stores a curly one in the computer name, and other text often has a straight one.
         for name in machineNames.sorted(by: { $0.count > $1.count }) {
+            let escaped = NSRegularExpression.escapedPattern(for: name)
+                .replacingOccurrences(of: "['’]", with: "['’]", options: .regularExpression)
             out = out.replacingOccurrences(
-                of: "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9-])",
+                of: "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + escaped + "(?![A-Za-z0-9-])",
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
         return Self.redactAddresses(redactUsername(out))
