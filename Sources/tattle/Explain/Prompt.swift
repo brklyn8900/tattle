@@ -24,9 +24,10 @@ enum Prompt {
     /// repeats the key, so a key redacted less would undo it. The instructions are prose and
     /// lose only what cannot be a word (`Redactor.redactProse`).
     static func build(instructions: String, request: ExplainRequest, redactor: Redactor) -> String {
+        let redact = { redactor.redact($0, dottedNamesAreHosts: request.kind != .launchItem) }
         let captured: [String: Any] = [
-            "item": ["kind": label(for: request.kind), "key": redactor.redact(request.key)],
-            "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": redactor.redact($0.promptValue ?? $0.value)] },
+            "item": ["kind": label(for: request.kind), "key": redact(request.key)],
+            "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": redact($0.promptValue ?? $0.value)] },
         ]
         // The input is only strings, so serialization cannot fail.
         let json = try! JSONSerialization.data(withJSONObject: captured, options: [.sortedKeys, .withoutEscapingSlashes])

@@ -71,7 +71,9 @@ struct Redactor: Sendable {
         String(name.prefix { $0 != "." })
     }
 
-    func redact(_ text: String) -> String {
+    /// `dottedNamesAreHosts` is false for a launch item, whose label and plist name are
+    /// reverse-DNS identifiers: there a login that is one of the labels is the author's name.
+    func redact(_ text: String, dottedNamesAreHosts: Bool = true) -> String {
         var out = text
         // Home path before username: the path contains the username.
         // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
@@ -96,7 +98,7 @@ struct Redactor: Sendable {
         out = out.replacingOccurrences(
             of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
             with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
-        return Self.redactAddresses(Self.redactFolders(redactUsername(out)))
+        return Self.redactAddresses(Self.redactFolders(redactUsername(out, dottedNamesAreHosts: dottedNamesAreHosts)))
     }
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
@@ -113,23 +115,29 @@ struct Redactor: Sendable {
         Redactor(home: home, username: "", machineNames: []).redact(text)
     }
 
-    /// The username never matches as a label of a dotted name, so "mail.google.com" stays
-    /// whole for a user called mail. A dot that ends a sentence does not join a label.
+    /// Where dotted names are hosts the username never matches as a label of one, so
+    /// "mail.google.com" stays whole for a user called mail. A dot that ends a sentence does
+    /// not join a label.
     ///
     /// A login of one or two letters would match ordinary text ("-e"), so it goes only where
     /// a login stands: before an "@" ("e@ttys003") and first in a process title ("postgres: e
     /// db"). Where it appears in a path the home replacement covers it; the facts built for a
     /// prompt never carry it as "you (e)" (UserName.describeForModel).
-    private func redactUsername(_ text: String) -> String {
+    private func redactUsername(_ text: String, dottedNamesAreHosts: Bool) -> String {
         guard !username.isEmpty else { return text }
         let login = NSRegularExpression.escapedPattern(for: username)
         let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
         if username.count >= 3 {
-            return text.replacingOccurrences(of: "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])", with: "<user>", options: options)
+            let pattern = dottedNamesAreHosts ? "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])" : "\\b" + login + "\\b"
+            return text.replacingOccurrences(of: pattern, with: "<user>", options: options)
         }
-        return text
+        let replaced = text
             .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: options)
             .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: options)
+        if dottedNamesAreHosts { return replaced }
+        return replaced.replacingOccurrences(
+            of: "(?<![\\w-])" + login + "(?=\\.[\\w-])|(?<=[\\w-]\\.)" + login + "(?![\\w-])",
+            with: "<user>", options: options)
     }
 
     /// Replaces private and local IP addresses only.

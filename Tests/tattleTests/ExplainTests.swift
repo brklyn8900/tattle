@@ -268,6 +268,24 @@ final class PromptTests: XCTestCase {
         XCTAssertTrue(prompt.hasPrefix("A Mac's owner reads data from <home>/x on <private-ip>.\n"), prompt)
     }
 
+    /// A launch item's label and plist name are reverse-DNS identifiers, not host names: a
+    /// login that is one of their labels is the author's own name.
+    func testALoginInALaunchItemsDottedNameIsReplaced() throws {
+        func sent(_ redactor: Redactor, _ kind: Rule.Kind, _ key: String) throws -> (key: String?, plist: String?) {
+            let request = ExplainRequest(kind: kind, key: key, facts: [Fact(name: "Plist", value: "/Library/LaunchAgents/\(key).plist")])
+            let data = try capturedData(in: Prompt.build(instructions: "x", request: request, redactor: redactor))
+            return ((data["item"] as? [String: String])?["key"], (data["facts"] as? [[String: String]])?.first?["value"])
+        }
+        let username = Redactor(home: "/Users/username", username: "username", machineNames: [])
+        let label = try sent(username, .launchItem, "com.username.backup")
+        XCTAssertEqual(label.key, "com.<user>.backup")
+        XCTAssertEqual(label.plist, "/Library/LaunchAgents/com.<user>.backup.plist")
+        let short = try sent(Redactor(home: "/Users/u", username: "e", machineNames: []), .launchItem, "com.e.backup")
+        XCTAssertEqual(short.key, "com.<user>.backup")
+        XCTAssertEqual(short.plist, "/Library/LaunchAgents/com.<user>.backup.plist")
+        XCTAssertEqual(try sent(username, .host, "com.username.backup").key, "com.username.backup", "a dotted name elsewhere can be a host")
+    }
+
     func testPanelOnlyFactsAndPromptValues() throws {
         let facts = [
             Fact(name: "Working in", value: "~/dev/client-acme", inPrompt: false),
