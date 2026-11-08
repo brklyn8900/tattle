@@ -102,7 +102,7 @@ final class CodeSignatureTests: XCTestCase {
         let reading: (String) -> CodeSignature? = { CodeSignature(signer: .developerID(name: $0)) }
         XCTAssertEqual(CodeSignature.read(program: "/bin/ls", arguments: ["-l"], reading: reading)?.signer, .developerID(name: "/bin/ls"))
         XCTAssertEqual(CodeSignature.read(program: "/usr/bin/osascript", arguments: ["-e", "1+1"], reading: reading)?.signer, .script)
-        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", script.path], reading: reading)?.signer, .developerID(name: script.path))
+        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", script.path], reading: reading)?.signer, .script)
     }
 
     private func codesign(_ arguments: [String]) throws {

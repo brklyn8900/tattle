@@ -49,8 +49,7 @@ done)
   is unverified (agreed 2026-10-27).
 - `LaunchedCode`'s option tables come from the manual pages, and an option they do not list
   counts as taking no value. A real option that takes one but is not listed (mostly node's
-  and java's long options) makes its value read as the script: a launch item then shows
-  that file's signer (never Apple's: such a file reads as a script), and a process is named
+  and java's long options) makes its value read as the script: a process is then named
   after it (`LaunchedCode.swift`). Proposed: write each table as the program's getopt
   string, from its manual page or source, and read an option no table lists as unnamed
   code, so an unknown option fails closed.
