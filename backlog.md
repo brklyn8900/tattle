@@ -70,6 +70,16 @@ done)
   (`r-s--x--x`), so Apple's signature on it cannot be either (`CodeSignature.swift`).
 - An agent an app registers with SMAppService reads by its executable: the
   `ProgramArguments` in the plist inside the app are not read (`StartupSnapshot.swift`).
+- A registered agent or daemon is named by its executable with `Runs Apple's` even when
+  its plist sets `RootDirectory`: a registered item's plist is not read, so the path may
+  not say which file runs (`StartupSnapshot.swift`).
+- A launch item with `RootDirectory` running a program that is not Apple's reads by the
+  file at that path outside the root, which is not the file that runs, so the row can name
+  a publisher whose code does not run. chroot needs root, so this is a daemon's
+  (`CodeSignature.swift`).
+- Apple-signed processes under `/Library/Developer/PrivateFrameworks` (CoreSimulatorService,
+  CoreDeviceService, SimLaunchHost) read as Apple's: that folder is not one of the developer
+  folders (`LaunchedCode.swift`).
 - A detail's "Interpreter signed by" and "Interpreter team" name clang, git and Xcode Service
   as interpreters, which they are not (`ProcessSnapshot.swift`).
 - `ProcessEntry`'s `interpreter` and `runsUnnamedCode` are one state in two fields, which
@@ -83,6 +93,10 @@ done)
   though some then run only their own code: `caffeinate -s` (a common keep-awake agent),
   `env`, `nice`, `time`, `arch`. Others start something else (`screen` and `script` run
   `$SHELL`), so it needs a flag per wrapper, not one rule (`LaunchedCode.swift`).
+- A command line that leads through Apple's programs to none it locates (`caffeinate -s`,
+  `xargs`, `open` with a document) shows no signer. It could read `launch item, not signed`,
+  which claims nothing about what runs, and that would settle the wrapper line above
+  (`CodeSignature.swift`).
 
 **From the review triage of 2026-11-07** (its "consider" list, verified at `0618f7e`; IDs
 are the triage's)
