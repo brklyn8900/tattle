@@ -15,9 +15,9 @@ final class ApplesProgramTests: XCTestCase {
             // cp /usr/sbin/mDNSResponder /tmp
             ProcessEntry(pid: 500, parentPid: 1, uid: 501, name: "mDNSResponder", path: "/private/tmp/mDNSResponder", started: started),
             // exec -a mDNSResponder /bin/bash
-            ProcessEntry(pid: 501, parentPid: 1, uid: 501, name: "mDNSResponder", path: "/bin/bash", started: started),
+            ProcessEntry(pid: 501, parentPid: 1, uid: 501, name: "mDNSResponder", path: "/bin/bash", arguments: ["mDNSResponder"], started: started),
             // /bin/sh ~/mDNSResponder
-            ProcessEntry(pid: 502, parentPid: 1, uid: 501, name: "mDNSResponder", path: "/bin/sh", interpreter: "sh", started: started),
+            ProcessEntry(pid: 502, parentPid: 1, uid: 501, name: "mDNSResponder", path: "/bin/sh", interpreter: "sh", arguments: ["/bin/sh", "/Users/x/mDNSResponder"], started: started),
         ]
     }
 

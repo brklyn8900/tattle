@@ -206,9 +206,8 @@ final class NetworkObserver {
         var processes: [ProcessEntry]?
         do {
             (entries, processes) = try await Task.detached(priority: .utility) {
-                // Processes are named without their signatures: Apple's programs run from
-                // their own files, so their signing identifiers would name them the same,
-                // and reading every signature would hold up the first poll.
+                // Processes are listed without their signatures, since reading every one would
+                // hold up the first poll; each owner's are read when it is resolved, once.
                 (try SocketTable.read(), eager ? try? ProcessTable.list(signature: { _ in nil }) : nil)
             }.value
         } catch {

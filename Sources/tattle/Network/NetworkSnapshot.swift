@@ -4,9 +4,15 @@ import Foundation
 struct ConnectionOwner: Equatable, Sendable {
     var processName: String
     var path: String?
+    /// The interpreter's file name when the process runs code that is not its executable's
+    /// (`ProcessEntry.interpreter`).
+    var interpreter: String?
     var app: AppBundle?
-    /// Who signed the process that made the connection.
+    /// Who signed the code the process runs: its executable, or no one for a script or
+    /// unnamed code.
     var signature: CodeSignature?
+    /// The executable's signature when it is an interpreter running a script or unnamed code.
+    var interpreterSignature: CodeSignature?
     /// Who signed the app the connection is filed under. The app only started the process, or
     /// holds it in its bundle, so this says nothing about the process's own code.
     var appSignature: CodeSignature?
@@ -21,17 +27,27 @@ struct ConnectionOwner: Equatable, Sendable {
     static let unknown = ConnectionOwner(processName: "unknown process")
 
     /// Resolves a pid against a process list, attributing helpers to their app the same
-    /// way the Processes tab does. `signature` reads the executable, and the app bundle.
+    /// way the Processes tab does, and reads what it runs as that tab does. `byPid` is named
+    /// without signatures; `signature` reads each executable the owner's line passes through,
+    /// and the app bundle.
     static func resolve(
         pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), signature: (String) -> CodeSignature?
     ) -> ConnectionOwner {
-        guard let entry = byPid[pid] else { return ConnectionOwner(processName: "pid \(pid)") }
+        // The list carries no signatures, so the owner and the ancestors its app comes from
+        // are named here by theirs.
+        func named(_ pid: Int32) -> ProcessEntry? {
+            byPid[pid].map { $0.named(signature: $0.path.flatMap(signature)) }
+        }
+        guard let entry = named(pid) else { return ConnectionOwner(processName: "pid \(pid)") }
         var memo: [Int32: AppBundle?] = [:]
-        let app = ProcessSnapshot.app(of: pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
+        let app = ProcessSnapshot.app(of: pid, in: named, runningApp: runningApp, responsible: responsible, memo: &memo)
+        let executable = entry.path.flatMap(signature)
         return ConnectionOwner(
-            processName: entry.name, path: entry.path, app: app,
-            signature: entry.path.flatMap(signature), appSignature: app.flatMap { signature($0.path) })
+            processName: entry.name, path: entry.path, interpreter: entry.interpreter, app: app,
+            signature: entry.codeSignature(executable: executable),
+            interpreterSignature: entry.interpreter == nil ? nil : executable,
+            appSignature: app?.signature(reading: signature))
     }
 }
 
@@ -107,8 +123,9 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
             Fact(name: "Reach", value: connection.scope == .local ? "this network" : "the internet"),
             Fact(name: "Process", value: "\(owner.processName) (pid \(connection.pid))"),
         ]
+        if let interpreter = owner.interpreter, let path = owner.path { facts.append(Fact(name: "Runs with", value: "\(interpreter) (\(path))")) }
         if let app = owner.app, app.name != owner.processName { facts.append(Fact(name: "App", value: app.name)) }
-        var signers = [(owner.signature, "Signed by", "Team")]
+        var signers = [(owner.signature, "Signed by", "Team"), (owner.interpreterSignature, "Interpreter signed by", "Interpreter team")]
         if let app = owner.appSignature, !app.isSameSigner(as: owner.signature) { signers.append((app, "App signed by", "App team")) }
         for (signature, label, teamLabel) in signers {
             guard let signature else { continue }

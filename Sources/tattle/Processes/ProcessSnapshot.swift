@@ -19,6 +19,14 @@ struct AppBundle: Hashable, Sendable {
         return AppBundle(path: components[...index].joined(separator: "/"))
     }
 
+    /// How the app reads, from its bundle's signature. An app Apple signed in a toolchain, an
+    /// Xcode or the Command Line Tools is one of Apple's developer tools, which runs what it is
+    /// told; any other there keeps its signer.
+    func signature(reading signature: (String) -> CodeSignature?) -> CodeSignature? {
+        let signed = signature(path)
+        return LaunchedCode.Identity(path: path, signature: signed).isDeveloperTool ? CodeSignature(signer: .unnamed) : signed
+    }
+
     /// The bundle Launch Services reports a process was opened from, when it is an app.
     /// Launch Services registers some command-line processes too (node servers that open a
     /// browser, say) and then reports the bare executable, and a script that opens a window
@@ -269,10 +277,9 @@ struct ProcessSnapshot: Equatable, Sendable {
                 uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter,
                 workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
-                signature: entry.interpreter == nil
-                    ? executableSignature : CodeSignature(signer: entry.runsUnnamedCode ? .unnamed : .script),
+                signature: entry.codeSignature(executable: executableSignature),
                 interpreterSignature: entry.interpreter == nil ? nil : executableSignature,
-                app: app(of: entry.pid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &apps)))
+                app: app(of: entry.pid, in: { byPid[$0] }, runningApp: runningApp, responsible: responsible, memo: &apps)))
         }
 
         let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -283,13 +290,7 @@ struct ProcessSnapshot: Equatable, Sendable {
             if groupsByID[key.id] == nil {
                 let groupSignature: CodeSignature?
                 switch key.kind {
-                case .app(let bundle):
-                    // An app Apple signed in a toolchain, an Xcode or the Command Line Tools is one
-                    // of Apple's developer tools, which runs what it is told; any other there keeps
-                    // its signer.
-                    let signed = signature(bundle.path)
-                    let isDeveloperTool = LaunchedCode.Identity(path: bundle.path, signature: signed).isDeveloperTool
-                    groupSignature = isDeveloperTool ? CodeSignature(signer: .unnamed) : signed
+                case .app(let bundle): groupSignature = bundle.signature(reading: signature)
                 case .process: groupSignature = key.root?.signature
                 case .system: groupSignature = CodeSignature(signer: .apple)
                 }
@@ -311,21 +312,21 @@ struct ProcessSnapshot: Equatable, Sendable {
     /// the app macOS holds responsible for it. Memoized, since whole trees share an answer.
     /// The Network tab uses it too, to put a helper's connection under its app.
     static func app(
-        of pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
+        of pid: Int32, in entries: (Int32) -> ProcessEntry?, runningApp: (Int32) -> String?,
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), memo: inout [Int32: AppBundle?]
     ) -> AppBundle? {
         if let known = memo[pid] { return known }
         memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
-        guard let entry = byPid[pid] else { return nil }
+        guard let entry = entries(pid) else { return nil }
         // An interpreter or developer tool inside an app (Xcode's Python, swift, git) says
         // nothing about whose code it runs.
         var result = (entry.interpreter == nil ? entry.path.flatMap(AppBundle.containing) : nil)
             ?? runningApp(pid).flatMap(AppBundle.opened)
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {
-            result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
+            result = app(of: entry.parentPid, in: entries, runningApp: runningApp, responsible: responsible, memo: &memo)
         }
-        if result == nil, entry.parentPid <= 1, let owner = responsible(pid), byPid[owner] != nil {
-            result = app(of: owner, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
+        if result == nil, entry.parentPid <= 1, let owner = responsible(pid), entries(owner) != nil {
+            result = app(of: owner, in: entries, runningApp: runningApp, responsible: responsible, memo: &memo)
         }
         memo[pid] = result
         return result

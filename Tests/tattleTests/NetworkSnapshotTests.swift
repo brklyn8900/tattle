@@ -133,6 +133,88 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.groups.first?.signature?.summary, "EXAMPLE DEVELOPER", "the row is the app's")
     }
 
+    /// A process as Network lists it: named without its signature.
+    private func listed(_ pid: Int32, _ parent: Int32, _ path: String, _ arguments: [String]) -> ProcessEntry {
+        let named = ProcessEntry.name(path: path, arguments: arguments, command: "", startedByLaunchd: parent == 1)
+        return ProcessEntry(pid: pid, parentPid: parent, uid: 501, name: named.name, path: path, interpreter: named.interpreter,
+                            runsUnnamedCode: named.runsUnnamedCode, arguments: arguments, started: t0)
+    }
+
+    private func facts(_ owner: ConnectionOwner) -> [String: String] {
+        Dictionary(LiveConnection(connection: connection(1, "1.1.1.1"), owner: owner, isNew: false).facts(now: t0).map { ($0.name, $0.value) },
+                   uniquingKeysWith: { a, _ in a })
+    }
+
+    private func owner(_ pid: Int32, _ list: [ProcessEntry], signatures: [String: CodeSignature],
+                       runningApp: @escaping (Int32) -> String? = { _ in nil }) -> ConnectionOwner {
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        return ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: runningApp, responsible: { _ in nil }, signature: { signatures[$0] })
+    }
+
+    /// A copy of Apple's bash under another name is known as bash only by its signature, so
+    /// the listing alone reads it as a program of Apple's.
+    func testARenamedCopyOfApplesInterpreterReadsAsTheScriptItRuns() {
+        let copy = "/Users/x/updater"
+        let owner = owner(700, [listed(700, 1, copy, [copy, "/Users/x/job.sh"])], signatures: [copy: CodeSignature(signer: .apple, identifier: "com.apple.bash")])
+        XCTAssertEqual(owner.processName, "job.sh")
+        XCTAssertEqual(owner.interpreter, "updater")
+        XCTAssertEqual(owner.signature?.summary, "script, not signed")
+        XCTAssertEqual(owner.interpreterSignature?.summary, "Apple")
+        XCTAssertFalse(owner.isApplesProgram)
+        let facts = facts(owner)
+        XCTAssertEqual(facts["Signed by"], "script, not signed")
+        XCTAssertEqual(facts["Runs with"], "updater (\(copy))")
+        XCTAssertEqual(facts["Interpreter signed by"], "Apple")
+    }
+
+    func testInlineCodeUnderApplesInterpreterIsNotApples() {
+        let owner = owner(700, [listed(700, 1, "/bin/zsh", ["/bin/zsh", "-c", "curl x | sh"])], signatures: ["/bin/zsh": CodeSignature(signer: .apple, identifier: "com.apple.zsh")])
+        XCTAssertEqual(owner.signature?.summary, "unnamed code")
+        XCTAssertEqual(owner.interpreterSignature?.summary, "Apple")
+        XCTAssertFalse(owner.isApplesProgram)
+    }
+
+    func testApplesOwnProgramStaysApples() {
+        let owner = owner(300, [listed(300, 1, "/usr/libexec/trustd", ["/usr/libexec/trustd"])], signatures: ["/usr/libexec/trustd": CodeSignature(signer: .apple, identifier: "com.apple.trustd")])
+        XCTAssertEqual(owner.signature?.summary, "Apple")
+        XCTAssertNil(owner.interpreter)
+        XCTAssertNil(owner.interpreterSignature)
+        XCTAssertTrue(owner.isApplesProgram)
+    }
+
+    /// One of Apple's developer tools runs what it is told, and says nothing of whose code
+    /// that is, so neither it nor what it starts is filed under the Xcode it lives in.
+    func testADeveloperToolIsUnnamedCodeAndFiledWhereItWasStarted() {
+        let terminal = "/Applications/iTerm.app/Contents/MacOS/iTerm2"
+        let git = "/Applications/Xcode.app/Contents/Developer/usr/bin/git"
+        let remote = "/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core/git-remote-https"
+        let developer = CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER"), teamIdentifier: "EXAMPLE123")
+        let signatures: [String: CodeSignature] = [
+            terminal: developer, "/Applications/iTerm.app": developer,
+            git: CodeSignature(signer: .apple, identifier: "com.apple.git"), remote: CodeSignature(signer: .apple, identifier: "com.apple.git-remote-https"),
+        ]
+        let list = [listed(700, 1, terminal, [terminal]), listed(701, 700, git, [git, "fetch"]), listed(702, 701, remote, [remote, "origin"])]
+
+        let tool = owner(701, list, signatures: signatures)
+        XCTAssertEqual(tool.displayName, "iTerm", "not Xcode")
+        XCTAssertEqual(tool.signature?.summary, "unnamed code")
+        XCTAssertEqual(tool.interpreterSignature?.summary, "Apple")
+        XCTAssertEqual(owner(702, list, signatures: signatures).displayName, "iTerm", "an ancestor among the developer tools is read by its signature too")
+    }
+
+    func testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode() {
+        let service = "/Applications/Xcode.app/Contents/Developer/Library/Xcode/Agents/Xcode Service.app"
+        let executable = "\(service)/Contents/MacOS/Xcode Service"
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.dt.mcp-server", teamIdentifier: "59GAB85EFG")
+        let owner = owner(700, [listed(700, 1, executable, [executable])], signatures: [executable: apple, service: apple], runningApp: { _ in service })
+        XCTAssertEqual(owner.displayName, "Xcode Service")
+        XCTAssertEqual(owner.signature?.summary, "unnamed code")
+        XCTAssertEqual(owner.appSignature?.summary, "unnamed code")
+        XCTAssertNil(facts(owner)["App signed by"], "the same reading, said once")
+        let snapshot = NetworkSnapshot(connections: [LiveConnection(connection: connection(700, "1.1.1.1"), owner: owner, isNew: false)], takenAt: t0)
+        XCTAssertEqual(snapshot.groups.first?.signature?.summary, "unnamed code", "the row's subtitle")
+    }
+
     func testHistoryKeepsTheProcesssSignerAndItsAppsApart() throws {
         let owner = ConnectionOwner(processName: "curl", path: "/usr/bin/curl", app: AppBundle(path: "/Applications/iTerm.app"),
                                     signature: CodeSignature(signer: .apple), appSignature: CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER")))

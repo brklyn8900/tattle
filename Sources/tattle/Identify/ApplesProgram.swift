@@ -4,7 +4,7 @@ import Foundation
 /// signed by Apple, run from where only macOS installs programs, and named for its own file.
 /// A copy of Apple's binary elsewhere keeps Apple's signature, a process can start under any
 /// name, and a script that Apple's interpreter runs is named for the script, or in Processes
-/// signed as a script: none of them is the program.
+/// and Network signed as a script: none of them is the program.
 enum ApplesProgram {
     /// The sealed system volume, and /Library/Apple, which System Integrity Protection keeps
     /// for Apple's updates. /usr/local is the Data volume's, and /System/Volumes holds the

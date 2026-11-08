@@ -70,6 +70,22 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         return (executable ?? command, interpreter, runsUnnamedCode)
     }
 
+    /// This entry named by its executable's signature, for one listed without it: a renamed
+    /// copy of Apple's interpreter or one of Apple's developer tools is known only by that.
+    func named(signature: CodeSignature?) -> ProcessEntry {
+        guard let path else { return self }
+        let named = Self.name(path: path, arguments: arguments, command: name, signature: signature, startedByLaunchd: parentPid == 1)
+        var entry = self
+        (entry.name, entry.interpreter, entry.runsUnnamedCode) = named
+        return entry
+    }
+
+    /// Who signed the code the process runs, given its executable's signature: no one for a
+    /// script or unnamed code.
+    func codeSignature(executable: CodeSignature?) -> CodeSignature? {
+        interpreter == nil ? executable : CodeSignature(signer: runsUnnamedCode ? .unnamed : .script)
+    }
+
     /// A file inside an npm package is known by the package: "chrome-devtools-mcp"
     /// rather than "main.js". Scoped packages keep their scope; a launcher in .bin is
     /// already named for its command.
