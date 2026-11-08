@@ -50,7 +50,18 @@ done)
 - `LaunchedCode`'s option tables come from the manual pages, and an option they do not list
   counts as taking no value. A real option that takes one but is not listed (mostly node's
   and java's long options) makes its value read as the script: a launch item then shows
-  that file's signer, and a process is named after it (`LaunchedCode.swift`).
+  that file's signer (never Apple's: such a file reads as a script), and a process is named
+  after it (`LaunchedCode.swift`). Proposed: write each table as the program's getopt
+  string, from its manual page or source, and read an option no table lists as unnamed
+  code, so an unknown option fails closed.
+- No list completes the Apple programs that run code they are given: the tables follow
+  nohup, env, xcrun, sudo, find and the rest, but one they do not list (`launchctl asuser`,
+  `su`) reads as itself, Apple, whatever it runs (`LaunchedCode.swift`).
+- `testALockedFileFailsOneInstallAndWedgesNone` checks that the stage held a locked copy
+  when the install failed, which holds only where ditto copies a locked file: macOS 26.7.2
+  does, and on 2026-10-26 this Mac's ditto failed on it, so on such a system the check
+  fails. Not run on testmac (26.7.1). Its name no longer fits either: the stand-in launchctl
+  fails the install, not the lock (`CaptureBrokerScriptTests.swift`).
 
 **From the review triage of 2026-11-07** (its "consider" list, verified at `0618f7e`; IDs
 are the triage's)
