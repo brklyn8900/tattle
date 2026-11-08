@@ -159,6 +159,22 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items.first { $0.name == "publisher" }?.signature?.signer, .developerID(name: "Acme"))
     }
 
+    func testARegisteredItemLinkedToOneOfApplesDeveloperToolsReadsAsUnnamedCode() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let tool = folder.appending(path: "Fake.xctoolchain/usr/bin/agent")
+        try FileManager.default.createDirectory(at: tool.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data().write(to: tool)
+        let link = folder.appending(path: "agent")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: tool)
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [], appleCount: 0, skipped: [:]),
+            loginItems: [login("1.agent", name: "agent", kind: .agent, executable: link.path)],
+            state: LaunchctlState(services: [:], overrides: [:]),
+            signature: { _ in CodeSignature(signer: .apple) })
+        XCTAssertEqual(snapshot.items.first?.signature?.signer, .unnamed)
+    }
+
     func testALaunchItemRunningAnotherPublishersProgramKeepsItsSigner() throws {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
