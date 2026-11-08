@@ -125,6 +125,14 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(testmac.redact("Then testmac. Next"), "Then <machine>. Next")
     }
 
+    /// A MagicDNS name is device.tailnet.ts.net, and the tailnet's name identifies the account.
+    func testATailnetNameIsReplaced() {
+        XCTAssertEqual(redactor.redact("nas.tail1234.ts.net, NAS.Fluffy-Monster.ts.net. Then"), "<tailnet-device>, <tailnet-device>. Then")
+        XCTAssertEqual(redactor.redact("ts.net, a.ts.net.example.com, nots.net, a.ts.network"), "ts.net, a.ts.net.example.com, nots.net, a.ts.network")
+        let own = Redactor(home: "", username: "", machineNames: ["nas.tail1234.ts.net"])
+        XCTAssertEqual(own.redact("nas.tail1234.ts.net"), "<machine>", "this Mac's own name reads as the machine")
+    }
+
     func testCurrentCoversTheLocalHostNameBareAndUnderEachSearchDomain() throws {
         guard let local = SCDynamicStoreCopyLocalHostName(nil) as String? else {
             throw XCTSkip("this Mac has no local host name")

@@ -2,7 +2,8 @@ import Foundation
 import SystemConfiguration
 
 /// Replaces what would identify this Mac or its user before a prompt leaves the machine:
-/// the home path, the username, private and local IP addresses, and the machine's names.
+/// the home path, the username, private and local IP addresses, the machine's names, and
+/// Tailscale names, which identify the account.
 struct Redactor: Sendable {
     var home: String
     var username: String
@@ -90,6 +91,11 @@ struct Redactor: Sendable {
                 of: "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + escaped + "(?![A-Za-z0-9-])",
                 with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
+        // After the machine's names, so this Mac's own MagicDNS name reads as the machine. A
+        // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account.
+        out = out.replacingOccurrences(
+            of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
+            with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
         return Self.redactAddresses(redactUsername(out))
     }
 
