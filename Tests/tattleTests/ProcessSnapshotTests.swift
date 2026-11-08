@@ -185,6 +185,18 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.item(pid: 701)?.app?.path, "/Applications/Xcode.app", "Xcode's own tools are Xcode's")
     }
 
+    func testAnInterpretersTeamIsNamedAsTheInterpreters() {
+        let node = "/opt/node/bin/node"
+        let named = ProcessEntry.name(path: node, arguments: ["node", "/x/a.js"], command: "node")
+        let entries = [ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: node, interpreter: named.interpreter, started: Date())]
+        let snapshot = ProcessSnapshot.build(
+            entries: entries, previous: nil,
+            signature: { _ in CodeSignature(signer: .developerID(name: "Node"), teamIdentifier: "HX7739G8FX") }, responsible: { _ in nil })
+        let facts = snapshot.item(pid: 700)?.facts.filter { ["Signed by", "Interpreter signed by", "Team", "Interpreter team"].contains($0.name) }
+        XCTAssertEqual(facts?.map(\.name), ["Signed by", "Interpreter signed by", "Interpreter team"], "not the script's team")
+        XCTAssertEqual(facts?.last?.value, "HX7739G8FX")
+    }
+
     func testFacts() {
         let item = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch).item(pid: 401)!
         let facts = Dictionary(item.facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })

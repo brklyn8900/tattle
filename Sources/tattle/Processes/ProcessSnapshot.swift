@@ -84,10 +84,11 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
         } else if let path {
             facts.append(Fact(name: "Path", value: path))
         }
-        for (signature, label) in [(signature, "Signed by"), (interpreterSignature, "Interpreter signed by")] {
+        let signers = [(signature, "Signed by", "Team"), (interpreterSignature, "Interpreter signed by", "Interpreter team")]
+        for (signature, label, teamLabel) in signers {
             guard let signature else { continue }
             facts.append(.signedBy(signature, as: label))
-            if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
+            if let team = signature.teamIdentifier { facts.append(Fact(name: teamLabel, value: team)) }
         }
         if let app, app.name != name { facts.append(Fact(name: "Part of", value: app.name)) }
         if pid > 0 { facts.append(Fact(name: "Parent", value: "\(parentName ?? "pid \(parentPid)") (pid \(parentPid))")) }
