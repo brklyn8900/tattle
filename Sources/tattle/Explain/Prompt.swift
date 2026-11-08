@@ -22,9 +22,9 @@ enum Prompt {
     /// breaks and quotes inside a value, so a value cannot pass for a fact or for the end
     /// of the block. The key and the fact values get the full redaction: a fact usually
     /// repeats the key, so a key redacted less would undo it. The instructions are prose and
-    /// lose only what cannot be a word (`Redactor.redactProse`).
+    /// lose only what cannot be a word.
     static func build(instructions: String, request: ExplainRequest, redactor: Redactor) -> String {
-        let redact = { redactor.redact($0, dottedNamesAreHosts: request.kind != .launchItem) }
+        let redact = { redactor.redact($0, as: Redactor.Context(request.kind)) }
         let captured: [String: Any] = [
             "item": ["kind": label(for: request.kind), "key": redact(request.key)],
             "facts": request.facts.filter(\.inPrompt).map { ["name": $0.name, "value": redact($0.promptValue ?? $0.value)] },
@@ -32,7 +32,7 @@ enum Prompt {
         // The input is only strings, so serialization cannot fail.
         let json = try! JSONSerialization.data(withJSONObject: captured, options: [.sortedKeys, .withoutEscapingSlashes])
         return [
-            redactor.redactProse(instructions.trimmingCharacters(in: .whitespacesAndNewlines)),
+            redactor.redact(instructions.trimmingCharacters(in: .whitespacesAndNewlines), as: .instructions),
             "",
             dataBegin,
             String(decoding: json, as: UTF8.self),

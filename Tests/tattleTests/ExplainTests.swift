@@ -11,73 +11,73 @@ final class RedactorTests: XCTestCase {
         home: "/Users/username", username: "username", machineNames: ["Users-Computer", "users-computer.local"])
 
     func testHomeAndUsername() {
-        XCTAssertEqual(redactor.redact("/Users/username/Library/Foo run by username"), "<home>/Library/Foo run by <user>")
-        XCTAssertEqual(redactor.redact("usernamex.example.com"), "usernamex.example.com", "username only at word boundaries")
+        XCTAssertEqual(redactor.redact("/Users/username/Library/Foo run by username", as: .program), "<home>/Library/Foo run by <user>")
+        XCTAssertEqual(redactor.redact("usernamex.example.com", as: .program), "usernamex.example.com", "username only at word boundaries")
     }
 
     /// APFS ignores case by default, and a login names one account however it is written.
     func testHomeAndUsernameMatchInAnyCase() {
-        XCTAssertEqual(redactor.redact("/Users/Username/Library/x and /USERS/USERNAME"), "<home>/Library/x and <home>")
-        XCTAssertEqual(redactor.redact("run by USERNAME, Username-backup"), "run by <user>, <user>-backup")
-        XCTAssertEqual(redactor.redact("Usernamex.example.com"), "Usernamex.example.com")
+        XCTAssertEqual(redactor.redact("/Users/Username/Library/x and /USERS/USERNAME", as: .program), "<home>/Library/x and <home>")
+        XCTAssertEqual(redactor.redact("run by USERNAME, Username-backup", as: .program), "run by <user>, <user>-backup")
+        XCTAssertEqual(redactor.redact("Usernamex.example.com", as: .program), "Usernamex.example.com")
     }
 
     /// One or two letters are ordinary text anywhere else ("-e", "a"), so a short login goes
     /// only where a login stands: before an "@", and first in a process title.
     func testAShortUsernameIsReplacedOnlyWhereALoginGoes() {
         let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1"), "<home>/x run by e with osascript -e 1")
-        XCTAssertEqual(short.redact("sshd-session: e@ttys003 (pid 9)"), "sshd-session: <user>@ttys003 (pid 9)")
-        XCTAssertEqual(short.redact("postgres: e clientdb [local] idle:tcp/5432"), "postgres: <user> clientdb [local] idle:tcp/5432")
-        XCTAssertEqual(short.redact("sshd: E [priv]"), "sshd: <user> [priv]")
-        XCTAssertEqual(short.redact("sshd: e"), "sshd: <user>")
-        XCTAssertEqual(short.redact("mail: be@x.example, code-e@x.example, a.e@x.example"), "mail: be@x.example, code-e@x.example, a.e@x.example")
-        XCTAssertEqual(short.redact("postgres: clientdb e [local]"), "postgres: clientdb e [local]", "second in the title is not the login's place")
+        XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1", as: .program), "<home>/x run by e with osascript -e 1")
+        XCTAssertEqual(short.redact("sshd-session: e@ttys003 (pid 9)", as: .program), "sshd-session: <user>@ttys003 (pid 9)")
+        XCTAssertEqual(short.redact("postgres: e clientdb [local] idle:tcp/5432", as: .program), "postgres: <user> clientdb [local] idle:tcp/5432")
+        XCTAssertEqual(short.redact("sshd: E [priv]", as: .program), "sshd: <user> [priv]")
+        XCTAssertEqual(short.redact("sshd: e", as: .program), "sshd: <user>")
+        XCTAssertEqual(short.redact("mail: be@x.example, code-e@x.example, a.e@x.example", as: .program), "mail: be@x.example, code-e@x.example, a.e@x.example")
+        XCTAssertEqual(short.redact("postgres: clientdb e [local]", as: .program), "postgres: clientdb e [local]", "second in the title is not the login's place")
         let none = Redactor(home: "", username: "", machineNames: [])
-        XCTAssertEqual(none.redact("sshd: x@y"), "sshd: x@y", "no login, nothing to match")
+        XCTAssertEqual(none.redact("sshd: x@y", as: .program), "sshd: x@y", "no login, nothing to match")
     }
 
     /// "/Users/eve/..." is another account's folder, not the home "/Users/u" plus "ve/...".
     func testHomeMatchesOnAPathBoundary() {
         let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        XCTAssertEqual(short.redact("/Users/eve/Library/x"), "/Users/<other-user>/Library/x")
-        XCTAssertEqual(short.redact("/Users/u/Library/x and /Users/u"), "<home>/Library/x and <home>")
-        XCTAssertEqual(short.redact(#"{"key":"/Users/u"}"#), #"{"key":"<home>"}"#)
-        XCTAssertEqual(short.redact("/Users/u.old/x"), "/Users/<other-user>/x")
+        XCTAssertEqual(short.redact("/Users/eve/Library/x", as: .program), "/Users/<other-user>/Library/x")
+        XCTAssertEqual(short.redact("/Users/u/Library/x and /Users/u", as: .program), "<home>/Library/x and <home>")
+        XCTAssertEqual(short.redact(#"{"key":"/Users/u"}"#, as: .program), #"{"key":"<home>"}"#)
+        XCTAssertEqual(short.redact("/Users/u.old/x", as: .program), "/Users/<other-user>/x")
     }
 
     func testOtherAccountsFoldersAndDiskNamesAreReplaced() {
-        XCTAssertEqual(redactor.redact("/Users/other/bin/x, /users/Other and /Users/Shared/x"), "/Users/<other-user>/bin/x, /Users/<other-user> and /Users/Shared/x")
-        XCTAssertEqual(redactor.redact("/Users/Sharedstuff/x"), "/Users/<other-user>/x")
-        XCTAssertEqual(redactor.redact("/Volumes/My Passport/bin/x (2 arguments, not sent)"), "/Volumes/<volume>/bin/x (2 arguments, not sent)")
-        XCTAssertEqual(redactor.redact("node (/Volumes/Data/app.js)"), "node (/Volumes/<volume>/app.js)")
-        XCTAssertEqual(redactor.redact("/Volumes/Backup/Users/other/x"), "/Volumes/<volume>/Users/<other-user>/x")
-        XCTAssertEqual(redactor.redact("/System/Volumes/Preboot/x, /tmp/Volumes/y"), "/System/Volumes/Preboot/x, /tmp/Volumes/y")
+        XCTAssertEqual(redactor.redact("/Users/other/bin/x, /users/Other and /Users/Shared/x", as: .program), "/Users/<other-user>/bin/x, /Users/<other-user> and /Users/Shared/x")
+        XCTAssertEqual(redactor.redact("/Users/Sharedstuff/x", as: .program), "/Users/<other-user>/x")
+        XCTAssertEqual(redactor.redact("/Volumes/My Passport/bin/x (2 arguments, not sent)", as: .program), "/Volumes/<volume>/bin/x (2 arguments, not sent)")
+        XCTAssertEqual(redactor.redact("node (/Volumes/Data/app.js)", as: .program), "node (/Volumes/<volume>/app.js)")
+        XCTAssertEqual(redactor.redact("/Volumes/Backup/Users/other/x", as: .program), "/Volumes/<volume>/Users/<other-user>/x")
+        XCTAssertEqual(redactor.redact("/System/Volumes/Preboot/x, /tmp/Volumes/y", as: .program), "/System/Volumes/Preboot/x, /tmp/Volumes/y")
     }
 
     func testMachineNames() {
-        XCTAssertEqual(redactor.redact("host USERS-COMPUTER.local and Users-Computer"), "host <machine> and <machine>")
+        XCTAssertEqual(redactor.redact("host USERS-COMPUTER.local and Users-Computer", as: .host), "host <machine> and <machine>")
     }
 
     func testMachineNamesMatchOnlyAsWholeHostNames() {
         let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev.local", "dev"])
-        XCTAssertEqual(dev.redact("Apple Development (ABCDE12345)"), "Apple Development (ABCDE12345)")
-        XCTAssertEqual(dev.redact("my-dev-box devices dev2 webdev my-dev"), "my-dev-box devices dev2 webdev my-dev")
-        XCTAssertEqual(dev.redact("dev, DEV.local and dev.lan"), "<machine>, <machine> and <machine>.lan")
+        XCTAssertEqual(dev.redact("Apple Development (ABCDE12345)", as: .host), "Apple Development (ABCDE12345)")
+        XCTAssertEqual(dev.redact("my-dev-box devices dev2 webdev my-dev", as: .host), "my-dev-box devices dev2 webdev my-dev")
+        XCTAssertEqual(dev.redact("dev, DEV.local and dev.lan", as: .host), "<machine>, <machine> and <machine>.lan")
     }
 
     /// A later label of a dotted name is someone else's host, not this Mac.
     func testMachineNamesMatchOnlyAsTheFirstLabel() {
         let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev.local", "dev"])
-        XCTAssertEqual(dev.redact("pages.dev, api.dev.example.com, x.dev.local"), "pages.dev, api.dev.example.com, x.dev.local")
-        XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev."), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
+        XCTAssertEqual(dev.redact("pages.dev, api.dev.example.com, x.dev.local", as: .host), "pages.dev, api.dev.example.com, x.dev.local")
+        XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev.", as: .host), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
     }
 
     /// macOS stores a curly apostrophe in the computer name; other text often has a straight one.
     func testAMachineNameMatchesEitherApostrophe() {
         for name in ["Username’s Computer", "Username's Computer"] {
             let username = Redactor(home: "/Users/username", username: "username", machineNames: [name])
-            XCTAssertEqual(username.redact("Username's Computer and Username’s Computer"), "<machine> and <machine>", name)
+            XCTAssertEqual(username.redact("Username's Computer and Username’s Computer", as: .host), "<machine> and <machine>", name)
         }
     }
 
@@ -87,9 +87,9 @@ final class RedactorTests: XCTestCase {
             hostName: "desktop.corp.example.com", domains: ["tail1234.ts.net", "localdomain"])
         let username = Redactor(home: "/Users/username", username: "username", machineNames: names)
         XCTAssertEqual(
-            username.redact("Username’s Computer, Users-Computer.local, users-computer.tail1234.ts.net, users-computer.lan"),
+            username.redact("Username’s Computer, Users-Computer.local, users-computer.tail1234.ts.net, users-computer.lan", as: .host),
             "<machine>, <machine>, <machine>, <machine>.lan")
-        XCTAssertEqual(username.redact("desktop.corp.example.com, desktop.localdomain"), "<machine>, <machine>")
+        XCTAssertEqual(username.redact("desktop.corp.example.com, desktop.localdomain", as: .host), "<machine>, <machine>")
         let none = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "localhost", domains: ["localdomain"])
         XCTAssertEqual(none, [])
     }
@@ -97,13 +97,13 @@ final class RedactorTests: XCTestCase {
     func testTailscaleNamesTheMacFromItsComputerName() {
         let studio = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
             computerName: "Studio Mac", localHostName: "Elads-Mac-mini", hostName: nil, domains: ["tail.ts.net"]))
-        XCTAssertEqual(studio.redact("studio-mac.tail.ts.net and studio-mac"), "<machine> and studio-mac")
+        XCTAssertEqual(studio.redact("studio-mac.tail.ts.net and studio-mac", as: .host), "<machine> and studio-mac")
     }
 
     func testAGenericHostnameLabelNeverRedactsOrdinaryWords() {
         let names = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "macbook.localdomain", domains: ["lan"])
         let mac = Redactor(home: "/Users/username", username: "username", machineNames: names)
-        XCTAssertEqual(mac.redact("MacBook Pro, macbook.lan"), "MacBook Pro, <machine>")
+        XCTAssertEqual(mac.redact("MacBook Pro, macbook.lan", as: .host), "MacBook Pro, <machine>")
     }
 
     func testTailscaleLabel() {
@@ -131,42 +131,42 @@ final class RedactorTests: XCTestCase {
         let domains = SystemDNS(states: ["State:/Network/Global/DNS": ["SearchDomains": ["", "."]]]).domains
         let testmac = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
             computerName: nil, localHostName: "testmac", hostName: nil, domains: domains))
-        XCTAssertEqual(testmac.redact("Then testmac. Next"), "Then <machine>. Next")
+        XCTAssertEqual(testmac.redact("Then testmac. Next", as: .host), "Then <machine>. Next")
     }
 
     /// A MagicDNS name is device.tailnet.ts.net, and the tailnet's name identifies the account.
     func testATailnetNameIsReplaced() {
-        XCTAssertEqual(redactor.redact("nas.tail1234.ts.net, NAS.Fluffy-Monster.ts.net. Then"), "<tailnet-device>, <tailnet-device>. Then")
-        XCTAssertEqual(redactor.redact("ts.net, a.ts.net.example.com, nots.net, a.ts.network"), "ts.net, a.ts.net.example.com, nots.net, a.ts.network")
+        XCTAssertEqual(redactor.redact("nas.tail1234.ts.net, NAS.Fluffy-Monster.ts.net. Then", as: .host), "<tailnet-device>, <tailnet-device>. Then")
+        XCTAssertEqual(redactor.redact("ts.net, a.ts.net.example.com, nots.net, a.ts.network", as: .host), "ts.net, a.ts.net.example.com, nots.net, a.ts.network")
         let own = Redactor(home: "", username: "", machineNames: ["nas.tail1234.ts.net"])
-        XCTAssertEqual(own.redact("nas.tail1234.ts.net"), "<machine>", "this Mac's own name reads as the machine")
+        XCTAssertEqual(own.redact("nas.tail1234.ts.net", as: .host), "<machine>", "this Mac's own name reads as the machine")
     }
 
     func testCurrentCoversTheLocalHostNameBareAndUnderEachSearchDomain() throws {
         guard let local = SCDynamicStoreCopyLocalHostName(nil) as String? else {
             throw XCTSkip("this Mac has no local host name")
         }
-        XCTAssertEqual(Redactor.current.redact("\(local) and \(local.lowercased()).lan"), "<machine> and <machine>.lan")
+        XCTAssertEqual(Redactor.current.redact("\(local) and \(local.lowercased()).lan", as: .host), "<machine> and <machine>.lan")
         let domains = SystemDNS.current.domains
         guard !domains.isEmpty else { throw XCTSkip("this Mac has no search domains") }
         for domain in domains {
-            XCTAssertEqual(Redactor.current.redact("\(local.lowercased()).\(domain)"), "<machine>", domain)
+            XCTAssertEqual(Redactor.current.redact("\(local.lowercased()).\(domain)", as: .host), "<machine>", domain)
         }
     }
 
     /// Cloud and wildcard-DNS host names spell an address with hyphens.
     func testHyphenEncodedPrivateAddresses() {
-        XCTAssertEqual(redactor.redact("ip-10-0-1-5.ec2.internal 192-168-1-9.nip.io 100-64-0-1"),
+        XCTAssertEqual(redactor.redact("ip-10-0-1-5.ec2.internal 192-168-1-9.nip.io 100-64-0-1", as: .host),
                        "ip-<private-ip>.ec2.internal <private-ip>.nip.io <private-ip>")
-        XCTAssertEqual(redactor.redact("8-8-8-8.nip.io 3-10-0-0-5 10-0-0-5-7 2026-10-17-1"),
+        XCTAssertEqual(redactor.redact("8-8-8-8.nip.io 3-10-0-0-5 10-0-0-5-7 2026-10-17-1", as: .host),
                        "8-8-8-8.nip.io 3-10-0-0-5 10-0-0-5-7 2026-10-17-1")
     }
 
     func testPrivateIPsOnly() {
-        XCTAssertEqual(redactor.redact("10.0.0.5 172.20.1.1 192.168.1.9 127.0.0.1 169.254.3.3 100.64.0.1"),
+        XCTAssertEqual(redactor.redact("10.0.0.5 172.20.1.1 192.168.1.9 127.0.0.1 169.254.3.3 100.64.0.1", as: .host),
                        "<private-ip> <private-ip> <private-ip> <private-ip> <private-ip> <private-ip>")
-        XCTAssertEqual(redactor.redact("17.253.144.10 172.32.0.1 8.8.8.8"), "17.253.144.10 172.32.0.1 8.8.8.8")
-        XCTAssertEqual(redactor.redact("fe80::1c2b:3d4e%en0 fd12:3456::1 ::1 2a03:2880:f12f::1"),
+        XCTAssertEqual(redactor.redact("17.253.144.10 172.32.0.1 8.8.8.8", as: .host), "17.253.144.10 172.32.0.1 8.8.8.8")
+        XCTAssertEqual(redactor.redact("fe80::1c2b:3d4e%en0 fd12:3456::1 ::1 2a03:2880:f12f::1", as: .host),
                        "<private-ip> <private-ip> <private-ip> 2a03:2880:f12f::1")
     }
 }

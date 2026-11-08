@@ -5,6 +5,25 @@ import SystemConfiguration
 /// the home path, the username, private and local IP addresses, the machine's names,
 /// Tailscale names, which identify the account, other accounts' folders and disk names.
 struct Redactor: Sendable {
+    /// What a text is. An item's key and facts share one, so a fact cannot undo the key's
+    /// redaction or the reverse.
+    enum Context {
+        case host
+        /// A process or a listening port.
+        case program
+        case launchItem
+        /// Prompt instructions the user has edited.
+        case instructions
+
+        init(_ kind: Rule.Kind) {
+            switch kind {
+            case .host: self = .host
+            case .process, .port: self = .program
+            case .launchItem: self = .launchItem
+            }
+        }
+    }
+
     var home: String
     var username: String
     var machineNames: [String]
@@ -71,9 +90,8 @@ struct Redactor: Sendable {
         String(name.prefix { $0 != "." })
     }
 
-    /// `dottedNamesAreHosts` is false for a launch item, whose label and plist name are
-    /// reverse-DNS identifiers: there a login that is one of the labels is the author's name.
-    func redact(_ text: String, dottedNamesAreHosts: Bool = true) -> String {
+    func redact(_ text: String, as context: Context) -> String {
+        if context == .instructions { return Redactor(home: home, username: "", machineNames: []).redact(text, as: .host) }
         var out = text
         // Home path before username: the path contains the username.
         // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
@@ -98,7 +116,7 @@ struct Redactor: Sendable {
         out = out.replacingOccurrences(
             of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
             with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
-        return Self.redactAddresses(Self.redactFolders(redactUsername(out, dottedNamesAreHosts: dottedNamesAreHosts)))
+        return Self.redactAddresses(Self.redactFolders(redactUsername(out, dottedNamesAreHosts: context != .launchItem)))
     }
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
@@ -107,12 +125,6 @@ struct Redactor: Sendable {
         text
             .replacingOccurrences(of: "(?i)(?<![\\w.-])/Volumes/[^/\\n\")]+", with: "/Volumes/<volume>", options: .regularExpression)
             .replacingOccurrences(of: "(?i)/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
-    }
-
-    /// For text written for the model rather than captured: the login and the machine's names
-    /// match as words, so a Mac named "Mac" would rewrite "a Mac's owner".
-    func redactProse(_ text: String) -> String {
-        Redactor(home: home, username: "", machineNames: []).redact(text)
     }
 
     /// Where dotted names are hosts the username never matches as a label of one, so
