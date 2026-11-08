@@ -108,6 +108,16 @@ Preconditions:
   crash-port parent write the dying child's memory (`thread_create` succeeded, but the thread
   never ran), dropping the corpse port as well left no crash report, and a corpse-port parent
   could read the dead child's memory.
+- The drop at launch, after the branch review of 2026-11-08. On testmac, dev copies of `e02039b`
+  and `798a96c` started under an inherited stack limit by a launcher holding every exception
+  port (`sweep.c`, results in `build/verify/runs/testmac-2026-11-08/launch-drop/`). Before, from
+  8 to 160 KB the startup overflowed and the launcher ran a thread in Tattle. After, from 64
+  KB up it received only the dead process or nothing; at 56 KB and below the overflow is in
+  the dynamic loader, before Tattle's own code, and the launcher still runs a thread there
+  (ADR-0003). A stand-in linked with `-Wl,-stack_size,0x800000` ran normally at 8 KB. On the
+  Mac with the broker, the dev copy of `83d7512` under a crash-port parent captured through
+  the broker, the parent received nothing after `SIGABRT`, and macOS wrote the crash report.
+  lldb and xctrace before and after are in the same folder (`tools-*.txt`).
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
