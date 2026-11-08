@@ -33,7 +33,8 @@ A proof that needs a signed build runs on the user's Mac: testmac has no signing
   `ssh <testmac> 'open -na Ghostty --args -e /bin/zsh <script>'`, and read the files and the
   run folder over ssh.
 - testmac's display must be awake or the terminal never starts the script: run `caffeinate -di
-  -t <seconds>` over ssh, and `caffeinate -u -t 3` to wake it, before `open`.
+  -t <seconds>` over ssh, and `caffeinate -u -t 3` to wake it, before `open`. Use ssh for this:
+  a background job started through `hc exec` ends with the call.
 - Answer a dialog on testmac through the accessibility API. `osascript` with System Events from
   a script raises macOS's automation prompt on its screen and then times out.
 - testmac has no signing identity, so both copies build ad hoc there.

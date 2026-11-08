@@ -8,7 +8,9 @@ answer as an unconfirmed rule (`Model answer, unconfirmed · ...`), for the code
 given for: another program under the same name does not get it, confirmed or not. Code with
 no publisher is known at one version: by its signature's own hash, or, for unsigned code and
 scripts, by the file's content, read only when an answer is looked up or stored. A file that
-cannot be read keeps no answer. With nothing to tell that code by, such as unnamed code, the
+cannot be read keeps no answer. A launch item whose line holds its code, or runs one of Apple's
+installed programs, is known by the line; one whose line does not say where its code is keeps
+none. With nothing to tell that code by, such as unnamed code, the
 answer stays while the detail holds that code and is not kept. A host's prompt says nothing
 of the program that connected. Shipped rules about Apple's programs show only for Apple's own program
 by that name: Apple-signed, on the sealed system volume, and named for its own file. A
@@ -22,8 +24,10 @@ shipped rule with another publisher's name on it shows only for that publisher's
 - `ex-identity`: an answer shows only for the code it was given for; another program by
   the name can be asked about, and keeps its own answer.
 - `ex-version`: an answer goes with one version of code that has no publisher: a script or
-  unsigned file edited or replaced at its path, ad hoc code rebuilt there, and a launch item
-  whose line or program changes.
+  unsigned file edited or replaced at its path, ad hoc code rebuilt there, even under its old
+  modification date, and a launch item whose line or program changes.
+- `ex-line`: a launch item's line alone says which code it is when it holds that code or runs
+  one of Apple's installed programs; a line that does not say where its code is keeps no answer.
 - `ex-unkept`: an answer about code nothing identifies, or whose file cannot be read, shows
   with no `Confirm` and is not stored; it goes when the row comes to hold other code.
 - `ex-host`: a host's prompt carries the host and the connection, not who made it.
@@ -94,6 +98,18 @@ Preconditions:
   `command:<hash>:sha256:<hash>`. Change the plist to `<dir>/evil`, `Refresh`, reopen: `Runs`
   names it and `No explanation yet.`; change it back: confirmed again. Then replace the file
   `good` itself: `No explanation yet.`
+- **A program replaced under its old date.** A plist, not loaded, running an ad hoc program of
+  your own. In Startup, `Refresh`, its row: `Explain`, `Confirm`; the identity is
+  `command:<hash>:<hash>`. Copy another ad hoc build beside it, `touch -r` the old file's date
+  onto the copy, `mv` it over. `Refresh`, reopen: `No explanation yet.`; put the first build
+  back the same way: confirmed again.
+- **One of Apple's programs, by its line.** A plist, not loaded, running `/bin/sleep 86400`:
+  `Explain`, `Confirm`; the identity is `command:<hash>` with nothing after it. With a copy of
+  `/bin/sleep` in a folder of your own, `command:<hash>:<hash>`.
+- **A line that does not say where its code is.** Plists, not loaded, running `/usr/bin/env -S
+  <dir>/tool`, `/bin/sh` with `StandardInPath`, and `/usr/bin/python3 -m http.server`: `Explain`
+  shows the answer with no `Confirm`, and no rule is stored. `/bin/sh -c "echo proof"` offers
+  `Confirm`, and its identity is `command:<hash>`.
 - **An answer that was not kept goes with its code.** A row shared by two programs of one
   name (Network, below in `network-names.md`): `Explain` shows the answer with no `Confirm`.
   Stop one of the two and end its connection: when the row holds one program the detail reads
@@ -144,3 +160,6 @@ Preconditions:
   testmac, dev copy at `969e6d3`, run `2026-11-08T122412`; a launch item through a wrapper in run
   `2026-11-08T122957`; an unkept answer going with its code in run `2026-11-08T123157`. All
   copied to `build/verify/runs/testmac-2026-11-08/`.
+- A program replaced under its old date, one of Apple's programs by its line and a line that
+  does not say where its code is proven 2026-11-08 on testmac, dev copy at `0749baf`, run
+  `2026-11-08T141229`, copied to `build/verify/runs/testmac-2026-11-08/`.

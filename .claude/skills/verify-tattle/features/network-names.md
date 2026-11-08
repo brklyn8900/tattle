@@ -25,7 +25,8 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   A script reads `Signed by script, not signed`, with `Runs with` and `Interpreter signed
   by`; one of Apple's developer tools reads `Signed by unnamed code`. History keeps both, in
   `signer` and `appSigner`. A row whose connections have different signers names none. A
-  process that replaces itself with another program is read again for its next connections.
+  process that replaces itself with another program is read again for its next connections,
+  even when that program then deletes its file.
 - `net-foreign`: a file in an app's bundle that the app's signer did not sign keeps the row
   from holding any answer given for the app; what the app only launches does not.
 - `net-history`: the same outcome in the `connection` table, written even when the
@@ -106,6 +107,10 @@ Preconditions:
   does `exec 3<>/dev/tcp/$1/18095; sleep 12; exec /usr/bin/nc $1 18096 < <(sleep 300)`. `$V db
   "select pid, processName, signer, remotePort from connection where remotePort in (18095,
   18096)"`: one pid, `exec.sh | script, not signed | 18095` and `nc | Apple | 18096`.
+- **One whose new program deletes its file.** The same agent with `exec <dir>/dropper $1 18096`
+  in place of `nc`, where `dropper` is your own program that unlinks `argv[0]`, then connects
+  and sleeps. The same query: one pid, `exec.sh | script, not signed | 18095` and `dropper | |
+  18096`, with no signer. Row `dropper, 1 on this network, 1`, with no signer either.
 
 ## Gotchas
 
@@ -149,3 +154,5 @@ Preconditions:
 - A row whose connections differ, a file put in a bundle and a process that replaces itself
   proven 2026-11-08 on testmac, dev copy at `969e6d3`, run `2026-11-08T122412`; the bundle's own
   executable in run `2026-11-08T122957`. Copied to `build/verify/runs/testmac-2026-11-08/`.
+- A process whose new program deletes its file proven 2026-11-08 on testmac, dev copy at
+  `0749baf`, run `2026-11-08T141229`, copied to `build/verify/runs/testmac-2026-11-08/`.
