@@ -102,6 +102,40 @@ final class StartupSnapshotTests: XCTestCase {
         assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: false)
     }
 
+    func testALaunchItemThatIsNotApplesNeverReadsAsApple() throws {
+        let apple: (String) -> CodeSignature? = { _ in CodeSignature(signer: .apple, identifier: "com.apple.x", teamIdentifier: nil) }
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [job("local.sqlite", program: "/usr/bin/sqlite3")], appleCount: 0, skipped: [:]),
+            loginItems: [
+                login("1.agent", name: "registered agent", kind: .agent, executable: "/usr/bin/sqlite3"),
+                login("1.daemon", name: "registered daemon", kind: .daemon, executable: "/bin/ls"),
+                login("1.helper", name: "Apple's helper", kind: .loginItemHelper, executable: "/System/Applications/Passwords.app/Contents/MacOS/x"),
+            ],
+            state: LaunchctlState(services: [:], overrides: [:]), signature: apple)
+
+        let item = try XCTUnwrap(snapshot.items.first { $0.id == "local.sqlite" })
+        XCTAssertEqual(item.signature?.signer, .launchItem(applesProgram: "sqlite3"))
+        XCTAssertEqual(item.signature?.summary, "launch item, not signed")
+        XCTAssertEqual(item.facts.first { $0.name == "Signed by" }?.value, "launch item, not signed")
+        XCTAssertEqual(item.facts.first { $0.name == "Runs Apple's" }?.value, "sqlite3")
+        XCTAssertFalse(item.facts.contains { $0.value == "Apple" })
+
+        let background = snapshot.items(in: .background)
+        XCTAssertEqual(background.first { $0.name == "registered agent" }?.signature?.signer, .launchItem(applesProgram: "sqlite3"))
+        XCTAssertEqual(background.first { $0.name == "registered daemon" }?.signature?.signer, .launchItem(applesProgram: "ls"))
+        XCTAssertEqual(background.first { $0.name == "Apple's helper" }?.signature?.signer, .apple, "no plist says what it runs")
+    }
+
+    func testALaunchItemRunningAnotherPublishersProgramKeepsItsSigner() throws {
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
+            loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
+            signature: { _ in CodeSignature(signer: .developerID(name: "Acme")) })
+        let item = try XCTUnwrap(snapshot.items.first)
+        XCTAssertEqual(item.signature?.signer, .developerID(name: "Acme"))
+        XCTAssertFalse(item.facts.contains { $0.name == "Runs Apple's" })
+    }
+
     func testLaunchctlOverrideAndNotLoaded() {
         let launchd = LaunchdReader.Result(items: [job("a"), job("b")], appleCount: 0, skipped: [:])
         let state = LaunchctlState(services: [:], overrides: ["a": true])

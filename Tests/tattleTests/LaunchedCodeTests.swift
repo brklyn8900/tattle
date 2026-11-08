@@ -176,7 +176,7 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer("/Users/x/env", ["-S", "payload"]), .developerID(name: "/Users/x/env"))
         XCTAssertEqual(signer("/usr/bin/nohup", ["/Users/x/env", "/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .developerID(name: "/Users/x/env"))
         XCTAssertEqual(signer("/Users/x/nohup", ["/bin/sh", "-c", "payload"], apple: ["/bin/sh"]), .unnamed, "code an interpreter runs reads as such whoever starts it")
-        XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .apple)
+        XCTAssertEqual(signer("/usr/bin/nohup", ["/bin/ls"], apple: ["/usr/bin/nohup", "/bin/ls"]), .launchItem(applesProgram: "ls"))
     }
 
     func testAProgramNamedWithoutAPathIsFoundAsTheJobFindsIt() throws {
@@ -237,7 +237,7 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "*.log", "-exec", "/x/agent", "{}", ";"]), .developerID(name: "/x/agent"))
         XCTAssertEqual(signer("/usr/bin/find", ["/x", "-execdir", "true", "+"]), .developerID(name: "/usr/bin/true"))
         XCTAssertEqual(signer("/usr/bin/find", ["/x", "-exec", "/bin/sh", "-c", "payload", ";"]), .unnamed)
-        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "a"]), .apple, "find runs only its own code")
+        XCTAssertEqual(signer("/usr/bin/find", ["/x", "-name", "a"]), .launchItem(applesProgram: "find"), "find runs only its own code")
         XCTAssertNil(signer("/usr/bin/find", ["/x", "-exec", "/usr/bin/true", ";", "-ok", "/x/agent", ";"]), "two programs")
     }
 
@@ -472,7 +472,7 @@ final class LaunchedCodeTests: XCTestCase {
         }
         let identifiers = [server.path: "com.apple.lldb-rpc-server", other.path: "com.apple.Other"]
         XCTAssertEqual(signer(server.path, [], identifiers: identifiers), .unnamed)
-        XCTAssertEqual(signer(other.path, [], identifiers: identifiers), .apple, "an app without a developer folder is not an Xcode")
+        XCTAssertEqual(signer(other.path, [], identifiers: identifiers), .launchItem(applesProgram: "Other"), "an app without a developer folder is not an Xcode")
         let named = ProcessEntry.name(path: server.path, arguments: [server.path], command: "lldb-rpc-server",
                                       signature: CodeSignature(signer: .apple, identifier: "com.apple.lldb-rpc-server"))
         XCTAssertTrue(named.runsUnnamedCode)

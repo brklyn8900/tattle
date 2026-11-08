@@ -95,6 +95,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         facts.append(Fact(name: "State", value: state.text))
         if let signature {
             facts.append(.signedBy(signature))
+            if case .launchItem(let program) = signature.signer { facts.append(Fact(name: "Runs Apple's", value: program)) }
             if let team = signature.teamIdentifier ?? teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         } else if let teamIdentifier {
             facts.append(Fact(name: "Team", value: teamIdentifier))
@@ -171,7 +172,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 program: path,
                 trigger: trigger(for: item),
                 state: loginItemState(item, state: state),
-                signature: path.flatMap(signature),
+                signature: path.flatMap { item.isLaunchItem ? CodeSignature.launchItem(running: $0, signature: signature($0)) : signature($0) },
                 developer: item.developerName ?? container?.developerName,
                 teamIdentifier: item.teamIdentifier,
                 parent: container.map { $0.name } ?? item.container,

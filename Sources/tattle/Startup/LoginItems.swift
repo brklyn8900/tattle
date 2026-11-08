@@ -53,6 +53,9 @@ struct LoginItem: Equatable, Sendable, Identifiable {
         }
     }
 
+    /// A launch agent or daemon: a plist says what it runs.
+    var isLaunchItem: Bool { kind == .agent || kind == .daemon }
+
     var isExtension: Bool {
         switch kind {
         case .spotlightImporter, .dockTilePlugin, .appExtension: true

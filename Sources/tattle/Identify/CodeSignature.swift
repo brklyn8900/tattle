@@ -23,6 +23,10 @@ struct CodeSignature: Equatable, Sendable {
         /// by name, in arguments that cannot be read, or what one of Apple's developer tools is
         /// told to run. Whose code it is cannot be known.
         case unnamed
+        /// A launch item that is not Apple's, running one of Apple's programs, named here. No
+        /// one signs the plist that says what the program is told to do, so Apple's signature on
+        /// the program vouches for nothing the item does.
+        case launchItem(applesProgram: String)
         /// Signed, but the signature does not match the binary.
         case invalid(String)
         /// Signed with a certificate Apple did not issue. Anyone can make one, with any name.
@@ -46,16 +50,19 @@ struct CodeSignature: Equatable, Sendable {
         case .unsigned: "unsigned"
         case .script: "script, not signed"
         case .unnamed: "unnamed code"
+        case .launchItem: "launch item, not signed"
         case .invalid: "invalid signature"
         case .notIssuedByApple: "certificate not issued by Apple"
         }
     }
 
-    /// The signature of the code a command line runs (`LaunchedCode.started`): the program's,
-    /// through any of Apple's wrappers, or the first program on the way that is not Apple's;
-    /// "script" when an interpreter runs a script, whatever file the command line names as
-    /// the script, and "unnamed code" when it runs code the command line does not name as a
-    /// file; nil when Apple's programs lead to one the command line does not locate.
+    /// How a launch item reads, from the code its command line runs (`LaunchedCode.started`):
+    /// the program's signature, through any of Apple's wrappers, or the first program's on the
+    /// way that is not Apple's; "script" when an interpreter runs a script, whatever file the
+    /// command line names as the script, and "unnamed code" when it runs code the command line
+    /// does not name as a file; nil when Apple's programs lead to one the command line does
+    /// not locate. Startup lists only items that are not Apple's (its own, under
+    /// /System/Library, are counted), so a program of Apple's reads as `launchItem`.
     ///
     /// A script file's signature is not read: a script rarely carries one, and no interpreter
     /// runs a signed binary as its script, so a signed file in the script's place is an
@@ -69,11 +76,17 @@ struct CodeSignature: Equatable, Sendable {
         }
         let code = LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify)
         switch code {
-        case .program(let path): return reading(path)
+        case .program(let path): return launchItem(running: path, signature: reading(path))
         case .script, .standardInput: return CodeSignature(signer: .script)
         case .unnamed: return CodeSignature(signer: .unnamed)
         case .undetermined: return nil
         }
+    }
+
+    /// `signature`, the signature of `program`, as a launch item that is not Apple's shows it.
+    static func launchItem(running program: String, signature: CodeSignature?) -> CodeSignature? {
+        guard signature?.signer == .apple else { return signature }
+        return CodeSignature(signer: .launchItem(applesProgram: URL(fileURLWithPath: program).lastPathComponent))
     }
 
     /// Reads and validates the signature at `path`. Resources are not validated: that
