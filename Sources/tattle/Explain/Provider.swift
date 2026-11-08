@@ -9,6 +9,7 @@ enum ProviderError: Error, Equatable {
     case notConfigured
     case timedOut
     case failed(status: Int32, stderr: String)
+    case cannotDisclaim
 }
 
 /// Runs a shell command with the prompt on stdin and reads the answer from stdout. The
@@ -18,6 +19,7 @@ enum ProviderError: Error, Equatable {
 struct ShellProvider: ExplainProvider {
     var command: String
     var timeout: TimeInterval = 120
+    var disclaim: @Sendable (inout posix_spawnattr_t?) -> Bool = ResponsibleProcess.disclaim
 
     struct Preset: Identifiable, Sendable {
         let id: String
@@ -45,17 +47,18 @@ struct ShellProvider: ExplainProvider {
         guard !command.isEmpty else { throw ProviderError.notConfigured }
         let expanded = command.replacingOccurrences(of: "{schema}", with: Self.shellQuote(OutputContract.schema))
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        let timeout = timeout
+        let timeout = timeout, disclaim = disclaim
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 continuation.resume(with: Result {
-                    try Self.run(shell: shell, command: expanded, input: prompt, timeout: timeout)
+                    try Self.run(shell: shell, command: expanded, input: prompt, timeout: timeout, disclaim: disclaim)
                 })
             }
         }
     }
 
-    private static func run(shell: String, command: String, input: String, timeout: TimeInterval) throws -> String {
+    private static func run(shell: String, command: String, input: String, timeout: TimeInterval,
+                            disclaim: (inout posix_spawnattr_t?) -> Bool) throws -> String {
         let workDir = FileManager.default.temporaryDirectory
             .appending(path: "tattle-explain-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
@@ -65,7 +68,8 @@ struct ShellProvider: ExplainProvider {
         guard queue != -1 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { close(queue) }
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
-        let pid = try spawn(shell, ["-l", "-c", command], in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
+        let pid = try spawn(shell, ["-l", "-c", command], in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr,
+                            disclaim: disclaim)
         let result = exchange(with: pid, on: queue, input: Data(input.utf8), stdin: stdin.fileHandleForWriting,
                               stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading,
                               until: .now() + timeout)
@@ -171,7 +175,8 @@ struct ShellProvider: ExplainProvider {
     /// Starts `path` with posix_spawn: Process cannot put the child in a group of its own
     /// before it runs, and setting it afterwards races the child's own children.
     private static func spawn(_ path: String, _ arguments: [String], in directory: String,
-                              stdin: Pipe, stdout: Pipe, stderr: Pipe) throws -> pid_t {
+                              stdin: Pipe, stdout: Pipe, stderr: Pipe,
+                              disclaim: (inout posix_spawnattr_t?) -> Bool) throws -> pid_t {
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
@@ -193,6 +198,10 @@ struct ShellProvider: ExplainProvider {
         posix_spawnattr_setpgroup(&attributes, 0)
         posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT
                                                     | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
+        // Whatever chooses this command can be changed by any process of the user's, so it
+        // must not hold the permissions the user gave Tattle. If it would, it does not run
+        // (ADR-0004).
+        guard disclaim(&attributes) else { throw ProviderError.cannotDisclaim }
 
         let argv = ([path] + arguments).map { strdup($0) } + [nil]
         defer { argv.forEach { free($0) } }

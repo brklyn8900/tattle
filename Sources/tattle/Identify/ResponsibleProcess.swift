@@ -3,17 +3,21 @@ import Foundation
 
 /// The process macOS holds responsible for another: the app behind a service that launchd
 /// started on its behalf, such as Safari's networking service. It is what `launchctl
-/// procinfo` reports and what the system's own permission prompts attribute to. The
-/// lookup is a private libquarantine function, resolved at run time so a macOS without
-/// it degrades to no attribution rather than a failed launch.
+/// procinfo` reports and what the system's own permission prompts attribute to. Both calls
+/// here are private libquarantine functions, resolved at run time so a macOS without them
+/// does not fail at launch (ADR-0004).
 enum ResponsibleProcess {
     private typealias Lookup = @convention(c) (pid_t) -> pid_t
+    private typealias SetDisclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
 
-    private static let lookup: Lookup? = {
+    private static let lookup = resolve("responsibility_get_pid_responsible_for_pid", as: Lookup.self)
+    private static let setDisclaim = resolve("responsibility_spawnattrs_setdisclaim", as: SetDisclaim.self)
+
+    private static func resolve<Function>(_ name: String, as type: Function.Type) -> Function? {
         guard let handle = dlopen("/usr/lib/system/libquarantine.dylib", RTLD_LAZY),
-              let symbol = dlsym(handle, "responsibility_get_pid_responsible_for_pid") else { return nil }
-        return unsafeBitCast(symbol, to: Lookup.self)
-    }()
+              let symbol = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(symbol, to: type)
+    }
 
     /// The responsible pid when it is another process; nil when the process answers for
     /// itself or the lookup is unavailable.
@@ -21,5 +25,11 @@ enum ResponsibleProcess {
         guard pid > 0, let lookup else { return nil }
         let responsible = lookup(pid)
         return responsible > 0 && responsible != pid ? responsible : nil
+    }
+
+    /// Makes the process these attributes start answer for itself, so macOS does not charge
+    /// its access to this app. False when the call is missing or refuses.
+    @Sendable static func disclaim(_ attributes: inout posix_spawnattr_t?) -> Bool {
+        setDisclaim?(&attributes, 1) == 0
     }
 }

@@ -631,6 +631,43 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 
+    /// The command must not hold the permissions the user gave Tattle, so macOS has to
+    /// charge it to itself and not to the process that started it (ADR-0004).
+    func testTheCommandAnswersForItself() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-responsible-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let pidFile = folder.appending(path: "pid"), release = folder.appending(path: "release")
+        let command = "echo $$ > '\(pidFile.path)'; while [ ! -e '\(release.path)' ]; do sleep 0.05; done; echo done"
+        let answer = Task { try await ShellProvider(command: command, timeout: 20).explain("") }
+
+        var shell: Int32?
+        let deadline = Date().addingTimeInterval(15)
+        while shell == nil, Date() < deadline {
+            let text = (try? String(contentsOf: pidFile, encoding: .utf8)) ?? ""
+            shell = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            if shell == nil { try await Task.sleep(for: .milliseconds(50)) }
+        }
+        let pid = try XCTUnwrap(shell, "the command started")
+        let responsible = ResponsibleProcess.pid(for: pid)
+        FileManager.default.createFile(atPath: release.path, contents: nil)
+        _ = try await answer.value
+        XCTAssertNil(responsible, "pid \(pid) is charged to pid \(responsible ?? -1)")
+    }
+
+    /// Without the disclaim the command would hold those permissions, so it does not run.
+    func testNoCommandRunsWithoutTheDisclaim() async throws {
+        let marker = FileManager.default.temporaryDirectory.appending(path: "tattle-disclaim-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: marker) }
+        do {
+            _ = try await ShellProvider(command: "touch '\(marker.path)'", disclaim: { _ in false }).explain("")
+            XCTFail("expected a refusal")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .cannotDisclaim)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "the command ran")
+    }
+
     func testSchemaPlaceholderAndEmptyWorkingDirectory() async throws {
         let output = try await ShellProvider(command: "printf '%s' {schema} | head -c 1; echo; ls -A | wc -l | tr -d ' '").explain("")
         XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), "{\n0")

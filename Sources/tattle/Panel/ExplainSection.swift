@@ -125,6 +125,7 @@ struct ExplainSection: View {
         switch error {
         case ProviderError.notConfigured: "No provider configured."
         case ProviderError.timedOut: "The provider did not answer in time."
+        case ProviderError.cannotDisclaim: "The command was not run, because this version of macOS would give it Tattle's permissions."
         case ProviderError.failed(let status, let stderr): "The provider failed (exit \(status)). \(stderr)"
         case let parse as LLMAnswer.ParseError: "The answer was not in the expected shape (\(parse))."
         default: String(describing: error)
