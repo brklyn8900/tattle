@@ -161,7 +161,12 @@ enum LaunchedCode: Equatable, Sendable {
             default: if argument.count < 2 || !argument.hasPrefix("-") { operands.append(argument) }
             }
         }
-        let opened = app.map { operands.isEmpty ? $0 : nil } ?? (operands.count == 1 ? operands[0] : nil)
+        let opened: String?
+        if let app {
+            opened = operands.isEmpty ? app : nil
+        } else {
+            opened = operands.count == 1 && URL(fileURLWithPath: operands[0]).pathExtension == "app" ? operands[0] : nil
+        }
         guard let opened, opened.hasPrefix("/") else { return .undetermined }
         return started(opened, [], identify, searchPath: searchPath)
     }

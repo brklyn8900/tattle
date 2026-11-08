@@ -133,6 +133,7 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["-a", "/Applications/X.app"], "/Applications/X.app"),
             ("/usr/bin/open", ["-a", "/Applications/X.app", "--args", "/bin/ls"], "/Applications/X.app"),
             ("/usr/bin/open", ["-g", "/Applications/X.app", "--args", "/bin/ls"], "/Applications/X.app"),
+            ("/usr/bin/open", ["/Applications/X.app/"], "/Applications/X.app/"),
         ]
         for (program, arguments, code) in commands {
             XCTAssertEqual(signer(program, arguments), .developerID(name: code), "\(program) \(arguments)")
@@ -233,6 +234,9 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["/x/run.command", "-a", "/Applications/X.app"]),
             ("/usr/bin/open", ["/Applications/X.app", "/x/run.command"]),
             ("/usr/bin/open", ["run.command"]),
+            ("/usr/bin/open", ["/x/run.command"]),
+            ("/usr/bin/open", ["-e", "/x/notes.txt"]),
+            ("/usr/bin/open", ["/bin/ls"]),
             ("/usr/bin/env", ["-S", "/bin/sh -c payload", "/bin/ls"]),
             ("/usr/bin/nohup", []),
             // xargs adds words from its standard input to the command it runs.
