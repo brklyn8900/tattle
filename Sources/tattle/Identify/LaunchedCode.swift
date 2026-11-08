@@ -2,7 +2,8 @@ import Foundation
 
 /// The code a command line runs, read from its words: a program's own, a script file an
 /// interpreter runs, or code the command line holds or does not name. Startup signs a job
-/// by it and Processes names a process by it, so both tabs read one command line one way.
+/// by what it starts (`started`), and Processes names and marks a process by what it runs
+/// (`running`).
 ///
 /// The options each interpreter and wrapper takes come from its manual page. An option the
 /// tables do not list counts as taking no value.
@@ -17,9 +18,9 @@ enum LaunchedCode: Equatable, Sendable {
     /// An interpreter reading its code from standard input: a pipe, a file launchd opens
     /// for it, or someone typing.
     case standardInput(interpreter: String)
-    /// A wrapper running a program its command line does not name: an app by name or
-    /// bundle identifier, a document and whatever app opens it, or a command inside an
-    /// option's value.
+    /// A program the command line does not locate: at a path relative to the working
+    /// directory, found nowhere on the PATH, an app by name or bundle identifier, a document
+    /// and whatever app opens it, or a command inside an option's value.
     case undetermined
 
     /// Who a program is, for reading its command line. Apple's programs are known by their
@@ -169,7 +170,8 @@ enum LaunchedCode: Equatable, Sendable {
     // MARK: - Options
 
     private enum Takes {
-        /// The code is in the command line: inline, or a module or app by name.
+        /// The code is in the command line (inline, a module by name, a command in the
+        /// option's value), or the option says where to find the program (`env -P`).
         case code
         /// The code comes from standard input.
         case standardInput

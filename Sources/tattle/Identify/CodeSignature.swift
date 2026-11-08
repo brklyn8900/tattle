@@ -16,7 +16,8 @@ struct CodeSignature: Equatable, Sendable {
         /// Signed without any certificate.
         case adHoc
         case unsigned
-        /// A script run by an interpreter: the interpreter is Apple's, the code is not signed.
+        /// Code an interpreter runs (a script file, inline code, standard input), which
+        /// carries no signature; the interpreter's says nothing about it.
         case script
         /// Signed, but the signature does not match the binary.
         case invalid(String)
@@ -47,8 +48,8 @@ struct CodeSignature: Equatable, Sendable {
 
     /// The signature of the code a command line runs (`LaunchedCode.started`): the program's,
     /// through any wrapper; the script's when an interpreter runs a file at an absolute path;
-    /// "script" when it runs code at no path the command line locates; nil when a wrapper's
-    /// program is not named.
+    /// "script" when it runs code at no path the command line locates; nil when the command
+    /// line does not locate the program it runs.
     ///
     /// A script never reads as Apple's: Apple's scripts carry no signature, and no
     /// interpreter runs a signed binary as its script, so an Apple binary in the script's

@@ -32,7 +32,7 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     var plistURL: URL
     /// The executable: `Program`, or the first of `ProgramArguments`.
     var program: String?
-    /// Arguments after the executable.
+    /// Arguments after argv[0], the first of `ProgramArguments`.
     var arguments: [String]
     /// The PATH the plist sets for the job (`EnvironmentVariables`); nil when the job runs
     /// with launchd's own.
