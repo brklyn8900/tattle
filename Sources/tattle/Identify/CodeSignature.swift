@@ -69,7 +69,8 @@ struct CodeSignature: Equatable, Sendable {
     /// Apple's or the same team's, which a signature proves. Code with no team has no signer
     /// to share, so only the very same code counts.
     func owns(_ other: CodeSignature?) -> Bool {
-        if signer == .apple || teamIdentifier != nil { return isSameSigner(as: other) }
+        if signer == .apple { return isSameSigner(as: other) }
+        if let teamIdentifier { return teamIdentifier == other?.teamIdentifier }
         return codeHash != nil && codeHash == other?.codeHash
     }
 

@@ -113,6 +113,16 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertNil(CodeSignature.read(path: unsigned.path).codeHash)
     }
 
+    /// A team is what Apple issued. A certificate's name or kind can differ within one.
+    func testABundleOwnsItsTeamsCodeUnderAnyOfItsCertificates() {
+        let bundle = CodeSignature(signer: .developerID(name: "Acme Inc"), teamIdentifier: "ABCDE12345")
+        XCTAssertTrue(bundle.owns(CodeSignature(signer: .developerID(name: "Acme LLC"), teamIdentifier: "ABCDE12345")))
+        XCTAssertTrue(bundle.owns(CodeSignature(signer: .development, teamIdentifier: "ABCDE12345")))
+        XCTAssertFalse(bundle.owns(CodeSignature(signer: .developerID(name: "Acme Inc"), teamIdentifier: "FGHIJ67890")))
+        XCTAssertFalse(bundle.owns(CodeSignature(signer: .adHoc)))
+        XCTAssertFalse(bundle.owns(nil))
+    }
+
     /// A signature's hash says which version of the code this is, so what decides whether to
     /// read it again cannot be a date anyone can set back.
     func testASignatureIsReadAgainForAFileReplacedUnderItsOldDate() throws {
