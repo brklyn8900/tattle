@@ -52,7 +52,10 @@ done)
   and java's long options) makes its value read as the script: a process is then named
   after it (`LaunchedCode.swift`). Proposed: write each table as the program's getopt
   string, from its manual page or source, and read an option no table lists as unnamed
-  code, so an unknown option fails closed.
+  code, so an unknown option fails closed. With it, one table of program kinds
+  (interpreter, launcher, wrapper, `open`, `find`, `xargs`) in place of the three tables and
+  the checks by name, each kind with only the fields it uses: `Takes.code` now means inline
+  code for an interpreter and a command not followed for a wrapper.
 - No list completes the Apple programs that run code they are given: the tables follow
   nohup, env, xcrun, sudo, find and the rest, but one they do not list (`launchctl asuser`,
   `su`) reads as itself, Apple, whatever it runs (`LaunchedCode.swift`).
@@ -61,6 +64,17 @@ done)
   does, and on 2026-10-26 this Mac's ditto failed on it, so on such a system the check
   fails. Not run on testmac (26.7.1). Its name no longer fits either: the stand-in launchctl
   fails the install, not the lock (`CaptureBrokerScriptTests.swift`).
+- A wrapper given no command reads as undetermined, so its launch item shows no signer,
+  though some then run only their own code: `caffeinate -s` (a common keep-awake agent),
+  `env`, `nice`, `time`, `arch`. Others start something else (`screen` and `script` run
+  `$SHELL`), so it needs a flag per wrapper, not one rule (`LaunchedCode.swift`).
+- Apple's developer-tool stubs in `/usr/bin` (`git`, `clang`, `xcodebuild`) run the tool in
+  the developer folder `DEVELOPER_DIR` names, from the toolchain `TOOLCHAINS` picks, and a
+  plist can set both in `EnvironmentVariables`; Startup reads only its `PATH`, so such a
+  job reads as Apple's tool. An arbitrary folder is refused (xcrun wanted `usr/bin/xcrun`,
+  then `libxcrun.dylib`, then an Xcode installation); whether a crafted one passes is
+  unsettled (2026-11-07). Proposed: read a stub as undetermined when the job sets either
+  (`LaunchedCode.swift`, `LaunchdItem.swift`).
 
 **From the review triage of 2026-11-07** (its "consider" list, verified at `0618f7e`; IDs
 are the triage's)
