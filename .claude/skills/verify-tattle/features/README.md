@@ -47,7 +47,7 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build; a
-  launcher's crash port and the drop at launch 2026-11-08.
+  launcher's crash port, the drop at launch and the fixed stack 2026-11-08.
 - [Resources line](./resources.md): CPU, memory and the network rate above the tabs, and
   which interfaces the rate counts. Proven 2026-11-08.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.

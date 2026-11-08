@@ -118,6 +118,11 @@ Preconditions:
   Mac with the broker, the dev copy of `83d7512` under a crash-port parent captured through
   the broker, the parent received nothing after `SIGABRT`, and macOS wrote the crash report.
   lldb and xctrace before and after are in the same folder (`tools-*.txt`).
+- The fixed main-thread stack (`6f6b724`): the dev copy received nothing under each of 23
+  stack limits from 8 KB to 1 MB, on testmac and on the Mac with the broker
+  (`build/verify/runs/2026-11-08-exception-ports/sweep-arm64.txt`). Unpinned on that Mac,
+  64 KB and below still gave a live task in the dynamic loader. The pinned dev copy, opened
+  with `open`, captured through the broker.
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
