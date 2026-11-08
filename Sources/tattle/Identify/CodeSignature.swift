@@ -23,10 +23,11 @@ struct CodeSignature: Equatable, Sendable {
         /// by name, in arguments that cannot be read, or what one of Apple's developer tools is
         /// told to run. Whose code it is cannot be known.
         case unnamed
-        /// A launch item that is not Apple's, running one of Apple's programs, named here unless
-        /// its plist changes the root folder, when the path does not say which file runs. No
-        /// one signs the plist that says what the program is told to do, so Apple's signature on
-        /// the program vouches for nothing the item does.
+        /// A launch item that is not Apple's, running one of Apple's programs, named here when
+        /// it is where macOS installs it and its plist does not change the root folder, when
+        /// the path would not say which file runs. No one signs the plist that says what the
+        /// program is told to do, so Apple's signature on the program vouches for nothing the
+        /// item does.
         case launchItem(applesProgram: String?)
         /// Signed, but the signature does not match the binary.
         case invalid(String)
@@ -87,7 +88,12 @@ struct CodeSignature: Equatable, Sendable {
     /// `signature`, the signature of `program`, as a launch item that is not Apple's shows it.
     static func launchItem(running program: String, signature: CodeSignature?, changesRoot: Bool = false) -> CodeSignature? {
         guard signature?.signer == .apple else { return signature }
-        return CodeSignature(signer: .launchItem(applesProgram: changesRoot ? nil : URL(fileURLWithPath: program).lastPathComponent))
+        // A plist's path is as written: a link, or ".." out of a system folder. A copy of
+        // Apple's binary keeps Apple's signature under any name.
+        let path = URL(fileURLWithPath: program).resolvingSymlinksInPath().path
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        let isNamed = !changesRoot && ApplesProgram.isNamed(name, path: path, signature: signature)
+        return CodeSignature(signer: .launchItem(applesProgram: isNamed ? name : nil))
     }
 
     /// Reads and validates the signature at `path`. Resources are not validated: that
