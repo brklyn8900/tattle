@@ -14,6 +14,18 @@
   executable. The connection's own row reads right.
 - Confirmed program answers from before identities stay as dead rows: they have no identity,
   so they are never shown, and a confirmed rule never expires.
+- An answer that was not kept stays when neither side has an identity: with none on the row,
+  the detail cannot tell its code changed (`sh -c x` closes, `sh -c y` joins), so the answer
+  stays until the detail closes (`ExplainSection.swift`).
+- A process that replaces itself and keeps the path is not read again: `exec /bin/bash b.sh`
+  from `a.sh`, or a file replaced at its path and then exec'd. Its new connections carry the
+  old owner (`ConnectionOwner.unresolved`).
+- Inline code that calls a file is pinned by its line: `sh -c /x/agent` keeps its answer when
+  `agent` changes.
+- The host prompt still carries per-connection facts (`Protocol`, `Since`, `First contact`),
+  and the model can echo them into an answer stored for the host (`NetworkSnapshot.swift`).
+- A launch item's line is hashed after joining on spaces, so two argument splits collide:
+  `["-c", "/x/job --dry-run"]` and `["-c", "/x/job", "--dry-run"]` (`StartupSnapshot.swift`).
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
