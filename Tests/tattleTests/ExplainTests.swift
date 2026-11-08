@@ -260,12 +260,21 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try key(.launchItem, "dev-backup"), "dev-backup", "a machine name matches only as a whole host name")
     }
 
-    /// Instructions are prose: a Mac named "Mac" or a user called data must not rewrite them.
-    /// What cannot be a word still goes.
-    func testInstructionsLoseOnlyTheHomePathAndAddresses() {
+    /// The default instructions hold nothing of the user's, and a Mac named "Mac" or a user
+    /// called data would rewrite them.
+    func testTheDefaultInstructionsGoOutAsWritten() {
         let redactor = Redactor(home: "/Users/data", username: "data", machineNames: ["Mac"])
-        let prompt = Prompt.build(instructions: "A Mac's owner reads data from /Users/data/x on 10.0.0.5.", request: ExplainRequest(kind: .port, key: "5000"), redactor: redactor)
-        XCTAssertTrue(prompt.hasPrefix("A Mac's owner reads data from <home>/x on <private-ip>.\n"), prompt)
+        let prompt = Prompt.build(instructions: Prompt.defaultInstructions, request: ExplainRequest(kind: .port, key: "5000"), redactor: redactor)
+        XCTAssertTrue(prompt.hasPrefix(Prompt.defaultInstructions + "\n\n"), prompt)
+    }
+
+    /// Edited instructions can name the user. The passes for captured paths and tailnet names
+    /// stay out of them: a path in a sentence has no end the text can show.
+    func testEditedInstructionsLoseTheLoginTheMacsNamesAndAddresses() {
+        let redactor = Redactor(home: "/Users/username", username: "username", machineNames: ["Atlas"])
+        let instructions = "My Mac is Atlas, I am username. See /Users/username/x on 10.0.0.5, /Volumes/Backup when relevant, /Users/other/y and nas.tail1.ts.net."
+        let prompt = Prompt.build(instructions: instructions, request: ExplainRequest(kind: .port, key: "5000"), redactor: redactor)
+        XCTAssertTrue(prompt.hasPrefix("My Mac is <machine>, I am <user>. See <home>/x on <private-ip>, /Volumes/Backup when relevant, /Users/other/y and nas.tail1.ts.net.\n"), prompt)
     }
 
     /// A launch item's label and plist name are reverse-DNS identifiers, not host names: a

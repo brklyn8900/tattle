@@ -20,9 +20,9 @@ enum Prompt {
 
     /// The item and facts go out as one JSON line between two markers. JSON escapes line
     /// breaks and quotes inside a value, so a value cannot pass for a fact or for the end
-    /// of the block. The key and the fact values get the full redaction: a fact usually
-    /// repeats the key, so a key redacted less would undo it. The instructions are prose and
-    /// lose only what cannot be a word.
+    /// of the block. The key and the fact values get one redaction: a fact usually repeats
+    /// the key, so a key redacted less would undo it. The default instructions hold nothing of
+    /// the user's and go out as written; edited ones can name the user.
     static func build(instructions: String, request: ExplainRequest, redactor: Redactor) -> String {
         let redact = { redactor.redact($0, as: Redactor.Context(request.kind)) }
         let captured: [String: Any] = [
@@ -31,8 +31,9 @@ enum Prompt {
         ]
         // The input is only strings, so serialization cannot fail.
         let json = try! JSONSerialization.data(withJSONObject: captured, options: [.sortedKeys, .withoutEscapingSlashes])
+        let written = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         return [
-            redactor.redact(instructions.trimmingCharacters(in: .whitespacesAndNewlines), as: .instructions),
+            written == defaultInstructions ? written : redactor.redact(written, as: .instructions),
             "",
             dataBegin,
             String(decoding: json, as: UTF8.self),

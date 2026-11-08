@@ -91,7 +91,7 @@ struct Redactor: Sendable {
     }
 
     func redact(_ text: String, as context: Context) -> String {
-        if context == .instructions { return Redactor(home: home, username: "", machineNames: []).redact(text, as: .host) }
+        let captured = context != .instructions
         var out = text
         // Home path before username: the path contains the username.
         // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
@@ -113,10 +113,14 @@ struct Redactor: Sendable {
         }
         // After the machine's names, so this Mac's own MagicDNS name reads as the machine. A
         // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account.
-        out = out.replacingOccurrences(
-            of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
-            with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
-        return Self.redactAddresses(Self.redactFolders(redactUsername(out, dottedNamesAreHosts: context != .launchItem)))
+        if captured {
+            out = out.replacingOccurrences(
+                of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
+                with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
+        }
+        out = redactUsername(out, in: context)
+        if captured { out = Self.redactFolders(out) }
+        return Self.redactAddresses(out)
     }
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
@@ -135,18 +139,19 @@ struct Redactor: Sendable {
     /// a login stands: before an "@" ("e@ttys003") and first in a process title ("postgres: e
     /// db"). Where it appears in a path the home replacement covers it; the facts built for a
     /// prompt never carry it as "you (e)" (UserName.describeForModel).
-    private func redactUsername(_ text: String, dottedNamesAreHosts: Bool) -> String {
+    private func redactUsername(_ text: String, in context: Context) -> String {
         guard !username.isEmpty else { return text }
         let login = NSRegularExpression.escapedPattern(for: username)
         let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
         if username.count >= 3 {
-            let pattern = dottedNamesAreHosts ? "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])" : "\\b" + login + "\\b"
+            let pattern = context != .launchItem ? "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])" : "\\b" + login + "\\b"
             return text.replacingOccurrences(of: pattern, with: "<user>", options: options)
         }
+        if context == .instructions { return text }
         let replaced = text
             .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: options)
             .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: options)
-        if dottedNamesAreHosts { return replaced }
+        if context != .launchItem { return replaced }
         return replaced.replacingOccurrences(
             of: "(?<![\\w-])" + login + "(?=\\.[\\w-])|(?<=[\\w-]\\.)" + login + "(?![\\w-])",
             with: "<user>", options: options)
