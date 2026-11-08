@@ -95,7 +95,7 @@ struct Redactor: Sendable {
         var out = text
         // Home path before username: the path contains the username.
         // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
-        // In any case, as APFS reads a path and as a login is the same account however written.
+        // In any case, as APFS reads a path.
         if !home.isEmpty {
             let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![\\w.~@+-])"
             out = out.replacingOccurrences(of: pattern, with: "<home>", options: [.regularExpression, .caseInsensitive])
@@ -131,6 +131,7 @@ struct Redactor: Sendable {
             .replacingOccurrences(of: "(?i)/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
     }
 
+    /// The login matches only as written, so the login "code" leaves the app "Code" alone.
     /// Where dotted names are hosts the username never matches as a label of one, so
     /// "mail.google.com" stays whole for a user called mail. A dot that ends a sentence does
     /// not join a label.
@@ -142,19 +143,18 @@ struct Redactor: Sendable {
     private func redactUsername(_ text: String, in context: Context) -> String {
         guard !username.isEmpty else { return text }
         let login = NSRegularExpression.escapedPattern(for: username)
-        let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
         if username.count >= 3 {
             let pattern = context != .launchItem ? "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])" : "\\b" + login + "\\b"
-            return text.replacingOccurrences(of: pattern, with: "<user>", options: options)
+            return text.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
         }
         if context == .instructions { return text }
         let replaced = text
-            .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: options)
-            .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: options)
+            .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: .regularExpression)
+            .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: .regularExpression)
         if context != .launchItem { return replaced }
         return replaced.replacingOccurrences(
             of: "(?<![\\w-])" + login + "(?=\\.[\\w-])|(?<=[\\w-]\\.)" + login + "(?![\\w-])",
-            with: "<user>", options: options)
+            with: "<user>", options: .regularExpression)
     }
 
     /// Replaces private and local IP addresses only.

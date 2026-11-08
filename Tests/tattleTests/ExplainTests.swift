@@ -15,10 +15,11 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("usernamex.example.com", as: .program), "usernamex.example.com", "username only at word boundaries")
     }
 
-    /// APFS ignores case by default, and a login names one account however it is written.
-    func testHomeAndUsernameMatchInAnyCase() {
+    /// APFS ignores case by default, so a path matches in any case. A login as a word matches
+    /// only as written: the login "code" is not the app "Code".
+    func testAPathMatchesInAnyCaseAndALoginOnlyAsWritten() {
         XCTAssertEqual(redactor.redact("/Users/Username/Library/x and /USERS/USERNAME", as: .program), "<home>/Library/x and <home>")
-        XCTAssertEqual(redactor.redact("run by USERNAME, Username-backup", as: .program), "run by <user>, <user>-backup")
+        XCTAssertEqual(redactor.redact("run by USERNAME, Username-backup", as: .program), "run by USERNAME, Username-backup")
         XCTAssertEqual(redactor.redact("Usernamex.example.com", as: .program), "Usernamex.example.com")
     }
 
@@ -29,7 +30,7 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1", as: .program), "<home>/x run by e with osascript -e 1")
         XCTAssertEqual(short.redact("sshd-session: e@ttys003 (pid 9)", as: .program), "sshd-session: <user>@ttys003 (pid 9)")
         XCTAssertEqual(short.redact("postgres: e clientdb [local] idle:tcp/5432", as: .program), "postgres: <user> clientdb [local] idle:tcp/5432")
-        XCTAssertEqual(short.redact("sshd: E [priv]", as: .program), "sshd: <user> [priv]")
+        XCTAssertEqual(short.redact("sshd: E [priv]", as: .program), "sshd: E [priv]", "only as written")
         XCTAssertEqual(short.redact("sshd: e", as: .program), "sshd: <user>")
         XCTAssertEqual(short.redact("mail: be@x.example, code-e@x.example, a.e@x.example", as: .program), "mail: be@x.example, code-e@x.example, a.e@x.example")
         XCTAssertEqual(short.redact("postgres: clientdb e [local]", as: .program), "postgres: clientdb e [local]", "second in the title is not the login's place")
@@ -275,6 +276,24 @@ final class PromptTests: XCTestCase {
         let instructions = "My Mac is Atlas, I am username. See /Users/username/x on 10.0.0.5, /Volumes/Backup when relevant, /Users/other/y and nas.tail1.ts.net."
         let prompt = Prompt.build(instructions: instructions, request: ExplainRequest(kind: .port, key: "5000"), redactor: redactor)
         XCTAssertTrue(prompt.hasPrefix("My Mac is <machine>, I am <user>. See <home>/x on <private-ip>, /Volumes/Backup when relevant, /Users/other/y and nas.tail1.ts.net.\n"), prompt)
+    }
+
+    /// A login that is a common word must not take an item's own name, in the key or in a fact
+    /// repeating it. What it spells exactly is still replaced, as anywhere else.
+    func testACommonWordLoginLeavesAnItemsNameAlone() throws {
+        func sent(login: String, _ kind: Rule.Kind, _ text: String, file: StaticString = #filePath, line: UInt = #line) throws -> String? {
+            let redactor = Redactor(home: "/Users/\(login)", username: login, machineNames: [])
+            let data = try capturedData(in: Prompt.build(instructions: "x", request: ExplainRequest(kind: kind, key: text, facts: [Fact(name: "Same", value: text)]), redactor: redactor))
+            let key = (data["item"] as? [String: String])?["key"]
+            XCTAssertEqual(key, (data["facts"] as? [[String: String]])?.first?["value"], "the key and its fact agree", file: file, line: line)
+            return key
+        }
+        XCTAssertEqual(try sent(login: "code", .process, "Code"), "Code")
+        XCTAssertEqual(try sent(login: "code", .process, "/Applications/Visual Studio Code.app/Contents/MacOS/Code"), "/Applications/Visual Studio Code.app/Contents/MacOS/Code")
+        XCTAssertEqual(try sent(login: "mail", .process, "Mail"), "Mail")
+        XCTAssertEqual(try sent(login: "apple", .process, "Apple"), "Apple")
+        XCTAssertEqual(try sent(login: "admin", .port, "Admin Tools:tcp/8000"), "Admin Tools:tcp/8000")
+        XCTAssertEqual(try sent(login: "code", .process, "postgres: code db [local] idle"), "postgres: <user> db [local] idle")
     }
 
     /// A launch item's label and plist name are reverse-DNS identifiers, not host names: a
