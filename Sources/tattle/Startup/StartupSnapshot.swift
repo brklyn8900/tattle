@@ -172,7 +172,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 program: path,
                 trigger: trigger(for: item),
                 state: loginItemState(item, state: state),
-                signature: path.flatMap { item.isLaunchItem ? CodeSignature.launchItem(running: $0, signature: signature($0)) : signature($0) },
+                signature: path.flatMap { registeredSignature(of: item, at: $0, reading: signature) },
                 developer: item.developerName ?? container?.developerName,
                 teamIdentifier: item.teamIdentifier,
                 parent: container.map { $0.name } ?? item.container,
@@ -218,6 +218,17 @@ struct StartupSnapshot: Equatable, Sendable {
         case .appExtension: "when macOS needs it"
         case .other: "unknown"
         }
+    }
+
+    /// How a registered item reads: one among Apple's developer tools as unnamed code, and a
+    /// launch agent or daemon as any launch item does.
+    private static func registeredSignature(
+        of item: LoginItem, at path: String, reading signature: (String) -> CodeSignature?
+    ) -> CodeSignature? {
+        let signed = signature(path)
+        let realPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        if LaunchedCode.Identity(path: path, signature: signed, realPath: realPath).isDeveloperTool { return CodeSignature(signer: .unnamed) }
+        return item.isLaunchItem ? CodeSignature.launchItem(running: path, signature: signed) : signed
     }
 
     /// The app bundle for an app, or the helper's path inside its container.

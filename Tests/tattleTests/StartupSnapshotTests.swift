@@ -126,6 +126,26 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(background.first { $0.name == "Apple's helper" }?.signature?.signer, .apple, "no plist says what it runs")
     }
 
+    func testARegisteredItemAmongApplesDeveloperToolsReadsAsUnnamedCode() {
+        let xcode = "/Applications/Xcode.app/Contents/Developer"
+        let tools = "/Library/Developer/CommandLineTools"
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [], appleCount: 0, skipped: [:]),
+            loginItems: [
+                login("1.app", name: "app", kind: .app, executable: "\(xcode)/Applications/App.app"),
+                login("1.helper", name: "helper", kind: .loginItemHelper, executable: "\(tools)/usr/libexec/helper"),
+                login("1.agent", name: "agent", kind: .agent, executable: "\(xcode)/usr/bin/agent"),
+                login("1.extension", name: "extension", kind: .appExtension, executable: "\(xcode)/Library/X.appex"),
+                login("1.publisher", name: "publisher", kind: .appExtension, executable: "\(tools)/Library/Y.appex"),
+            ],
+            state: LaunchctlState(services: [:], overrides: [:]),
+            signature: { $0.hasSuffix("Y.appex") ? CodeSignature(signer: .developerID(name: "Acme")) : CodeSignature(signer: .apple) })
+        for name in ["app", "helper", "agent", "extension"] {
+            XCTAssertEqual(snapshot.items.first { $0.name == name }?.signature?.signer, .unnamed, name)
+        }
+        XCTAssertEqual(snapshot.items.first { $0.name == "publisher" }?.signature?.signer, .developerID(name: "Acme"))
+    }
+
     func testALaunchItemRunningAnotherPublishersProgramKeepsItsSigner() throws {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
