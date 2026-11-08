@@ -659,23 +659,59 @@ final class ShellProviderTests: XCTestCase {
             if shell == nil { try await Task.sleep(for: .milliseconds(50)) }
         }
         let pid = try XCTUnwrap(shell, "the command started")
-        let responsible = ResponsibleProcess.pid(for: pid)
+        let charged = ResponsibleProcess.chargedTo(pid)
         FileManager.default.createFile(atPath: release.path, contents: nil)
         _ = try await answer.value
-        XCTAssertNil(responsible, "pid \(pid) is charged to pid \(responsible ?? -1)")
+        XCTAssertEqual(charged, pid, "macOS charges the command to itself")
     }
 
-    /// Without the disclaim the command would hold those permissions, so it does not run.
-    func testNoCommandRunsWithoutTheDisclaim() async throws {
+    /// A child started suspended and not disclaimed: what a macOS where the disclaim has no
+    /// effect would leave at the check.
+    private func startSuspendedWithoutDisclaim(_ arguments: [String]) throws -> pid_t {
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_START_SUSPENDED))
+        let argv = arguments.map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) } }
+        var pid: pid_t = 0
+        let result = posix_spawn(&pid, arguments[0], nil, &attributes, argv, environ)
+        guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: result) ?? .EIO) }
+        return pid
+    }
+
+    /// The check's reading means something: a child not disclaimed is charged to another.
+    func testAChildNotDisclaimedIsChargedToAnother() throws {
+        let child = try startSuspendedWithoutDisclaim(["/bin/sleep", "30"])
+        defer {
+            _ = kill(child, SIGKILL)
+            var status: Int32 = 0
+            _ = waitpid(child, &status, 0)
+        }
+        let charged = try XCTUnwrap(ResponsibleProcess.chargedTo(child), "the lookup answered")
+        XCTAssertNotEqual(charged, child)
+    }
+
+    /// A command macOS would charge to Tattle never runs, and no stopped process stays behind.
+    func testARefusedCommandNeverRunsAndLeavesNoChild() throws {
         let marker = FileManager.default.temporaryDirectory.appending(path: "tattle-disclaim-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: marker) }
-        do {
-            _ = try await ShellProvider(command: "touch '\(marker.path)'", disclaim: { _ in false }).explain("")
-            XCTFail("expected a refusal")
-        } catch let error as ProviderError {
-            XCTAssertEqual(error, .cannotDisclaim)
+        let child = try startSuspendedWithoutDisclaim(["/bin/sh", "-c", "touch '\(marker.path)'"])
+        XCTAssertThrowsError(try ShellProvider.release(child)) {
+            XCTAssertEqual($0 as? ProviderError, .cannotDisclaim)
         }
+        let gone = kill(child, 0) == -1 && errno == ESRCH
+        XCTAssertTrue(gone, "pid \(child) is still there")
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "the command ran")
+    }
+
+    /// Nothing cancels a running command: a cancelled caller still gets its answer, and the
+    /// timeout remains what ends a command that does not finish.
+    func testACancelledCallerStillGetsTheAnswer() async throws {
+        let answer = Task { try await ShellProvider(command: "sleep 0.3; echo finished").explain("") }
+        answer.cancel()
+        let output = try await answer.value
+        XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), "finished")
     }
 
     func testSchemaPlaceholderAndEmptyWorkingDirectory() async throws {

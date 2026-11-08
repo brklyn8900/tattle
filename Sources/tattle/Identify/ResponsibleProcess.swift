@@ -19,17 +19,23 @@ enum ResponsibleProcess {
         return unsafeBitCast(symbol, to: type)
     }
 
+    /// The process macOS charges `pid` to, which is `pid` when it answers for itself. Nil when
+    /// the lookup is missing or fails.
+    static func chargedTo(_ pid: Int32) -> Int32? {
+        guard pid > 0, let lookup else { return nil }
+        let responsible = lookup(pid)
+        return responsible > 0 ? responsible : nil
+    }
+
     /// The responsible pid when it is another process; nil when the process answers for
     /// itself or the lookup is unavailable.
     static func pid(for pid: Int32) -> Int32? {
-        guard pid > 0, let lookup else { return nil }
-        let responsible = lookup(pid)
-        return responsible > 0 && responsible != pid ? responsible : nil
+        chargedTo(pid).flatMap { $0 != pid ? $0 : nil }
     }
 
     /// Makes the process these attributes start answer for itself, so macOS does not charge
     /// its access to this app. False when the call is missing or refuses.
-    @Sendable static func disclaim(_ attributes: inout posix_spawnattr_t?) -> Bool {
+    static func disclaim(_ attributes: inout posix_spawnattr_t?) -> Bool {
         setDisclaim?(&attributes, 1) == 0
     }
 }

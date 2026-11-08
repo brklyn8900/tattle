@@ -35,12 +35,14 @@ shell loses the PATH the user's CLI is found on.
    `responsibility_spawnattrs_setdisclaim`, as the one exception to its Apple-frameworks
    rule. Both are resolved with `dlsym` at run time, in `ResponsibleProcess.swift` and
    nowhere else.
-2. Explain starts its command disclaimed: the command answers for itself, so macOS charges
-   its access to it and not to Tattle.
-3. If a macOS drops a call, the two fail differently. Without the read, a service is not
-   filed under its app, and is still listed. Without the disclaim, or if it reports an
-   error, Explain refuses to run the command and says so, because running it would hand
-   over the grants without a word.
+2. Explain starts its command disclaimed, so macOS charges its access to it and not to
+   Tattle, and suspended, so the read can confirm that before any of its code runs.
+3. Explain runs a command only once that is confirmed, and otherwise refuses and says so:
+   running it would hand over the grants without a word. If the disclaim is missing or
+   reports an error, the command is never started. If the read is missing, or reports
+   anything but the command itself, the suspended process is killed. For Processes and
+   Network, a missing read means only that a service is not filed under its app; it is
+   still listed.
 
 ## Consequences
 
@@ -48,8 +50,9 @@ shell loses the PATH the user's CLI is found on.
   the command holds no more than that process already does.
 - A command that touches a protected folder gets what its own program would get: macOS
   decides for the shell or the tool, not from Tattle's grant.
-- A private call can change without notice. `testTheCommandAnswersForItself` fails if the
-  disclaim stops having its effect.
+- A private call can change without notice. Each start is checked, so a disclaim that stops
+  having its effect refuses Explain on the user's Mac instead of handing over the grants, and
+  `testTheCommandAnswersForItself` fails on it here.
 
 ## Alternatives
 
