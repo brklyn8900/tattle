@@ -21,14 +21,12 @@ final class LaunchdTests: XCTestCase {
         let b = try parse("<key>Label</key><string>b</string><key>Program</key><string>/bin/bar</string><key>ProgramArguments</key><array><string>bar</string><string>-v</string></array>")
         XCTAssertEqual(b.program, "/bin/bar")
         XCTAssertEqual(b.arguments, ["-v"], "with Program set, ProgramArguments[0] is argv[0], not an argument")
-        XCTAssertEqual(b.invokedAs, "bar")
         XCTAssertFalse(b.disabled)
         let script = try parse("<key>Label</key><string>c</string><key>Program</key><string>/bin/sh</string><key>ProgramArguments</key><array><string>/bin/sh</string><string>/x.sh</string></array>")
         XCTAssertEqual(script.arguments, ["/x.sh"])
         XCTAssertNil(script.environmentPath)
         let path = try parse("<key>Label</key><string>d</string><key>Program</key><string>/bin/x</string><key>EnvironmentVariables</key><dict><key>PATH</key><string>/x:/bin</string></dict>")
         XCTAssertEqual(path.environmentPath, "/x:/bin")
-        XCTAssertEqual(path.invokedAs, "/bin/x", "without ProgramArguments, argv[0] is Program")
     }
 
     func testRejectsMissingLabelAndNonDictionary() {

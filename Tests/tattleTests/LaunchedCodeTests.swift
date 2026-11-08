@@ -20,9 +20,9 @@ final class LaunchedCodeTests: XCTestCase {
     }
 
     /// The signer Startup shows for a command line, with files read as `reading` reads them.
-    private func signer(_ program: String, _ arguments: [String], invokedAs: String? = nil, apple: Set<String> = [],
+    private func signer(_ program: String, _ arguments: [String], apple: Set<String> = [],
                         identifiers: [String: String] = [:], environmentPath: String? = nil) -> CodeSignature.Signer? {
-        CodeSignature.read(program: program, arguments: arguments, invokedAs: invokedAs, environmentPath: environmentPath) {
+        CodeSignature.read(program: program, arguments: arguments, environmentPath: environmentPath) {
             self.reading($0, apple: apple, identifiers: identifiers)
         }?.signer
     }
@@ -321,79 +321,121 @@ final class LaunchedCodeTests: XCTestCase {
     }
 
     private static let toolchain = "/Library/Developer/CommandLineTools/usr/bin"
+    private static let xcode = "/Applications/Xcode.app/Contents/Developer"
+    private static let shim = "com.apple.dt.xcode_select.tool-shim-public"
     /// The toolchain's swift tools are links to its frontend; `/usr/bin` has Apple's stubs.
-    private static let swiftIdentifiers: [String: String] = [
+    private static let developerIdentifiers: [String: String] = [
         "\(toolchain)/swift-frontend": "com.apple.swift-frontend", "\(toolchain)/swift": "com.apple.swift-frontend",
         "\(toolchain)/swiftc": "com.apple.swift-frontend", "\(toolchain)/swift-symbolgraph-extract": "com.apple.swift-frontend",
-        "/usr/bin/swift": "com.apple.dt.xcode_select.tool-shim-public", "/usr/bin/swiftc": "com.apple.dt.xcode_select.tool-shim-public",
+        "\(toolchain)/clang": "com.apple.clang", "\(xcode)/usr/bin/xcodebuild": "com.apple.dt.xcodebuild",
+        "\(xcode)/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend": "com.apple.swift-frontend",
+        "/Library/Developer/Toolchains/swift-6.2-RELEASE.xctoolchain/usr/bin/swift-driver": "com.apple.swift-driver",
+        "/usr/bin/swift": shim, "/usr/bin/swiftc": shim, "/usr/bin/git": shim,
+        "/usr/bin/xcodebuild": "com.apple.dt.xcode_select.xtool-shim-public",
+        "/usr/bin/devicectl": "com.apple.dt.xcode_select.libdevtool-shim-public",
     ]
 
-    func testASwiftScriptRunsInSwiftsFrontend() {
-        // swift runs a script by replacing itself with its frontend, which also compiles.
+    func testASwiftScriptReadsAsAScript() {
+        // swift runs a script by replacing itself with its frontend in immediate mode.
         let frontend = "\(Self.toolchain)/swift-frontend"
         let apple = CodeSignature(signer: .apple, identifier: "com.apple.swift-frontend")
         let script = ProcessEntry.name(path: frontend, arguments: [frontend, "-frontend", "-interpret", "/x/a.swift", "-sdk", "/x/sdk"],
                                        command: "swift-frontend", signature: apple)
         XCTAssertEqual(script.name, "a.swift")
         XCTAssertEqual(script.interpreter, "swift-frontend")
-        let compile = ProcessEntry.name(path: frontend, arguments: [frontend, "-frontend", "-c", "/x/a.swift", "-primary-file", "/x/a.swift"],
-                                        command: "swift-frontend", signature: apple)
-        XCTAssertEqual(compile.name, "swift-frontend")
-        XCTAssertNil(compile.interpreter, "compiling, it runs its own code")
+        XCTAssertFalse(script.runsUnnamedCode)
         // -interpret is a mode, not an option the script follows: it may come after the script.
         let after = ProcessEntry.name(path: frontend, arguments: [frontend, "-frontend", "-interpret", "-sdk", "/x/sdk", "/x/a.swift"],
                                       command: "swift-frontend", signature: apple)
         XCTAssertEqual(after.name, "a.swift")
         let lines: [(String, [String])] = [
             (frontend, ["-frontend", "-sdk", "/x/sdk", "/x/a.swift", "-interpret"]),
-            (frontend, ["-interpret", "/x/a.swift"]),  // invoked as itself, it is the frontend
+            (frontend, ["-interpret", "/x/a.swift"]),
             ("/usr/bin/swift", ["-frontend", "/x/a.swift", "-interpret"]),
             ("/usr/bin/swiftc", ["-frontend", "-interpret", "/x/a.swift"]),
-            ("/usr/bin/swiftc", ["--driver-mode=swift", "/x/a.swift"]),
-            // The toolchain's swift is a link to the frontend, which then runs as the driver.
+            // The driver passes -interpret on to its frontend job.
+            ("/usr/bin/swiftc", ["-wmo", "-typecheck", "-sdk", "/x/sdk", "-Xfrontend", "-interpret", "/x/a.swift"]),
+            // The swift driver runs the file it is given; the toolchain's swift is a link to the
+            // frontend, which acts as the driver its file name says.
+            ("/usr/bin/swift", ["/x/a.swift"]),
+            ("/usr/bin/swift", ["./a"]),
             ("\(Self.toolchain)/swift", ["/x/a.swift"]),
         ]
         for (program, arguments) in lines {
-            XCTAssertEqual(signer(program, arguments, identifiers: Self.swiftIdentifiers), .script, "\(program) \(arguments)")
+            XCTAssertEqual(signer(program, arguments, identifiers: Self.developerIdentifiers), .script, "\(program) \(arguments)")
         }
-        // A launch item names argv[0] apart from the file it runs, and the frontend picks its tool by argv[0].
-        XCTAssertEqual(signer(frontend, ["/x/a.swift"], invokedAs: "swift", identifiers: Self.swiftIdentifiers), .script)
-        XCTAssertEqual(signer(frontend, ["/x/a.swift"], invokedAs: "/x/swift.tool", identifiers: Self.swiftIdentifiers), .script,
-                       "the tool's name drops its extension")
+        // A first word without a "." or "/" names another program beside the driver: `swift
+        // build` runs swift-build.
+        XCTAssertEqual(signer("/usr/bin/swift", ["build"], identifiers: Self.developerIdentifiers), .unnamed)
+        let elsewhere = ProcessEntry.name(path: "/Users/x/bin/tool", arguments: ["tool", "-frontend", "-interpret", "/x/a.swift"],
+                                          command: "tool", signature: apple)
+        XCTAssertEqual(elsewhere.name, "a.swift", "Apple's frontend is known by its signing identifier wherever it is")
     }
 
-    func testSwiftsOtherToolsRunTheirOwnCodeUnlessTheyLoadAPlugin() {
-        let frontend = "\(Self.toolchain)/swift-frontend"
-        let ownPlugins = "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins"
-        let own: [(String, [String])] = [
-            (frontend, ["-frontend", "-c", "/x/a.swift", "-plugin-path", ownPlugins,
-                        "-external-plugin-path", "\(ownPlugins)#\(Self.toolchain)/swift-plugin-server"]),
+    func testApplesDeveloperToolsRunUnnamedCodeUnlessTheyRunAScript() {
+        // A compiler loads the plugins and passes it is told to, a linker the libraries, git a
+        // repository's hooks: what they run is not Apple's to say.
+        let lines: [(String, [String])] = [
+            ("\(Self.toolchain)/swift-frontend", ["-frontend", "-c", "/x/a.swift",
+                                                  "-plugin-path", "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins"]),
+            ("\(Self.toolchain)/swift-frontend", ["-frontend", "-c", "/x/a.swift", "-Xllvm", "-load=/x/evil.dylib"]),
             ("\(Self.toolchain)/swiftc", ["-o", "/x/a", "/x/a.swift"]),
             ("\(Self.toolchain)/swift-symbolgraph-extract", ["-module-name", "Foo", "-output-dir", "/x/symbolgraph"]),
+            ("\(Self.toolchain)/clang", ["-fplugin=/x/evil.dylib", "-c", "/x/a.c"]),
+            ("\(Self.xcode)/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend", ["@/x/a.rsp"]),
+            ("\(Self.xcode)/usr/bin/xcodebuild", ["-project", "/x/X.xcodeproj"]),
+            ("/Library/Developer/Toolchains/swift-6.2-RELEASE.xctoolchain/usr/bin/swift-driver",
+             ["-driver-use-frontend-path", "/x/frontend", "/x/a.swift"]),
+            // Apple's stubs run the tool of the Xcode or Command Line Tools xcode-select chose.
             ("/usr/bin/swiftc", ["-o", "/x/a", "/x/a.swift"]),
+            ("/usr/bin/git", ["pull"]),
+            ("/usr/bin/xcodebuild", ["-version"]),
+            ("/usr/bin/devicectl", ["list", "devices"]),
+            ("/usr/bin/nohup", ["/usr/bin/swiftc", "/x/a.swift"]),
         ]
-        for (program, arguments) in own {
-            XCTAssertEqual(signer(program, arguments, identifiers: Self.swiftIdentifiers), .apple, "\(program) \(arguments)")
+        for (program, arguments) in lines {
+            XCTAssertEqual(signer(program, arguments, identifiers: Self.developerIdentifiers), .unnamed, "\(program) \(arguments)")
         }
-        XCTAssertEqual(signer(frontend, ["-o", "/x/a", "/x/a.swift"], invokedAs: "swiftc", identifiers: Self.swiftIdentifiers), .apple)
-        let tool = "\(Self.toolchain)/swift-symbolgraph-extract"
-        let extract = ProcessEntry.name(path: frontend, arguments: [tool, "-module-name", "Foo", "-output-dir", "/x/symbolgraph"],
+        let frontend = "\(Self.toolchain)/swift-frontend"
+        let compile = ProcessEntry.name(path: frontend, arguments: [frontend, "-frontend", "-c", "/x/a.swift", "-sdk", "/x/sdk"],
                                         command: "swift-frontend", signature: CodeSignature(signer: .apple, identifier: "com.apple.swift-frontend"))
-        XCTAssertNil(extract.interpreter, "the tool argv[0] names runs its own code")
-        // A plugin from outside the compiler's own app or toolchain is someone's code it runs.
-        let plugins: [[String]] = [
-            ["-frontend", "-c", "/x/a.swift", "-load-plugin-library", "/x/evil.dylib"],
-            ["-frontend", "-c", "/x/a.swift", "-load-pass-plugin=/x/evil.dylib"],
-            ["-frontend", "-c", "/x/a.swift", "-load-plugin-executable", "/x/evil#Evil"],
-            ["-frontend", "-c", "/x/a.swift", "-load-plugin-executable", "evil#Evil"],
-            ["-frontend", "-c", "/x/a.swift", "-external-plugin-path", "\(ownPlugins)#/x/server"],
-            ["-frontend", "-c", "/x/a.swift", "-plugin-path", "/Library/Developer/CommandLineTools/../../../x"],
-        ]
-        for arguments in plugins {
-            XCTAssertEqual(signer(frontend, arguments, identifiers: Self.swiftIdentifiers), .unnamed, "\(arguments)")
+        XCTAssertEqual(compile.name, "swift-frontend")
+        XCTAssertEqual(compile.interpreter, "swift-frontend")
+        XCTAssertTrue(compile.runsUnnamedCode)
+        let other = "/Library/Developer/Toolchains/other.xctoolchain/usr/bin/tool"
+        XCTAssertEqual(signer(other, []), .developerID(name: other), "a program that is not Apple's has its own signer")
+    }
+
+    func testALinkToApplesDeveloperToolIsTheTool() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let bin = folder.appending(path: "Fake.xctoolchain/usr/bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: folder.appending(path: "bin"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data().write(to: bin.appending(path: "clang"))
+        let link = folder.appending(path: "bin/cc")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: bin.appending(path: "clang"))
+        XCTAssertEqual(signer(link.path, ["-c", "/x/a.c"], identifiers: [link.path: "com.apple.clang"]), .unnamed)
+    }
+
+    func testAnyProgramInAnXcodeIsADeveloperTool() throws {
+        // An Xcode is an app with a developer folder, whatever it is called; its debugger's
+        // server is outside that folder.
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder.appending(path: "Renamed.app/Contents/Developer"), withIntermediateDirectories: true)
+        let server = folder.appending(path: "Renamed.app/Contents/SharedFrameworks/LLDBRPC.framework/Versions/A/Resources/lldb-rpc-server")
+        let other = folder.appending(path: "Other.app/Contents/MacOS/Other")
+        for file in [server, other] {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: file)
         }
-        XCTAssertEqual(signer("/usr/bin/swiftc", ["-Xfrontend", "-load-plugin-library", "-Xfrontend", "/x/evil.dylib", "/x/a.swift"],
-                              identifiers: Self.swiftIdentifiers), .unnamed)
+        let identifiers = [server.path: "com.apple.lldb-rpc-server", other.path: "com.apple.Other"]
+        XCTAssertEqual(signer(server.path, [], identifiers: identifiers), .unnamed)
+        XCTAssertEqual(signer(other.path, [], identifiers: identifiers), .apple, "an app without a developer folder is not an Xcode")
+        let named = ProcessEntry.name(path: server.path, arguments: [server.path], command: "lldb-rpc-server",
+                                      signature: CodeSignature(signer: .apple, identifier: "com.apple.lldb-rpc-server"))
+        XCTAssertTrue(named.runsUnnamedCode)
     }
 
     func testARunningJavaIsAProgramAndAJobRunThroughJavaIsSignedByItsJar() {

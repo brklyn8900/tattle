@@ -44,7 +44,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var name: String
     var path: String?
     /// Set when the process runs code that is not its executable's: a script, inline code,
-    /// or standard input under launchd (`ProcessEntry.interpreter`).
+    /// standard input under launchd, or a developer tool's (`ProcessEntry.interpreter`).
     var interpreter: String?
     /// Known for the user's own processes. Tells two copies of one program apart: two
     /// shells, two servers, two agent sessions.
@@ -311,8 +311,8 @@ struct ProcessSnapshot: Equatable, Sendable {
         if let known = memo[pid] { return known }
         memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
         guard let entry = byPid[pid] else { return nil }
-        // An interpreter inside an app (Xcode's Python, make and swift) says nothing about
-        // whose script it runs.
+        // An interpreter or developer tool inside an app (Xcode's Python, swift, git) says
+        // nothing about whose code it runs.
         var result = (entry.interpreter == nil ? entry.path.flatMap(AppBundle.containing) : nil)
             ?? runningApp(pid).flatMap(AppBundle.opened)
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {

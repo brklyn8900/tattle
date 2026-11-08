@@ -14,9 +14,10 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var name: String
     var path: String?
     /// The interpreter's file name when the process runs code that is not its executable's
-    /// (a script file, inline code, standard input under launchd, a compiler's plugin, or code
-    /// its unreadable arguments would name), so a row can name the interpreter and sign the
-    /// code apart from it, with the interpreter's signature as a fact of its own.
+    /// (a script file, inline code, standard input under launchd, what one of Apple's
+    /// developer tools is told to run, or code its unreadable arguments would name), so a row
+    /// can name the interpreter and sign the code apart from it, with the interpreter's
+    /// signature as a fact of its own.
     var interpreter: String?
     /// The interpreter runs code the command line does not name as a file, not a script:
     /// the row says "node, unnamed code" and signs it as such.
@@ -46,7 +47,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         var interpreter: String?
         var runsUnnamedCode = false
         if let path {
-            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, invokedAs: arguments?.first,
+            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) },
                                         identity: LaunchedCode.Identity(path: path, signature: signature)) {
             case .script(let script, let name): return (scriptName(script), name, false)
             case .unnamed(let name):

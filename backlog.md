@@ -71,13 +71,6 @@ done)
   though some then run only their own code: `caffeinate -s` (a common keep-awake agent),
   `env`, `nice`, `time`, `arch`. Others start something else (`screen` and `script` run
   `$SHELL`), so it needs a flag per wrapper, not one rule (`LaunchedCode.swift`).
-- Apple's developer-tool stubs in `/usr/bin` (`git`, `clang`, `xcodebuild`) run the tool in
-  the developer folder `DEVELOPER_DIR` names, from the toolchain `TOOLCHAINS` picks, and a
-  plist can set both in `EnvironmentVariables`; Startup reads only its `PATH`, so such a
-  job reads as Apple's tool. An arbitrary folder is refused (xcrun wanted `usr/bin/xcrun`,
-  then `libxcrun.dylib`, then an Xcode installation); whether a crafted one passes is
-  unsettled (2026-11-07). Proposed: read a stub as undetermined when the job sets either
-  (`LaunchedCode.swift`, `LaunchdItem.swift`).
 
 **From the review triage of 2026-11-07** (its "consider" list, verified at `0618f7e`; IDs
 are the triage's)

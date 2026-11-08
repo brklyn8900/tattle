@@ -20,8 +20,8 @@ struct CodeSignature: Equatable, Sendable {
         /// if it has one, is not read; the interpreter's says nothing about it.
         case script
         /// Code the command line does not name as a file: inline, a module, class or package
-        /// by name, in arguments that cannot be read, or a plugin a compiler loads. Whose code
-        /// it is cannot be known.
+        /// by name, in arguments that cannot be read, or what one of Apple's developer tools is
+        /// told to run. Whose code it is cannot be known.
         case unnamed
         /// Signed, but the signature does not match the binary.
         case invalid(String)
@@ -61,12 +61,13 @@ struct CodeSignature: Equatable, Sendable {
     /// runs a signed binary as its script, so a signed file in the script's place is an
     /// argument read there by mistake.
     static func read(
-        program: String, arguments: [String], invokedAs: String? = nil, environmentPath: String? = nil,
+        program: String, arguments: [String], environmentPath: String? = nil,
         reading: (String) -> CodeSignature? = { read(path: $0) }
     ) -> CodeSignature? {
-        let identify = { LaunchedCode.Identity(path: $0, signature: reading($0)) }
-        let code = LaunchedCode.started(
-            program: program, arguments: arguments, invokedAs: invokedAs, environmentPath: environmentPath, identify: identify)
+        let identify = {
+            LaunchedCode.Identity(path: $0, signature: reading($0), realPath: URL(fileURLWithPath: $0).resolvingSymlinksInPath().path)
+        }
+        let code = LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify)
         switch code {
         case .program(let path): return reading(path)
         case .script, .standardInput: return CodeSignature(signer: .script)
