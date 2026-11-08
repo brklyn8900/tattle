@@ -15,8 +15,8 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var path: String?
     /// The interpreter's file name when the process runs code that is not its executable's
     /// (a script file, inline code, standard input under launchd, or code its unreadable
-    /// arguments would name), so a row can say "node script" and the signature is understood
-    /// to be the interpreter's.
+    /// arguments would name), so a row can say "node script" and sign it as a script, with
+    /// the interpreter's signature as a fact of its own.
     var interpreter: String?
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
@@ -28,13 +28,14 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var id: Int32 { pid }
 
     /// The name and interpreter for an executable and its arguments, by what the process
-    /// runs (`LaunchedCode.running`, which knows Apple's programs by `signature`). An interpreter running a script file is named after
-    /// the file, or after the npm package the file belongs to; running other code, it is
-    /// still marked as the interpreter, and so is one launchd started reading its standard
-    /// input, which is then a file or a pipe, not a person at a terminal. Otherwise the name the process was started under
-    /// wins over the executable's file name: a multi-call binary at a version-numbered path
-    /// is "claude" or "ugrep", a login shell "-zsh" is zsh, and a node process that set its
-    /// title keeps it.
+    /// runs (`LaunchedCode.running`, which knows Apple's programs by `signature`). An
+    /// interpreter running a script file is named after the file, or after the npm package
+    /// the file belongs to; running other code or a folder, it is still marked as the
+    /// interpreter, and so is one launchd started reading its standard input, which is then
+    /// a file or a pipe, not a person at a terminal. Otherwise the name the process was
+    /// started under wins over the executable's file name: a multi-call binary at a
+    /// version-numbered path is "claude" or "ugrep", a login shell "-zsh" is zsh, and a node
+    /// process that set its title keeps it.
     static func name(
         path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil, startedByLaunchd: Bool = false
     ) -> (name: String, interpreter: String?) {
