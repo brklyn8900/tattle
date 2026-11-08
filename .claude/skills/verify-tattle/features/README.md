@@ -49,8 +49,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   Proven 2026-10-25; a command line's signer 2026-11-07.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
   CPU, and Quit. Proven 2026-10-25; the macOS row, a script started by launchd, standard
-  input under launchd, Python (with the Command Line Tools and with Xcode), Swift and a
-  package by its folder 2026-11-07.
+  input under launchd, Python (with the Command Line Tools, with Xcode, and a Tk window),
+  Swift (its frontend and its tools) and a package by its folder 2026-11-07.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27.

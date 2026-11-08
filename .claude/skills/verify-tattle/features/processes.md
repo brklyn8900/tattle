@@ -52,12 +52,22 @@ Preconditions:
   not signed`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
   developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
   must not hold it: the row and the detail read the same. testmac has only the Command Line
-  Tools, so this case runs on the user's Mac, with a probe the run loads and removes.
+  Tools, so this case runs on the user's Mac, with a probe the run loads and removes. A
+  script that opens a window, `<dir>/window.py` (a `tkinter.Tk()` and its `mainloop()`),
+  is registered by Launch Services under the framework's `Python.app` (`lsappinfo list`
+  shows it): its row reads `window.py, 1 process · Python script`, and the detail has no
+  `Part of`.
 - **Swift.** As above, with `/usr/bin/swift`, `<dir>/loop.swift` (`import Foundation`,
   `while true { sleep(5) }`); give it 30 s to compile. It runs as `swift-frontend -frontend
   -interpret <dir>/loop.swift ...`: its row reads `loop.swift, 1 process · swift-frontend
   script`, not a member of `macOS`. The detail has `Runs with swift-frontend (<path>)`,
-  `Signed by script, not signed`, `Interpreter signed by Apple`.
+  `Signed by script, not signed`, `Interpreter signed by Apple`. The toolchain's
+  `swift-frontend` with `-frontend -sdk <sdk> <dir>/loop.swift -interpret`, `-interpret`
+  after the script, reads the same.
+- **A swift-frontend tool.** As above, with the toolchain's `swift-api-digester` (a link
+  to `swift-frontend`), `-dump-sdk -module Swift -o <dir>/out.fifo -sdk <sdk> -target
+  <arch>-apple-macosx14.0`, where `out.fifo` is a `mkfifo` that holds it waiting. It runs
+  its own code: a member of `macOS`, with no row of its own.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
   · node script`, not `.`. With node.js's own build (testmac's `~/.local/node`), the detail
@@ -100,6 +110,13 @@ Preconditions:
 - The Python row with Xcode as the developer folder proven 2026-11-07 on the user's Mac, run
   `2026-11-07T224359` (commit `9a0f53e`); in run `2026-11-07T224701` (`2ec0b40`) it was a
   member of `Xcode, 7 processes · App Store`, its detail `Part of Xcode`.
+- The Tk window proven 2026-11-07 on the user's Mac, run `2026-11-07T235514` (commit
+  `2aa83fc`); in run `2026-11-07T235435` (`818f035`) it was the row `Python, 1 process ·
+  Apple`, its detail `Part of Python`.
+- The frontend with `-interpret` after its script and the swift-frontend tool proven
+  2026-11-07 on testmac, run `2026-11-07T235929` (commit `2aa83fc`). Run `2026-11-07T235754`
+  is the same journeys on `818f035`: no `loop.swift` row (its process counted in `macOS`),
+  and the digester a row of its own, `Swift, 1 process · swift-frontend script`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,

@@ -71,6 +71,19 @@ Preconditions:
   - `/Library/Developer/CommandLineTools/usr/bin/swift <dir>/loop.swift` (the toolchain's
     `swift`, a symlink to `swift-frontend`) and `/usr/bin/swift <dir>/loop.swift`:
     `script, not signed`;
+  - `-frontend -sdk <sdk> <dir>/loop.swift -interpret` through `/usr/bin/swift` and the
+    toolchain's `swift-frontend`, `/usr/bin/swiftc -frontend -interpret <dir>/loop.swift`,
+    `/usr/bin/swiftc --driver-mode=swift <dir>/loop.swift`, and `Program` the toolchain's
+    `swift-frontend` with `ProgramArguments` `swift <dir>/loop.swift` (argv[0] picks the
+    driver): `script, not signed`;
+  - `-frontend -c <dir>/a.swift -load-plugin-library <dir>/evil.dylib` through
+    `/usr/bin/swift` and the toolchain's `swift-frontend`: `script, not signed`; with
+    `-plugin-path` the toolchain's own `usr/lib/swift/host/plugins` instead: `Apple`;
+  - the toolchain's `swiftc -o <dir>/out <dir>/a.swift`, `swift-symbolgraph-extract
+    -module-name Foo -output-dir <dir>/symbolgraph` and `swift-api-digester` (Processes'
+    probe): `Apple`;
+  - `/usr/bin/open -t`, `-R` and `-gR` with `/System/Applications/Calculator.app`: no
+    `Signed by`; `/usr/bin/open -ga` with it: `Apple`;
   - `/usr/bin/find <dir> -name none -exec <dir>/agent {} ;`: `ad hoc signed`;
   - `/bin/zsh -O <dir>/probe.sh /bin/ls`: `script, not signed`;
   - `/usr/bin/perl -lne /bin/ls /bin/ls` and `/usr/bin/python3 +run.py /bin/ls`: `script,
@@ -106,3 +119,7 @@ Preconditions:
   read `Apple`, the `sh` and `env` decoys `Mitchell Hashimoto` (Ghostty's signer), the
   script files `unsigned`, the toolchain's `swift` `Apple`, `open` with a document
   `unsigned`, and `nohup agent` had no `Signed by`.
+- The swift and `open` rows proven 2026-11-07 on testmac, run `2026-11-07T235929` (commit
+  `2aa83fc`). Run `2026-11-07T235754` is the same on `818f035`: the `-frontend`, `swiftc`
+  stub, plugin and `open -t`, `-R` and `-gR` rows read `Apple`, and the toolchain's
+  `swiftc`, `swift-symbolgraph-extract` and `swift-api-digester` `script, not signed`.
