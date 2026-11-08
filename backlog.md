@@ -26,6 +26,19 @@
   and the model can echo them into an answer stored for the host (`NetworkSnapshot.swift`).
 - A launch item's line is hashed after joining on spaces, so two argument splits collide:
   `["-c", "/x/job --dry-run"]` and `["-c", "/x/job", "--dry-run"]` (`StartupSnapshot.swift`).
+- A network counter that restarts between two readings, when an interface is detached and
+  attached again under the same name within one interval, reads as a 32-bit wrap: that tick
+  shows up to about 4 GB/s that never moved (`NetworkCounters.delta(from:)`). A restart also
+  lowers the packet counters, which a byte wrap does not (inferred: attaching an interface
+  zeroes all its counters). Not observed.
+- The rate counts `ppp` (L2TP, PPPoE), `vmnet`, `vnic`, `tap` and `tun` interfaces as well as
+  the interface beneath them, so their bytes count twice (inferred, not observed). `ifi_type`,
+  in the `if_data` the code already reads, names most layered kinds; a name list would be left
+  only for kinds without a type of their own.
+- The rate divides by wall-clock time (`ResourceSample.between`), so a backward clock step
+  multiplies one tick by up to 1,000. A monotonic clock fixes it.
+- On an Intel Mac with a T2 chip, the link to that chip (`en5` on testmac) counts in the rate:
+  about 3 kB/s each way at rest.
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
