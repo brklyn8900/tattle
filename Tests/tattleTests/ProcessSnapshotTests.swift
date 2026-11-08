@@ -190,6 +190,29 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(snapshot.item(pid: 701)?.app, "nor what Xcode's developer tools are told to run")
     }
 
+    func testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode() {
+        // Launch Services opens Xcode's agent as an app of its own; its row reads as what the
+        // agent is, one of Apple's developer tools, not as the bundle's signer.
+        let service = "/Applications/Xcode.app/Contents/Developer/Library/Xcode/Agents/Xcode Service.app"
+        let executable = "\(service)/Contents/MacOS/Xcode Service"
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.dt.mcp-server", teamIdentifier: "59GAB85EFG")
+        let named = ProcessEntry.name(path: executable, arguments: [executable], command: "Xcode Service", signature: apple)
+        let mail = "/System/Applications/Mail.app"
+        let entries = [
+            ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: named.name, path: executable, interpreter: named.interpreter,
+                         runsUnnamedCode: named.runsUnnamedCode, started: Date()),
+            ProcessEntry(pid: 701, parentPid: 1, uid: 501, name: "Mail", path: "\(mail)/Contents/MacOS/Mail", started: Date()),
+        ]
+        let opened: [Int32: String] = [700: service, 701: mail]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in apple },
+                                             runningApp: { opened[$0] }, responsible: { _ in nil })
+        let group = snapshot.group(id: service)
+        XCTAssertEqual(group?.kind, .app(AppBundle(path: service)))
+        XCTAssertEqual(group?.signature?.summary, "unnamed code", "the row's subtitle")
+        XCTAssertEqual(snapshot.group(id: mail)?.signature?.summary, "Apple", "Apple's app elsewhere is Apple's")
+    }
+
     func testAScriptLaunchServicesRegistersIsNotPartOfItsInterpretersFrameworkApp() {
         // A script that opens a window (tkinter) registers with Launch Services, which then
         // reports the app its interpreter runs from.
