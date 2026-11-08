@@ -110,9 +110,16 @@ final class StartupSnapshotTests: XCTestCase {
     }
 
     func testThisMachineBuilds() throws {
+        // Without Full Disk Access the app builds from the launchd jobs alone, and so does this.
+        let loginItems: [LoginItem]
+        do {
+            loginItems = try LoginItemsDatabase.readCurrent().items
+        } catch LoginItemsDatabase.ReadError.cannotList(_), LoginItemsDatabase.ReadError.noDatabase {
+            loginItems = []
+        }
         let cache = SignatureCache()
         let snapshot = StartupSnapshot.build(
-            launchd: LaunchdReader().read(), loginItems: try LoginItemsDatabase.readCurrentOrSkip().items,
+            launchd: LaunchdReader().read(), loginItems: loginItems,
             state: LaunchctlState.read(), signature: cache.signature(at:))
         XCTAssertFalse(snapshot.items.isEmpty)
         XCTAssertEqual(Set(snapshot.items.map(\.id)).count, snapshot.items.count, "ids are unique")
