@@ -36,10 +36,10 @@ Preconditions:
 - **Script started by launchd.** On testmac (it loads a LaunchAgent): write
   `~/Library/LaunchAgents/local.tattle-verify.inline.plist` with `ProgramArguments`
   `/bin/zsh`, `-c`, `while :; do sleep 5; done`, `/usr/bin/true`, and `launchctl bootstrap
-  gui/$(id -u)` it. Its row reads `zsh, N processes · zsh script`, not a member of `macOS`
-  and not named `true`; press it, then `--prefix "zsh, pid <pid>"` when its `sleep` child
-  makes it a group. The group's detail has `Signed by script, not signed`; the member's
-  has `Runs with zsh (/bin/zsh)`, `Signed by script, not signed`, `Interpreter signed by
+  gui/$(id -u)` it. Its row reads `zsh, N processes · zsh, unnamed code`, not a member of
+  `macOS` and not named `true`; press it, then `--prefix "zsh, pid <pid>"` when its `sleep`
+  child makes it a group. The group's detail has `Signed by unnamed code`; the member's
+  has `Runs with zsh (/bin/zsh)`, `Signed by unnamed code`, `Interpreter signed by
   Apple`, `Parent launchd (pid 1)`. Afterwards `launchctl bootout` it and delete the plist.
 - **Standard input under launchd.** As above, with `ProgramArguments` `/bin/sh` and
   `StandardInPath` a file holding `while :; do sleep 5; done`. Its row reads `sh, 2
@@ -47,9 +47,9 @@ Preconditions:
   detail has `Path /bin/bash`, `Signed by script, not signed`.
 - **Python.** As above, with `/usr/bin/python3`, `-c`, `import time; [time.sleep(5) for _
   in iter(int, 1)]`. With the Command Line Tools it runs as the `Python.app` inside their
-  Python framework, which is not an app: its row reads `Python, 1 process · Python script`,
-  not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by script,
-  not signed`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
+  Python framework, which is not an app: its row reads `Python, 1 process · Python, unnamed
+  code`, not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by
+  unnamed code`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
   developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
   must not hold it: the row and the detail read the same. testmac has only the Command Line
   Tools, so this case runs on the user's Mac, with a probe the run loads and removes. A
@@ -64,10 +64,14 @@ Preconditions:
   `Signed by script, not signed`, `Interpreter signed by Apple`. The toolchain's
   `swift-frontend` with `-frontend -sdk <sdk> <dir>/loop.swift -interpret`, `-interpret`
   after the script, reads the same.
-- **A swift-frontend tool.** As above, with the toolchain's `swift-api-digester` (a link
-  to `swift-frontend`), `-dump-sdk -module Swift -o <dir>/out.fifo -sdk <sdk> -target
-  <arch>-apple-macosx14.0`, where `out.fifo` is a `mkfifo` that holds it waiting. It runs
-  its own code: a member of `macOS`, with no row of its own.
+- **A compile job.** As above, with `/usr/bin/swiftc -sdk <sdk> -c <dir>/input.swift -o
+  <dir>/input.o`, where `input.swift` is a `mkfifo`, so the job waits to read it. It runs
+  as `swift-frontend -frontend -c -primary-file <dir>/input.swift ... -sdk <sdk> ...`: its
+  row reads `swift-frontend, 1 process · swift-frontend, unnamed code`, not a member of
+  `macOS`, as any of Apple's developer tools does unless it runs a script. Through Xcode's
+  toolchain's `swiftc` (the user's Mac) the detail has `Runs with swift-frontend (<Xcode's
+  toolchain>/usr/bin/swift-frontend)`, `Signed by unnamed code`, `Interpreter signed by
+  Apple`, `Parent launchd (pid 1)`, and no `Part of`.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
   · node script`, not `.`. With node.js's own build (testmac's `~/.local/node`), the detail
@@ -117,6 +121,11 @@ Preconditions:
   2026-11-07 on testmac, run `2026-11-07T235929` (commit `2aa83fc`). Run `2026-11-07T235754`
   is the same journeys on `818f035`: no `loop.swift` row (its process counted in `macOS`),
   and the digester a row of its own, `Swift, 1 process · swift-frontend script`.
+- The compile job proven 2026-11-08 on testmac, its row, run `2026-11-08T011100` (commit
+  `7d50eec`); in run `2026-11-08T010801` (`1ab9f0b`) it read `swift-frontend, 1 process ·
+  swift-frontend script`. Through Xcode's toolchain on the user's Mac, row and detail, run
+  `2026-11-08T010935` (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) it had no row of
+  its own. Inline code and Python's `-c` as `unnamed code` are unit-tested only.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,

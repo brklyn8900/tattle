@@ -49,7 +49,7 @@ Preconditions:
   ad-hoc-signed copy of `/bin/sleep` as `agent`, and a `probe.sh` and `probe.pl` in a
   folder of the run's. Each row and its `Signed by` fact read the code that runs, never
   the interpreter or wrapper:
-  - `/bin/zsh -c <code> /usr/bin/true`: `script, not signed`;
+  - `/bin/zsh -c <code> /usr/bin/true`: `unnamed code`;
   - `/usr/bin/nohup <dir>/agent 600`: `ad hoc signed`;
   - `Program` `/bin/sh` with `ProgramArguments` `/bin/sh <dir>/probe.sh`: `Runs /bin/sh
     <dir>/probe.sh`, argv[0] not repeated, and `script, not signed`;
@@ -60,7 +60,7 @@ Preconditions:
     signer, not Apple's `ls`;
   - `<dir>/env <binary>`, with `env` a copy of `agent` and the Developer ID binary above,
     and `<dir>/nohup agent`, which names nothing on the PATH: `ad hoc signed`, their own;
-  - `<dir>/h -c <code>`, where `h` is a symlink to `/bin/zsh`: `script, not signed`;
+  - `<dir>/h -c <code>`, where `h` is a symlink to `/bin/zsh`: `unnamed code`;
   - `/usr/bin/nohup bin/ls` with `WorkingDirectory` `<dir>`: no `Signed by`;
   - `/usr/bin/nohup sleep 600`: `Apple`, `/bin/sleep` found on the PATH;
   - `/usr/bin/open -a /System/Applications/Utilities/Terminal.app <dir>/probe.command` and
@@ -73,21 +73,24 @@ Preconditions:
     `script, not signed`;
   - `-frontend -sdk <sdk> <dir>/loop.swift -interpret` through `/usr/bin/swift` and the
     toolchain's `swift-frontend`, `/usr/bin/swiftc -frontend -interpret <dir>/loop.swift`,
-    `/usr/bin/swiftc --driver-mode=swift <dir>/loop.swift`, and `Program` the toolchain's
-    `swift-frontend` with `ProgramArguments` `swift <dir>/loop.swift` (argv[0] picks the
-    driver): `script, not signed`;
-  - `-frontend -c <dir>/a.swift -load-plugin-library <dir>/evil.dylib` through
-    `/usr/bin/swift` and the toolchain's `swift-frontend`: `script, not signed`; with
-    `-plugin-path` the toolchain's own `usr/lib/swift/host/plugins` instead: `Apple`;
-  - the toolchain's `swiftc -o <dir>/out <dir>/a.swift`, `swift-symbolgraph-extract
-    -module-name Foo -output-dir <dir>/symbolgraph` and `swift-api-digester` (Processes'
-    probe): `Apple`;
-  - `/usr/bin/open -t`, `-R` and `-gR` with `/System/Applications/Calculator.app`: no
-    `Signed by`; `/usr/bin/open -ga` with it: `Apple`;
+    and `/usr/bin/swiftc -wmo -typecheck -sdk <sdk> -Xfrontend -interpret
+    <dir>/loop.swift`: `script, not signed`;
+  - Apple's developer tools otherwise, whatever their arguments: `unnamed code`. With the
+    Command Line Tools: `/usr/bin/swiftc -sdk <sdk> -c <dir>/input.swift -o
+    <dir>/input.o`, loaded (Processes' compile job), `/usr/bin/swiftc -o <dir>/out
+    <dir>/a.swift`, the toolchain's `swift-frontend -frontend -c <dir>/a.swift -Xllvm
+    -load=<dir>/evil.dylib`, and `/usr/bin/git -C <dir> status`. With Xcode, on the user's
+    Mac, where macOS names each of these rows `Xcode`: Xcode's toolchain's `swiftc`, the
+    same compile job through it, loaded, `xcodebuild -version` from its developer folder,
+    and its `lldb-rpc-server` (in `Contents/SharedFrameworks`); Xcode's own
+    `Contents/MacOS/Xcode` reads `App Store`, its signer;
+  - `/usr/bin/open -t`, `-R`, `-gR`, `--reveal`, `--rev` and `--header` with
+    `/System/Applications/Calculator.app`: no `Signed by`; `/usr/bin/open -ga` with it:
+    `Apple`;
   - `/usr/bin/find <dir> -name none -exec <dir>/agent {} ;`: `ad hoc signed`;
   - `/bin/zsh -O <dir>/probe.sh /bin/ls`: `script, not signed`;
-  - `/usr/bin/perl -lne /bin/ls /bin/ls` and `/usr/bin/python3 +run.py /bin/ls`: `script,
-    not signed`;
+  - `/usr/bin/perl -lne /bin/ls /bin/ls`: `unnamed code`; `/usr/bin/python3 +run.py
+    /bin/ls`: `script, not signed`;
   - `~/.local/node/bin/node --diagnostic-dir /usr/bin/true <dir>/evil.js`: `script, not
     signed`.
   Delete the plists and the folder afterwards.
@@ -123,3 +126,11 @@ Preconditions:
   `2aa83fc`). Run `2026-11-07T235754` is the same on `818f035`: the `-frontend`, `swiftc`
   stub, plugin and `open -t`, `-R` and `-gR` rows read `Apple`, and the toolchain's
   `swiftc`, `swift-symbolgraph-extract` and `swift-api-digester` `script, not signed`.
+- Apple's developer tools, the `-Xfrontend -interpret` script and `open`'s long options
+  proven 2026-11-08 on testmac, run `2026-11-08T011100` (commit `7d50eec`). Run
+  `2026-11-08T010801` is the same on `1ab9f0b`: every row `Apple` but `/usr/bin/swift
+  <dir>/loop.swift`'s. The Xcode rows proven on the user's Mac, run `2026-11-08T010935`
+  (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) the four that are not Xcode itself
+  read `Apple`. Copies of testmac's in this Mac's `build/verify/runs/testmac-2026-11-08/`.
+  Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
+  only.
