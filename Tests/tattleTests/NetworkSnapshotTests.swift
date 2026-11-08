@@ -133,6 +133,56 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.groups.first?.signature?.summary, "EXAMPLE DEVELOPER", "the row is the app's")
     }
 
+    /// A bundle's signature is read without its resources, so it says nothing of a file put
+    /// in the bundle: an answer given for the app is not about that file. What the app only
+    /// launches is filed under it and is not part of it.
+    func testAFileInABundleItsSignerDidNotSignTakesAwayTheRowsIdentity() throws {
+        let copied = "/Users/x/Copy/Slack.app"
+        let slack = CodeSignature(signer: .developerID(name: "Slack Technologies"), identifier: "com.tinyspeck.slackmacgap", teamIdentifier: "BQR82RBBHL")
+        let signatures: [String: CodeSignature] = [
+            copied: slack, "\(copied)/Contents/MacOS/Slack": slack, "\(copied)/Contents/Frameworks/Helper": slack,
+            "\(copied)/Contents/MacOS/dropper": CodeSignature(signer: .unsigned), "/usr/bin/curl": CodeSignature(signer: .apple, identifier: "com.apple.curl"),
+        ]
+        let list = [entry(800, 1, "\(copied)/Contents/MacOS/Slack"), entry(801, 800, "\(copied)/Contents/Frameworks/Helper"),
+                    entry(802, 800, "/usr/bin/curl"), entry(803, 1, "\(copied)/Contents/MacOS/dropper")]
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        func row(_ pids: Int32...) -> ConnectionGroup? {
+            NetworkSnapshot(connections: pids.map { pid in
+                LiveConnection(connection: connection(pid, "1.1.1.1"),
+                               owner: ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] }),
+                               isNew: false)
+            }, takenAt: t0).groups.first
+        }
+        let app = "team:BQR82RBBHL:com.tinyspeck.slackmacgap"
+        XCTAssertEqual(row(800, 801)?.identity, app, "the app and its own helper")
+        XCTAssertEqual(row(800, 802)?.identity, app, "what it launches")
+        XCTAssertNil(row(803)?.identity)
+        XCTAssertNil(row(800, 803)?.identity)
+
+        func group(_ entries: [ProcessEntry]) -> ProcessGroup? {
+            ProcessSnapshot.build(entries: entries, previous: nil, signature: { signatures[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, takenAt: t0).group(id: copied)
+        }
+        XCTAssertEqual(group(Array(list.dropLast()))?.identity, app)
+        XCTAssertNil(group(list)?.identity, "the Processes tab's row too")
+    }
+
+    /// Code with no team has no signer to share: ad hoc, only the bundle's own code is its own.
+    func testAnAdHocBundleOwnsOnlyItsOwnCode() throws {
+        let bundle = "/Users/x/Tool.app"
+        let own = CodeSignature(signer: .adHoc, identifier: "tool", codeHash: "aa")
+        let signatures: [String: CodeSignature] = [
+            bundle: own, "\(bundle)/Contents/MacOS/Tool": own,
+            "\(bundle)/Contents/MacOS/dropper": CodeSignature(signer: .adHoc, identifier: "dropper", codeHash: "bb"),
+        ]
+        let list = [entry(810, 1, "\(bundle)/Contents/MacOS/Tool"), entry(811, 1, "\(bundle)/Contents/MacOS/dropper")]
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        func owner(_ pid: Int32) -> ConnectionOwner {
+            ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] })
+        }
+        XCTAssertNotNil(owner(810).groupIdentity)
+        XCTAssertNil(owner(811).groupIdentity)
+    }
+
     /// A process that took a name shares its row: the newest connection's signer alone would
     /// read as Apple's with the impostor's connections inside.
     func testARowWhoseConnectionsDifferNamesNoSigner() throws {

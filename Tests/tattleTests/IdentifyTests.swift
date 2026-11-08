@@ -46,6 +46,25 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(CodeSignature.read(path: dir.appending(path: "missing").path).signer, .unsigned)
     }
 
+    /// Signed code carries a hash of itself, whoever signed it.
+    func testASignatureSaysWhichCodeItIsOn() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let one = dir.appending(path: "one"), other = dir.appending(path: "other"), unsigned = dir.appending(path: "unsigned")
+        for (source, target) in [("/bin/ls", one), ("/bin/cat", other), ("/bin/ls", unsigned)] {
+            try FileManager.default.copyItem(atPath: source, toPath: target.path)
+        }
+        try codesign(["--force", "--sign", "-", one.path])
+        try codesign(["--force", "--sign", "-", other.path])
+        try codesign(["--remove-signature", unsigned.path])
+
+        let hash = try XCTUnwrap(CodeSignature.read(path: one.path).codeHash)
+        XCTAssertEqual(CodeSignature.read(path: one.path).codeHash, hash, "the same code reads the same")
+        XCTAssertNotEqual(CodeSignature.read(path: other.path).codeHash, hash)
+        XCTAssertNil(CodeSignature.read(path: unsigned.path).codeHash)
+    }
+
     func testACertificateNotIssuedByAppleClaimsNothing() throws {
         let fixtures = try XCTUnwrap(Bundle.module.url(forResource: "forged-signatures", withExtension: nil))
         for name in ["forged-software-signing", "forged-developer-id"] {

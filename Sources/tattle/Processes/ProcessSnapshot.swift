@@ -27,6 +27,14 @@ struct AppBundle: Hashable, Sendable {
         return LaunchedCode.Identity(path: path, signature: signed).isDeveloperTool ? CodeSignature(signer: .unnamed) : signed
     }
 
+    /// Whether the executable at `path` is a file in this bundle that the bundle's signer did
+    /// not sign. The bundle's signature is read without its resources, so it says nothing of a
+    /// file put there: an answer given for the app is not about that file.
+    func holdsForeign(_ path: String?, signed executable: CodeSignature?, bundle: CodeSignature?) -> Bool {
+        guard let path, path.hasPrefix(self.path + "/") else { return false }
+        return bundle?.owns(executable) != true
+    }
+
     /// The bundle Launch Services reports a process was opened from, when it is an app.
     /// Launch Services registers some command-line processes too (node servers that open a
     /// browser, say) and then reports the bare executable, and a script that opens a window
@@ -156,6 +164,7 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     var members: [ProcessItem]
     var signature: CodeSignature?
     /// What tells the row's program from another's of its name: the app, or the top process.
+    /// None while a file in the app's bundle that its signer did not sign is running.
     var identity: String?
 
     /// The bundle, or the top-level program; macOS is not one place.
@@ -312,6 +321,11 @@ struct ProcessSnapshot: Equatable, Sendable {
         var groups = order.compactMap { groupsByID[$0] }
         for index in groups.indices {
             groups[index].members.sort { ($0.memoryBytes, $1.pid) > ($1.memoryBytes, $0.pid) }
+            if case .app(let bundle) = groups[index].kind, groups[index].members.contains(where: {
+                bundle.holdsForeign($0.path, signed: $0.interpreterSignature ?? $0.signature, bundle: groups[index].signature)
+            }) {
+                groups[index].identity = nil
+            }
         }
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
     }

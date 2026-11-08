@@ -40,6 +40,8 @@ struct CodeSignature: Equatable, Sendable {
     var signer: Signer
     var identifier: String?
     var teamIdentifier: String?
+    /// The code directory hash: which version of the code this is, whoever signed it.
+    var codeHash: String?
 
     /// One or two words for a row: Apple, App Store, the publisher, or unsigned.
     var summary: String {
@@ -61,6 +63,14 @@ struct CodeSignature: Equatable, Sendable {
     /// The same signer, whichever of its programs each signature is on.
     func isSameSigner(as other: CodeSignature?) -> Bool {
         signer == other?.signer && teamIdentifier == other?.teamIdentifier
+    }
+
+    /// Whether `other` is this signer's code, as a bundle's own executable is its bundle's:
+    /// Apple's or the same team's, which a signature proves. Code with no team has no signer
+    /// to share, so only the very same code counts.
+    func owns(_ other: CodeSignature?) -> Bool {
+        if signer == .apple || teamIdentifier != nil { return isSameSigner(as: other) }
+        return codeHash != nil && codeHash == other?.codeHash
     }
 
     /// How a launch item reads, from the code its command line runs (`LaunchedCode.started`):
@@ -131,19 +141,20 @@ struct CodeSignature: Equatable, Sendable {
         let identifier = info[kSecCodeInfoIdentifier as String] as? String
         let team = info[kSecCodeInfoTeamIdentifier as String] as? String
         let flags = info[kSecCodeInfoFlags as String] as? UInt32 ?? 0
+        let codeHash = (info[kSecCodeInfoUnique as String] as? Data)?.map { String(format: "%02x", $0) }.joined()
         let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate] ?? []
 
         if flags & SecCodeSignatureFlags.adhoc.rawValue != 0 || certificates.isEmpty {
-            return CodeSignature(signer: .adHoc, identifier: identifier)
+            return CodeSignature(signer: .adHoc, identifier: identifier, codeHash: codeHash)
         }
         if satisfies(code, "anchor apple") {
-            return CodeSignature(signer: .apple, identifier: identifier, teamIdentifier: team)
+            return CodeSignature(signer: .apple, identifier: identifier, teamIdentifier: team, codeHash: codeHash)
         }
         guard satisfies(code, "anchor apple generic") else {
-            return CodeSignature(signer: .notIssuedByApple, identifier: identifier)
+            return CodeSignature(signer: .notIssuedByApple, identifier: identifier, codeHash: codeHash)
         }
         let signer = classify((SecCertificateCopySubjectSummary(certificates[0]) as String?) ?? "")
-        return CodeSignature(signer: signer, identifier: identifier, teamIdentifier: team)
+        return CodeSignature(signer: signer, identifier: identifier, teamIdentifier: team, codeHash: codeHash)
     }
 
     private static func satisfies(_ code: SecStaticCode, _ requirement: String) -> Bool {

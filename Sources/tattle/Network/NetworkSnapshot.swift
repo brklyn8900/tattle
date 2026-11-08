@@ -24,7 +24,11 @@ struct ConnectionOwner: Equatable, Sendable {
     var groupID: String { app?.path ?? "process:\(processName)" }
     /// The row is the app when there is one, else the process.
     var groupSignature: CodeSignature? { app == nil ? signature : appSignature }
-    var groupIdentity: String? { app.map { CodeIdentity.of(appSignature, path: $0.path) } ?? identity }
+    /// None for a file in the app's bundle that its signer did not sign.
+    var groupIdentity: String? {
+        guard let app else { return identity }
+        return app.holdsForeign(path, signed: interpreterSignature ?? signature, bundle: appSignature) ? nil : CodeIdentity.of(appSignature, path: app.path)
+    }
     var isApplesProgram: Bool { ApplesProgram.isNamed(displayName, path: path, signature: signature) }
 
     static let unknown = ConnectionOwner(processName: "unknown process")
