@@ -15,6 +15,13 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("usernamex.example.com"), "usernamex.example.com", "username only at word boundaries")
     }
 
+    /// APFS ignores case by default, and a login names one account however it is written.
+    func testHomeAndUsernameMatchInAnyCase() {
+        XCTAssertEqual(redactor.redact("/Users/Username/Library/x and /USERS/USERNAME"), "<home>/Library/x and <home>")
+        XCTAssertEqual(redactor.redact("run by USERNAME, Username-backup"), "run by <user>, <user>-backup")
+        XCTAssertEqual(redactor.redact("Usernamex.example.com"), "Usernamex.example.com")
+    }
+
     func testShortUsernameOnlyInHomePath() {
         let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
         XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1"), "<home>/x run by e with osascript -e 1")

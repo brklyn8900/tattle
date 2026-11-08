@@ -74,9 +74,10 @@ struct Redactor: Sendable {
         var out = text
         // Home path before username: the path contains the username.
         // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
+        // In any case, as APFS reads a path and as a login is the same account however written.
         if !home.isEmpty {
             let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![\\w.~@+-])"
-            out = out.replacingOccurrences(of: pattern, with: "<home>", options: .regularExpression)
+            out = out.replacingOccurrences(of: pattern, with: "<home>", options: [.regularExpression, .caseInsensitive])
         }
         // A machine name matches only as a whole host name, so on a Mac called dev
         // "Apple Development" stays whole. It matches only as the first label, so
@@ -93,7 +94,7 @@ struct Redactor: Sendable {
         // ends a sentence does not join a label.
         if username.count >= 3 {
             let pattern = "(?<![\\w-]\\.)\\b" + NSRegularExpression.escapedPattern(for: username) + "\\b(?!\\.[\\w-])"
-            out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
+            out = out.replacingOccurrences(of: pattern, with: "<user>", options: [.regularExpression, .caseInsensitive])
         }
         return Self.redactAddresses(out)
     }
