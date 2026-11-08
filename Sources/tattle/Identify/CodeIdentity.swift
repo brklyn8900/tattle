@@ -4,6 +4,11 @@ import Foundation
 /// What tells one program's code from another's of the same name, kept with an explanation
 /// given for it: a process name, a port's owner or a launch label is anyone's to take. Compared
 /// and stored, never shown or sent. Nil when nothing tells them apart.
+///
+/// A script's identity has two limits, because a command line is all that says which script
+/// a process runs. A process can rewrite its own arguments, so it can claim another script's
+/// path. A relative path is joined to the working directory at the time it is read, not the
+/// one the script started in, so after a `chdir` it can name another file.
 struct CodeIdentity: Hashable, Sendable {
     /// All that a poll can know of it, without reading the code.
     var text: String
