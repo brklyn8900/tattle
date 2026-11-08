@@ -13,8 +13,9 @@ detail adds facts, an explanation, and controls.
 - `st-row`: `"<name>, <when> · <state> · <signer>"`; the name is the one macOS's
   background-items record gives (`CometUpdater`), which Tattle reads only with Full Disk
   Access; otherwise, and for an agent macOS has not registered, the launchd label.
-- `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Plist` with the path),
-  `Explain`, `Reveal Plist`, `Login Items Settings`.
+- `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Runs Apple's` when a launch
+  item that is not Apple's runs one of Apple's programs, `Plist` with the path), `Explain`,
+  `Reveal Plist`, `Login Items Settings`.
 - `st-control`: `Load` / `Unload` for the user's own agents, `Managed by the system` for
   others, `Remove` only on Tattle's broker.
 - `st-fda`: without Full Disk Access, `Login items need Full Disk Access: ...` and `Open
@@ -91,13 +92,26 @@ Preconditions:
     <dir>/evil.dylib`;
   - `/usr/bin/open -t`, `-R`, `-gR`, `--reveal`, `--rev` and `--header` with
     `/System/Applications/Calculator.app`: no `Signed by`; `/usr/bin/open -ga` with it:
-    `Apple`;
+    `launch item, not signed`;
   - `/usr/bin/find <dir> -name none -exec <dir>/agent {} ;`: `ad hoc signed`;
   - `/bin/zsh -O <dir>/probe.sh /bin/ls`: `script, not signed`;
   - `/usr/bin/perl -lne /bin/ls /bin/ls`: `unnamed code`; `/usr/bin/python3 +run.py
     /bin/ls`: `script, not signed`;
   - `~/.local/node/bin/node --diagnostic-dir /usr/bin/true <dir>/evil.js`: `script, not
     signed`.
+- **A launch item running Apple's program.** On testmac, in `~/Library/LaunchAgents/`:
+  `/usr/bin/sqlite3 -cmd '.shell sleep 1197' :memory:` and `/bin/ls /`, both loaded. Each row
+  reads `launch item, not signed`, not `Apple`; the detail has `Signed by launch item, not
+  signed` and `Runs Apple's sqlite3` (`ls`). Apple's own jobs, under `/System/Library`, are
+  counted, not listed. A helper with no plist keeps its signer: `PasswordsMenuBarExtra`
+  reads `Apple`.
+- **xcrun.** On testmac, not loaded: `<dir>/lldb /bin/ls -b -s <dir>/cmds`, where `lldb` is a
+  symlink to `/usr/bin/xcrun`, and `/usr/bin/xcrun ls`: `unnamed code`. `/usr/bin/xcrun swift
+  <dir>/a.swift`: `script, not signed`.
+- **A registered item among the developer tools.** On the user's Mac:
+  `ProvisoningProfileQuicklookExtension.appex` (in `Xcode.app/Contents/PlugIns`) and
+  `uuid.mdimporter` (in `Xcode.app/Contents/Library/Spotlight`), both signed by Apple inside
+  an App Store Xcode, read `unnamed code`.
   Delete the plists and the folder afterwards.
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
   `Open at login` and background groups are missing: record that precondition as unmet.
@@ -139,5 +153,10 @@ Preconditions:
   read `Apple`. The copies of `clang`, `ld` and `swift-frontend` proven on testmac, run
   `2026-11-08T014224` (`a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) all four read
   `Apple`. Copies of testmac's in this Mac's `build/verify/runs/testmac-2026-11-08/`.
+- The launch item rule and xcrun proven 2026-11-08 on testmac, run `2026-11-08T090736` (commit
+  `b5e5e2c`). In run `2026-11-08T090623` (`0a31fdc`) the `sqlite3`, `ls` and two xcrun rows
+  read `Apple`. The registered items proven on the user's Mac, run `2026-11-08T090639`
+  (`b5e5e2c`); in run `2026-11-08T090557` (`0a31fdc`) they read `Apple`. The `open -ga` row
+  is unit-tested at this reading, not run again.
   Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
   only.

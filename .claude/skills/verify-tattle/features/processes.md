@@ -51,8 +51,8 @@ Preconditions:
   code`, not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by
   unnamed code`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
   developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
-  must not hold it: the row and the detail read the same. testmac has only the Command Line
-  Tools, so this case runs on the user's Mac, with a probe the run loads and removes. A
+  must not hold it: the row and the detail read the same. testmac had only the Command Line
+  Tools then, so this case ran on the user's Mac, with a probe the run loads and removes. A
   script that opens a window, `<dir>/window.py` (a `tkinter.Tk()` and its `mainloop()`),
   is registered by Launch Services under the framework's `Python.app` (`lsappinfo list`
   shows it): its row reads `window.py, 1 process · Python script`, and the detail has no
@@ -81,6 +81,15 @@ Preconditions:
   under `Contents/Developer/Library/Xcode/Agents/`, while it runs: its row reads `Xcode
   Service, 1 process · unnamed code`, not its bundle's signer. The detail has `Signed by
   unnamed code`, `Interpreter signed by Apple`, `Interpreter team 59GAB85EFG`.
+- **A developer tool reading its standard input.** Over ssh, so no app is an ancestor, with
+  `/usr/bin/time /usr/bin/python3 < <dir>/in.fifo` and something holding the fifo open:
+  with Xcode as the developer folder its row reads `Python, 1 process · Python, unnamed
+  code`, not a member of `Xcode`. The detail has `Signed by unnamed code`, `Interpreter
+  signed by Apple`, `Parent time (pid N)`. A shell at a terminal is still not one: a person
+  may be typing.
+- **An Apple-signed Xcode.** On testmac, whose Xcode is signed by Apple (the user's is the App
+  Store's and reads that): `open -ga Xcode`. Its row reads `Xcode, N processes · unnamed
+  code`, its detail `Signed by unnamed code`.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
   · node script`, not `.`. With node.js's own build (testmac's `~/.local/node`), the detail
@@ -140,6 +149,9 @@ Preconditions:
   was not saved. Xcode Service's row proven 2026-11-08 on the user's Mac, run
   `2026-11-08T013950` (`a8e6f29`); in run `2026-11-08T013910` (`e06b5dd`) it read `Xcode
   Service, 1 process · Apple`, its detail already `Signed by unnamed code`.
+- Standard input and the Apple-signed Xcode proven 2026-11-08 on testmac, run
+  `2026-11-08T090736` (commit `b5e5e2c`); in run `2026-11-08T090623` (`0a31fdc`) the row was
+  `Xcode, 7 processes · Apple`, Python among its members, and no `Python` row.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,

@@ -47,13 +47,15 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   both copies, Remove from Startup and the refused callers on the release build.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
   Proven 2026-10-25; a command line's signer 2026-11-07; Apple's developer tools, copies
-  of them, and `open`'s long options 2026-11-08.
+  of them, `open`'s long options, xcrun, registered items and launch items running Apple's
+  programs 2026-11-08.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
   CPU, and Quit. Proven 2026-10-25; the macOS row, a script started by launchd, standard
   input under launchd, Python (with the Command Line Tools, with Xcode, and a Tk window),
   Swift (its frontend and its tools) and a package by its folder 2026-11-07; a compile job,
-  with the Command Line Tools and with Xcode, a copy of clang, and an app among Xcode's
-  developer tools 2026-11-08.
+  with the Command Line Tools and with Xcode, a copy of clang, an app among Xcode's
+  developer tools, a developer tool reading standard input, and an Apple-signed Xcode
+  2026-11-08.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27.
