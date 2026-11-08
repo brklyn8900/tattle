@@ -52,7 +52,7 @@ enum LaunchedCode: Equatable, Sendable {
     /// a process of its own. `arguments` follow argv[0], nil when they cannot be read.
     static func running(executable: String, arguments: [String]?, identity: Identity) -> LaunchedCode {
         guard let grammar = grammar(of: identity.name, in: interpreters) else { return .program(executable) }
-        return interpreted(by: URL(fileURLWithPath: executable).lastPathComponent, arguments: arguments, grammar)
+        return interpreted(executable: executable, arguments: arguments, grammar)
     }
 
     /// What a command line starts: through any wrappers (`nohup`, `caffeinate`, `env`) to
@@ -97,7 +97,7 @@ enum LaunchedCode: Equatable, Sendable {
         let identity = identify(program)
         let through = through ?? (identity.isApples ? nil : program)
         if let grammar = grammar(of: identity.name, in: launchers) {
-            return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
+            return interpreted(executable: program, arguments: arguments, grammar)
         }
         if identity.name == "open" { return opened(arguments, identify, through: through, searchPath: searchPath) }
         if identity.name == "find", let code = found(arguments, identify, through: through, searchPath: searchPath) { return code }
@@ -158,10 +158,18 @@ enum LaunchedCode: Equatable, Sendable {
         return started(opened, [], identify, through: through, searchPath: searchPath)
     }
 
-    /// What the interpreter `name` runs with `arguments`.
-    private static func interpreted(by name: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
+    /// What the interpreter at `executable` runs with `arguments`.
+    private static func interpreted(executable: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
+        let name = URL(fileURLWithPath: executable).lastPathComponent
         guard let arguments else { return .unnamed(interpreter: name) }
-        switch scan(arguments, grammar) {
+        let found = scan(arguments, grammar)
+        if let mode = grammar.ownCodeMode, arguments.first == mode {
+            switch found {
+            case .operand, .nothing: return .program(executable)
+            case .code, .standardInput, .file: break
+            }
+        }
+        switch found {
         case .file(let path): return .script(path: path, interpreter: name)
         case .operand(let index) where grammar.operandIsScript && !arguments[index].isEmpty:
             return .script(path: arguments[index], interpreter: name)
@@ -219,6 +227,9 @@ enum LaunchedCode: Equatable, Sendable {
         /// What comes before the command a wrapper runs: `script`'s transcript file, `login`'s
         /// user, `env`'s assignments.
         var operandsBeforeCommand = OperandsBeforeCommand.none
+        /// A first word that makes the program run its own code unless an option names the
+        /// code: swift's `-frontend` compiles, unless `-interpret` names the script.
+        var ownCodeMode: String? = nil
     }
 
     private enum Found {
@@ -286,8 +297,17 @@ enum LaunchedCode: Equatable, Sendable {
     ], plusOptions: true)
     private static let zsh = Grammar(options: ["-c": .code, "-s": .standardInput, "-o": .value, "--emulate": .value], plusOptions: true)
     private static let shell = Grammar(options: ["-c": .code, "-s": .standardInput, "-o": .value], plusOptions: true)
+    /// The toolchain's `swift` is its frontend under another name, and runs a script by
+    /// replacing itself with the frontend: `swift-frontend -frontend -interpret <script>`.
+    private static let swift = Grammar(options: [
+        "-e": .code, "-interpret": .file, "-D": .value, "-F": .value, "-I": .value, "-L": .value, "-j": .value,
+        "-module-name": .value, "-sdk": .value, "-target": .value, "-Xcc": .value, "-Xlinker": .value,
+        "-Xfrontend": .value, "-swift-version": .value, "-enable-upcoming-feature": .value,
+        "-plugin-path": .value, "-load-plugin-library": .value, "-load-plugin-executable": .value,
+    ], grouped: false, ownCodeMode: "-frontend")
 
-    /// Interpreters: the code is a script file, inline, or standard input, never their own.
+    /// Interpreters: the code is a script file, inline, or standard input, never their own
+    /// outside an `ownCodeMode`.
     private static let interpreters: [String: Grammar] = [
         "sh": bash, "bash": bash, "zsh": zsh, "ksh": shell, "csh": shell, "tcsh": shell, "dash": shell,
         "python": Grammar(options: ["-c": .code, "-m": .code, "-W": .value, "-X": .value, "--check-hash-based-pycs": .value]),
@@ -318,12 +338,7 @@ enum LaunchedCode: Equatable, Sendable {
             "-encoding": .value, "-colormap": .value, "-display": .value, "-geometry": .value,
             "-name": .value, "-use": .value, "-visual": .value,
         ], grouped: false),
-        "swift": Grammar(options: [
-            "-e": .code, "-D": .value, "-F": .value, "-I": .value, "-L": .value, "-j": .value,
-            "-module-name": .value, "-sdk": .value, "-target": .value, "-Xcc": .value, "-Xlinker": .value,
-            "-Xfrontend": .value, "-swift-version": .value, "-enable-upcoming-feature": .value,
-            "-plugin-path": .value, "-load-plugin-library": .value, "-load-plugin-executable": .value,
-        ], grouped: false),
+        "swift": swift, "swift-frontend": swift,
         "make": Grammar(options: [
             "-f": .file, "--file": .file, "--makefile": .file, "-C": .value, "--directory": .value,
             "-I": .value, "--include-dir": .value, "-o": .value, "--old-file": .value, "-W": .value, "--what-if": .value,

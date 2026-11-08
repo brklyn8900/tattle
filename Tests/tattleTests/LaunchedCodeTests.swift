@@ -256,6 +256,23 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(renamed.interpreter, "agent", "Apple's program by its signing identifier")
     }
 
+    func testASwiftScriptRunsInSwiftsFrontend() {
+        // swift runs a script by replacing itself with its frontend, which also compiles.
+        let frontend = "/Library/Developer/CommandLineTools/usr/bin/swift-frontend"
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.swift-frontend")
+        let script = ProcessEntry.name(path: frontend, arguments: [frontend, "-frontend", "-interpret", "/x/a.swift", "-sdk", "/x/sdk"],
+                                       command: "swift-frontend", signature: apple)
+        XCTAssertEqual(script.name, "a.swift")
+        XCTAssertEqual(script.interpreter, "swift-frontend")
+        let compile = ProcessEntry.name(path: frontend, arguments: [frontend, "-frontend", "-c", "/x/a.swift", "-primary-file", "/x/a.swift"],
+                                        command: "swift-frontend", signature: apple)
+        XCTAssertEqual(compile.name, "swift-frontend")
+        XCTAssertNil(compile.interpreter, "compiling, it runs its own code")
+        // The toolchain's swift is a symlink to the frontend, which then runs as the driver.
+        let driver = "/Library/Developer/CommandLineTools/usr/bin/swift"
+        XCTAssertEqual(signer(driver, ["/x/a.swift"], identifiers: [driver: "com.apple.swift-frontend"]), .developerID(name: "/x/a.swift"))
+    }
+
     func testARunningJavaIsAProgramAndAJobRunThroughJavaIsSignedByItsJar() {
         let named = ProcessEntry.name(path: "/Library/Java/JavaVirtualMachines/x.jdk/Contents/Home/bin/java",
                                       arguments: ["java", "-jar", "/x/server.jar"], command: "java")
