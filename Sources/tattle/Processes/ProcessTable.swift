@@ -14,8 +14,9 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var name: String
     var path: String?
     /// The interpreter's file name when the process runs code that is not its executable's
-    /// (a script file, inline code, or code its unreadable arguments would name), so a row
-    /// can say "node script" and the signature is understood to be the interpreter's.
+    /// (a script file, inline code, standard input under launchd, or code its unreadable
+    /// arguments would name), so a row can say "node script" and the signature is understood
+    /// to be the interpreter's.
     var interpreter: String?
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
@@ -29,11 +30,14 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// The name and interpreter for an executable and its arguments, by what the process
     /// runs (`LaunchedCode.running`, which knows Apple's programs by `signature`). An interpreter running a script file is named after
     /// the file, or after the npm package the file belongs to; running other code, it is
-    /// still marked as the interpreter. Otherwise the name the process was started under
+    /// still marked as the interpreter, and so is one launchd started reading its standard
+    /// input, which is then a file or a pipe, not a person at a terminal. Otherwise the name the process was started under
     /// wins over the executable's file name: a multi-call binary at a version-numbered path
     /// is "claude" or "ugrep", a login shell "-zsh" is zsh, and a node process that set its
     /// title keeps it.
-    static func name(path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil) -> (name: String, interpreter: String?) {
+    static func name(
+        path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil, startedByLaunchd: Bool = false
+    ) -> (name: String, interpreter: String?) {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         var interpreter: String?
         if let path {
@@ -41,6 +45,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
                                         identity: LaunchedCode.Identity(path: path, signature: signature)) {
             case .script(let script, let name): return (scriptName(script), name)
             case .unnamed(let name): interpreter = name
+            case .standardInput(let name) where startedByLaunchd: interpreter = name
             case .program, .standardInput, .undetermined: break
             }
         }
@@ -149,7 +154,9 @@ enum ProcessTable {
         // KERN_PROCARGS2 refuses other users' processes, so only ask for our own.
         let own = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid()
         let arguments = own ? self.arguments(pid: pid, scratch: &scratch) : nil
-        let named = ProcessEntry.name(path: path, arguments: arguments, command: command, signature: path.flatMap(signature))
+        let named = ProcessEntry.name(
+            path: path, arguments: arguments, command: command, signature: path.flatMap(signature),
+            startedByLaunchd: info.kp_eproc.e_ppid == 1)
         let started = info.kp_proc.p_starttime
         return ProcessEntry(
             pid: pid, parentPid: info.kp_eproc.e_ppid, uid: info.kp_eproc.e_ucred.cr_uid,

@@ -201,6 +201,15 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(wrapper.interpreter)
     }
 
+    func testAnInterpreterLaunchdStartsOnItsStandardInputRunsAScript() {
+        // launchd gives a job no terminal: its standard input is a file the plist names, or a
+        // pipe, so what it reads is a script. Under a terminal, a person may be typing.
+        let job = ProcessEntry.name(path: "/bin/sh", arguments: ["sh"], command: "sh", startedByLaunchd: true)
+        XCTAssertEqual(job.name, "sh")
+        XCTAssertEqual(job.interpreter, "sh")
+        XCTAssertNil(ProcessEntry.name(path: "/bin/zsh", arguments: ["-zsh"], command: "zsh").interpreter)
+    }
+
     func testPythonIsAnInterpreterInProcessesUnderItsFrameworkName() {
         let python = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
         let apple = CodeSignature(signer: .apple, identifier: "com.apple.python3")
