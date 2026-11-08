@@ -37,6 +37,8 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     /// The PATH the plist sets for the job (`EnvironmentVariables`); nil when the job runs
     /// with launchd's own.
     var environmentPath: String? = nil
+    /// The folder launchd changes the root to before it starts the job (`RootDirectory`).
+    var rootDirectory: String? = nil
     var triggers: [Trigger]
     /// `Disabled` in the plist. launchd's own override state comes from launchctl.
     var disabled: Bool
@@ -73,6 +75,7 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
         return LaunchdItem(
             label: label, scope: scope, plistURL: url, program: program, arguments: arguments,
             environmentPath: (plist["EnvironmentVariables"] as? [String: Any])?["PATH"] as? String,
+            rootDirectory: plist["RootDirectory"] as? String,
             triggers: Trigger.triggers(in: plist),
             disabled: plist["Disabled"] as? Bool ?? false,
             associatedBundleIdentifiers: plist["AssociatedBundleIdentifiers"] as? [String]

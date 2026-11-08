@@ -23,10 +23,11 @@ struct CodeSignature: Equatable, Sendable {
         /// by name, in arguments that cannot be read, or what one of Apple's developer tools is
         /// told to run. Whose code it is cannot be known.
         case unnamed
-        /// A launch item that is not Apple's, running one of Apple's programs, named here. No
+        /// A launch item that is not Apple's, running one of Apple's programs, named here unless
+        /// its plist changes the root folder, when the path does not say which file runs. No
         /// one signs the plist that says what the program is told to do, so Apple's signature on
         /// the program vouches for nothing the item does.
-        case launchItem(applesProgram: String)
+        case launchItem(applesProgram: String?)
         /// Signed, but the signature does not match the binary.
         case invalid(String)
         /// Signed with a certificate Apple did not issue. Anyone can make one, with any name.
@@ -68,7 +69,7 @@ struct CodeSignature: Equatable, Sendable {
     /// runs a signed binary as its script, so a signed file in the script's place is an
     /// argument read there by mistake.
     static func read(
-        program: String, arguments: [String], environmentPath: String? = nil,
+        program: String, arguments: [String], environmentPath: String? = nil, changesRoot: Bool = false,
         reading: (String) -> CodeSignature? = { read(path: $0) }
     ) -> CodeSignature? {
         let identify = {
@@ -76,7 +77,7 @@ struct CodeSignature: Equatable, Sendable {
         }
         let code = LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify)
         switch code {
-        case .program(let path): return launchItem(running: path, signature: reading(path))
+        case .program(let path): return launchItem(running: path, signature: reading(path), changesRoot: changesRoot)
         case .script, .standardInput: return CodeSignature(signer: .script)
         case .unnamed: return CodeSignature(signer: .unnamed)
         case .undetermined: return nil
@@ -84,9 +85,9 @@ struct CodeSignature: Equatable, Sendable {
     }
 
     /// `signature`, the signature of `program`, as a launch item that is not Apple's shows it.
-    static func launchItem(running program: String, signature: CodeSignature?) -> CodeSignature? {
+    static func launchItem(running program: String, signature: CodeSignature?, changesRoot: Bool = false) -> CodeSignature? {
         guard signature?.signer == .apple else { return signature }
-        return CodeSignature(signer: .launchItem(applesProgram: URL(fileURLWithPath: program).lastPathComponent))
+        return CodeSignature(signer: .launchItem(applesProgram: changesRoot ? nil : URL(fileURLWithPath: program).lastPathComponent))
     }
 
     /// Reads and validates the signature at `path`. Resources are not validated: that

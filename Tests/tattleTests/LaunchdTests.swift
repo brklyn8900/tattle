@@ -29,6 +29,12 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(path.environmentPath, "/x:/bin")
     }
 
+    func testRootDirectory() throws {
+        let rooted = try parse("<key>Label</key><string>r</string><key>Program</key><string>/bin/ls</string><key>RootDirectory</key><string>/x</string>")
+        XCTAssertEqual(rooted.rootDirectory, "/x")
+        XCTAssertNil(try parse("<key>Label</key><string>n</string><key>Program</key><string>/bin/ls</string>").rootDirectory)
+    }
+
     func testRejectsMissingLabelAndNonDictionary() {
         XCTAssertThrowsError(try parse("<key>Program</key><string>/bin/x</string>")) {
             XCTAssertEqual($0 as? LaunchdItem.ParseError, .noLabel)

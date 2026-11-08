@@ -126,6 +126,19 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(background.first { $0.name == "Apple's helper" }?.signature?.signer, .apple, "no plist says what it runs")
     }
 
+    func testALaunchItemThatChangesItsRootDoesNotNameTheProgram() throws {
+        var rooted = job("local.rooted", program: "/bin/ls")
+        rooted.rootDirectory = "/x"
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [rooted], appleCount: 0, skipped: [:]),
+            loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
+            signature: { _ in CodeSignature(signer: .apple) })
+        let item = try XCTUnwrap(snapshot.items.first)
+        XCTAssertEqual(item.signature?.signer, .launchItem(applesProgram: nil))
+        XCTAssertEqual(item.signature?.summary, "launch item, not signed")
+        XCTAssertFalse(item.facts.contains { $0.name == "Runs Apple's" }, "the path does not say which file runs")
+    }
+
     func testARegisteredItemAmongApplesDeveloperToolsReadsAsUnnamedCode() {
         let xcode = "/Applications/Xcode.app/Contents/Developer"
         let tools = "/Library/Developer/CommandLineTools"

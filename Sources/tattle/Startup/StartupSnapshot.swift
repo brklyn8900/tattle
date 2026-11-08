@@ -95,7 +95,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         facts.append(Fact(name: "State", value: state.text))
         if let signature {
             facts.append(.signedBy(signature))
-            if case .launchItem(let program) = signature.signer { facts.append(Fact(name: "Runs Apple's", value: program)) }
+            if case .launchItem(let program?) = signature.signer { facts.append(Fact(name: "Runs Apple's", value: program)) }
             if let team = signature.teamIdentifier ?? teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         } else if let teamIdentifier {
             facts.append(Fact(name: "Team", value: teamIdentifier))
@@ -148,7 +148,8 @@ struct StartupSnapshot: Equatable, Sendable {
                 trigger: job.isPlaceholder ? "never" : job.triggers.map { $0.description(scope: job.scope) }.joined(separator: ", "),
                 state: launchdState(job, state: state),
                 signature: job.program.flatMap {
-                    CodeSignature.read(program: $0, arguments: job.arguments, environmentPath: job.environmentPath, reading: signature)
+                    CodeSignature.read(program: $0, arguments: job.arguments, environmentPath: job.environmentPath,
+                                       changesRoot: job.rootDirectory != nil, reading: signature)
                 },
                 developer: registered?.developerName,
                 teamIdentifier: registered?.teamIdentifier,
