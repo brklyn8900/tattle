@@ -140,6 +140,11 @@ struct Redactor: Sendable {
     private static let ipv4 = try! NSRegularExpression(
         pattern: "\\b(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\b")
 
+    /// An address spelled with hyphens in a host name ("ip-10-0-1-5.ec2.internal"): exactly
+    /// four numbers, so a longer run of them is not read as one.
+    private static let hyphenatedIPv4 = try! NSRegularExpression(
+        pattern: "(?<!\\d)(?<!\\d-)(\\d{1,3})-(\\d{1,3})-(\\d{1,3})-(\\d{1,3})(?!-?\\d)")
+
     /// RFC 1918, loopback, link-local and CGNAT ranges.
     static func isPrivateIPv4(_ octets: [Int]) -> Bool {
         guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else { return false }
@@ -152,14 +157,16 @@ struct Redactor: Sendable {
     }
 
     private static func redactIPv4(_ text: String) -> String {
-        let ns = text as NSString
-        var out = text
-        for match in ipv4.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
-            let octets = (1...4).compactMap { Int(ns.substring(with: match.range(at: $0))) }
-            guard isPrivateIPv4(octets) else { continue }
-            out = (out as NSString).replacingCharacters(in: match.range, with: "<private-ip>")
+        [ipv4, hyphenatedIPv4].reduce(text) { text, form in
+            let ns = text as NSString
+            var out = text
+            for match in form.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
+                let octets = (1...4).compactMap { Int(ns.substring(with: match.range(at: $0))) }
+                guard isPrivateIPv4(octets) else { continue }
+                out = (out as NSString).replacingCharacters(in: match.range, with: "<private-ip>")
+            }
+            return out
         }
-        return out
     }
 
     /// Link-local (fe80::/10), unique local (fc00::/7) and loopback (::1).

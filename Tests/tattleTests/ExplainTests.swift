@@ -154,6 +154,14 @@ final class RedactorTests: XCTestCase {
         }
     }
 
+    /// Cloud and wildcard-DNS host names spell an address with hyphens.
+    func testHyphenEncodedPrivateAddresses() {
+        XCTAssertEqual(redactor.redact("ip-10-0-1-5.ec2.internal 192-168-1-9.nip.io 100-64-0-1"),
+                       "ip-<private-ip>.ec2.internal <private-ip>.nip.io <private-ip>")
+        XCTAssertEqual(redactor.redact("8-8-8-8.nip.io 3-10-0-0-5 10-0-0-5-7 2026-10-17-1"),
+                       "8-8-8-8.nip.io 3-10-0-0-5 10-0-0-5-7 2026-10-17-1")
+    }
+
     func testPrivateIPsOnly() {
         XCTAssertEqual(redactor.redact("10.0.0.5 172.20.1.1 192.168.1.9 127.0.0.1 169.254.3.3 100.64.0.1"),
                        "<private-ip> <private-ip> <private-ip> <private-ip> <private-ip> <private-ip>")
