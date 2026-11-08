@@ -452,20 +452,44 @@ final class CaptureBrokerTests: XCTestCase {
     /// it asks, whatever the answer.
     func testACallerDropsTheExceptionPortsItInheritedBeforeItAsks() throws {
         let hardened = try caller(.hardened)
-        let process = Process()
-        process.executableURL = hardened.url
-        process.arguments = [BrokerAgent.uniqueLabel(), "en0", "--exception-ports"]
-        let output = Pipe()
-        process.standardOutput = output
-        try withInheritedExceptionPort { try process.run() }
-        waitForExit(process)
-        let lines = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n")
+        var output = ""
+        try withInheritedExceptionPort {
+            output = try spawnKeepingExceptionPorts(hardened.url, [BrokerAgent.uniqueLabel(), "en0", "--exception-ports"])
+        }
+        let lines = output.split(separator: "\n")
         XCTAssertEqual(lines.first, "transport \(ECONNREFUSED)", "no job serves the name")
-        XCTAssertEqual(lines.last, "exception-ports 0")
+        XCTAssertEqual(Array(lines.dropFirst()), ["inherited-ports 1", "exception-ports 0", "corpse-ports 1"], "the corpse port is how macOS's crash reports arrive")
     }
 
-    /// Runs `body` with a port of this process's own as its bad-access exception port, which a
-    /// process started inside inherits, then puts back the ports it had.
+    /// Runs the program with `posix_spawn`, because `Process` does not pass exception ports on,
+    /// and returns what it wrote to standard output.
+    private func spawnKeepingExceptionPorts(_ url: URL, _ arguments: [String]) throws -> String {
+        var ends: [Int32] = [0, 0]
+        XCTAssertEqual(pipe(&ends), 0)
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_adddup2(&actions, ends[1], STDOUT_FILENO)
+        posix_spawn_file_actions_addclose(&actions, ends[0])
+        posix_spawn_file_actions_addclose(&actions, ends[1])
+        let argv: [UnsafeMutablePointer<CChar>?] = ([url.path] + arguments).map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) } }
+        var pid = pid_t(0)
+        let spawned = posix_spawn(&pid, url.path, &actions, nil, argv, environ)
+        close(ends[1])
+        let reader = FileHandle(fileDescriptor: ends[0], closeOnDealloc: true)
+        guard spawned == 0 else {
+            XCTFail("posix_spawn failed: \(spawned)")
+            return ""
+        }
+        let output = try XCTUnwrap(try reader.readToEnd())
+        var status = Int32(0)
+        waitpid(pid, &status, 0)
+        return String(decoding: output, as: UTF8.self)
+    }
+
+    /// Runs `body` with a port of this process's own as its bad-access, crash and corpse exception
+    /// port, which a process started inside inherits, then puts back the ports it had.
     private func withInheritedExceptionPort(_ body: () throws -> Void) throws {
         let task = mach_task_self_
         var port = mach_port_t(MACH_PORT_NULL)
@@ -478,7 +502,7 @@ final class CaptureBrokerTests: XCTestCase {
         var behaviors = [exception_behavior_t](repeating: 0, count: capacity)
         var flavors = [thread_state_flavor_t](repeating: 0, count: capacity)
         var count = mach_msg_type_number_t(capacity)
-        XCTAssertEqual(task_swap_exception_ports(task, exception_mask_t(1 << EXC_BAD_ACCESS), port, EXCEPTION_DEFAULT, THREAD_STATE_NONE,
+        XCTAssertEqual(task_swap_exception_ports(task, exception_mask_t(1 << EXC_BAD_ACCESS | 1 << EXC_CRASH | 1 << EXC_CORPSE_NOTIFY), port, EXCEPTION_DEFAULT, THREAD_STATE_NONE,
                                                  &masks, &count, &ports, &behaviors, &flavors), KERN_SUCCESS)
         defer {
             for i in 0..<Int(count) {

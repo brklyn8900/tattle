@@ -8,8 +8,10 @@
 // <service> is a test agent's Mach service in the user's launchd domain. --delay waits before
 // asking, so a test can replace the file on disk after launch. Prints
 // one line: accepted | refused | bad-request | open-failed <errno> | transport <errno>.
-// --exception-ports adds a second line, "exception-ports <n>": how many task exception ports
-// the probe still holds after asking.
+// --exception-ports adds three lines: "inherited-ports <n>", how many crash exception ports the
+// probe held before asking; "exception-ports <n>", how many ports it still holds after asking for
+// types that hand over its live task; and "corpse-ports <n>", how many it holds for corpse
+// notifications, which must stay (ADR-0003).
 //
 //   tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]
 //
@@ -31,13 +33,13 @@
 #include <unistd.h>
 #include <xpc/xpc.h>
 
-static int exception_ports(void) {
+static int exception_ports(exception_mask_t mask) {
     exception_mask_t masks[EXC_TYPES_COUNT];
     mach_port_t ports[EXC_TYPES_COUNT];
     exception_behavior_t behaviors[EXC_TYPES_COUNT];
     thread_state_flavor_t flavors[EXC_TYPES_COUNT];
     mach_msg_type_number_t count = EXC_TYPES_COUNT;
-    if (task_get_exception_ports(mach_task_self(), EXC_MASK_ALL, masks, &count, ports, behaviors, flavors) != KERN_SUCCESS) return -1;
+    if (task_get_exception_ports(mach_task_self(), mask, masks, &count, ports, behaviors, flavors) != KERN_SUCCESS) return -1;
     int held = 0;
     for (mach_msg_type_number_t i = 0; i < count; i++) {
         if (MACH_PORT_VALID(ports[i])) held++;
@@ -98,9 +100,14 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (delay > 0) sleep(delay);
+    int inherited = exception_ports(EXC_MASK_CRASH);
     int status = 0, err = 0;
     int fd = tattle_broker_request(argv[1], 0, argv[2], &status, &err);
     report(fd, status, err);
-    if (show_ports) printf("exception-ports %d\n", exception_ports());
+    if (show_ports) {
+        printf("inherited-ports %d\n", inherited);
+        printf("exception-ports %d\n", exception_ports(EXC_MASK_ALL | EXC_MASK_CRASH));
+        printf("corpse-ports %d\n", exception_ports(EXC_MASK_CORPSE_NOTIFY));
+    }
     return 0;
 }

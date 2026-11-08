@@ -73,7 +73,10 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 
    The only lever left to whoever launched the caller is the task exception ports the
    caller inherits, and the broker cannot see them. A trap would hand the caller's task to
-   those ports. So Tattle drops its own exception ports before every request.
+   those ports. So Tattle drops its own exception ports before every request, the crash
+   port included. The corpse-notification port stays: it receives a read-only copy of the
+   dead process, with no descriptor and no way to run code, and macOS's crash reports
+   arrive through it.
 
    Every build of Tattle and of the broker, ad hoc included, is signed with the hardened
    runtime. An ad-hoc build changes its code hash on every rebuild, so it must install the
