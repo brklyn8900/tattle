@@ -91,18 +91,12 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(CodeSignature(signer: .development).summary, "Apple Development")
     }
 
-    func testInterpreterSignsTheScriptNotItself() throws {
-        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let script = dir.appending(path: "run.sh")
-        try Data("#!/bin/sh\n".utf8).write(to: script)
-
+    func testInterpreterSignsTheScriptNotItself() {
         // Each file reads as signed by a publisher named for its path.
         let reading: (String) -> CodeSignature? = { CodeSignature(signer: .developerID(name: $0)) }
         XCTAssertEqual(CodeSignature.read(program: "/bin/ls", arguments: ["-l"], reading: reading)?.signer, .developerID(name: "/bin/ls"))
         XCTAssertEqual(CodeSignature.read(program: "/usr/bin/osascript", arguments: ["-e", "1+1"], reading: reading)?.signer, .script)
-        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", script.path], reading: reading)?.signer, .script)
+        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", "/x/run.sh"], reading: reading)?.signer, .script)
     }
 
     private func codesign(_ arguments: [String]) throws {
