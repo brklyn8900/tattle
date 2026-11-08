@@ -1,6 +1,54 @@
 import XCTest
 @testable import tattle
 
+final class CodeIdentityTests: XCTestCase {
+    /// No publisher says which version this is: a signature's own hash does, else the file.
+    func testCodeWithNoTeamIsPinnedToOneVersion() {
+        XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .unsigned), path: "/x/tool"), CodeIdentity(text: "unsigned:/x/tool", contentFile: "/x/tool"))
+        XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .invalid("bad")), path: "/x/tool"), CodeIdentity(text: "invalid:/x/tool", contentFile: "/x/tool"))
+        XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .adHoc, codeHash: "ab"), path: "/x/tool"), CodeIdentity(text: "ad-hoc:ab:/x/tool"))
+        XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .notIssuedByApple, codeHash: "ab"), path: "/x/tool"), CodeIdentity(text: "not-issued-by-apple:ab:/x/tool"))
+        XCTAssertNotEqual(CodeIdentity.of(CodeSignature(signer: .adHoc, codeHash: "cd"), path: "/x/tool"), CodeIdentity.of(CodeSignature(signer: .adHoc, codeHash: "ab"), path: "/x/tool"))
+    }
+
+    func testAPublishersCodeIsKnownWithoutItsVersion() {
+        let signature = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345", codeHash: "ab")
+        XCTAssertEqual(CodeIdentity.of(signature, path: "/x/tool"), CodeIdentity(text: "team:ABCDE12345:com.acme.a"))
+    }
+
+    func testAScriptIsKnownByItsFilesContent() {
+        XCTAssertEqual(CodeIdentity.script(at: "/x/job.sh"), CodeIdentity(text: "script:/x/job.sh", contentFile: "/x/job.sh"))
+    }
+
+    /// A command line says what the plist runs; what is in the file it reaches is the rest.
+    func testACommandLineIsPinnedToTheCodeItReaches() throws {
+        let line = try XCTUnwrap(CodeIdentity.command("/x/tool --flag"))
+        XCTAssertNil(line.contentFile)
+        XCTAssertNotEqual(CodeIdentity.command("/x/tool --flag", codeHash: "ab"), line)
+        XCTAssertNotEqual(CodeIdentity.command("/x/tool --flag", codeHash: "ab"), CodeIdentity.command("/x/tool --flag", codeHash: "cd"))
+        XCTAssertNil(CodeIdentity.command("/x/tool --flag", codeHash: "ab")?.contentFile, "a signature's hash says which version")
+        XCTAssertEqual(CodeIdentity.command("/x/tool --flag", file: "/x/tool")?.contentFile, "/x/tool")
+        XCTAssertNil(CodeIdentity.command("/bin/sh job.sh", file: "job.sh"), "a relative script is no file to read")
+    }
+
+    func testALaunchItemsLineIsReadToTheFileItReaches() {
+        let apple: (String) -> CodeSignature? = { path in
+            path.hasPrefix("/x/") ? CodeSignature(signer: .unsigned) : CodeSignature(signer: .apple, identifier: "com.apple." + URL(fileURLWithPath: path).lastPathComponent)
+        }
+        XCTAssertEqual(CodeSignature.started(program: "/usr/bin/env", arguments: ["/x/good"], reading: apple).file, "/x/good")
+        XCTAssertEqual(CodeSignature.started(program: "/bin/sh", arguments: ["/x/job.sh"], reading: apple).file, "/x/job.sh")
+        XCTAssertNil(CodeSignature.started(program: "/bin/sh", arguments: ["-c", "echo"], reading: apple).file, "the code is in the line")
+    }
+
+    /// The same version of the file reads the same, and a file is hashed whole.
+    func testDigestsOfRealFiles() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("abc".utf8).write(to: file)
+        XCTAssertEqual(FileDigests.sha256(of: file.path), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+}
+
 final class CodeSignatureTests: XCTestCase {
     func testAppleBinary() {
         let signature = CodeSignature.read(path: "/bin/ls")
@@ -201,10 +249,10 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertNotEqual(CodeIdentity.of(apple, path: "/tmp/a/Mail"), CodeIdentity.of(apple, path: "/tmp/b/Mail"))
     }
 
-    func testIdentityWithoutATeamIsThePath() {
+    func testIdentityWithoutATeamOrAHashIsTheFile() {
         for signer: CodeSignature.Signer in [.unsigned, .adHoc, .invalid("x"), .notIssuedByApple] {
             let signature = CodeSignature(signer: signer, identifier: "tool-1234")
-            XCTAssertEqual(CodeIdentity.of(signature, path: "/x/tool"), "path:/x/tool", "\(signer)")
+            XCTAssertEqual(CodeIdentity.of(signature, path: "/x/tool")?.contentFile, "/x/tool", "\(signer)")
             XCTAssertNil(CodeIdentity.of(signature, path: nil), "\(signer)")
         }
     }
@@ -218,7 +266,7 @@ final class LaunchctlStateTests: XCTestCase {
 
     func testACommandLinesIdentityKeepsNoneOfItsWords() {
         let identity = CodeIdentity.command("/x/agent --token s3cret")
-        XCTAssertFalse(identity.contains("s3cret"))
+        XCTAssertFalse(identity?.text.contains("s3cret") ?? true)
         XCTAssertNotEqual(identity, CodeIdentity.command("/x/agent --token other"))
     }
 }

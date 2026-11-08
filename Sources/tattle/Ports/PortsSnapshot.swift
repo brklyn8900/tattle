@@ -62,7 +62,7 @@ struct PortItem: Equatable, Sendable, Identifiable {
 
     /// What tells the listener's code from another's of its name (`CodeIdentity`). This tab
     /// reads no arguments, so an interpreter or a developer tool has nothing to tell it by.
-    var identity: String? {
+    var identity: CodeIdentity? {
         guard let path = process?.path else { return nil }
         let code = LaunchedCode.running(executable: path, arguments: nil, identity: LaunchedCode.Identity(path: path, signature: signature))
         guard case .program = code else { return nil }

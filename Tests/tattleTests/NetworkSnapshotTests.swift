@@ -153,7 +153,7 @@ final class NetworkSnapshotTests: XCTestCase {
                                isNew: false)
             }, takenAt: t0).groups.first
         }
-        let app = "team:BQR82RBBHL:com.tinyspeck.slackmacgap"
+        let app: CodeIdentity = "team:BQR82RBBHL:com.tinyspeck.slackmacgap"
         XCTAssertEqual(row(800, 801)?.identity, app, "the app and its own helper")
         XCTAssertEqual(row(800, 802)?.identity, app, "what it launches")
         XCTAssertNil(row(803)?.identity)

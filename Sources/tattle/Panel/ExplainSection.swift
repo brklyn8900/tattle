@@ -51,17 +51,19 @@ struct ExplainSection: View {
                     .textSelection(.enabled)
             }
         }
-        .task(id: request) { load() }
+        .task(id: request) { await load() }
     }
 
     private var providerConfigured: Bool {
         !state.settings.providerCommand.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    private func load() {
+    private func load() async {
         // An answer not kept (no id) stays for as long as this item's view does.
         let unkept = rule.flatMap { $0.id == nil && $0.pattern == request.key ? $0 : nil }
-        rule = (try? state.explainer.lookup(request)) ?? unkept
+        let found = try? await state.explainer.lookup(request)
+        guard !Task.isCancelled else { return }
+        rule = found ?? unkept
     }
 
     private func ask() {
@@ -81,7 +83,7 @@ struct ExplainSection: View {
         guard let id = rule.id else { return }
         do {
             try state.rules.confirm(id: id)
-            load()
+            Task { await load() }
         } catch {
             self.error = describe(error)
         }

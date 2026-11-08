@@ -92,7 +92,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// given its executable's signature: the script's file, or the executable when it runs its
     /// own code. Unnamed code, standard input and a script at a path relative to a working
     /// directory that cannot be read have nothing to tell them apart.
-    func identity(executable: CodeSignature?) -> String? {
+    func identity(executable: CodeSignature?) -> CodeIdentity? {
         if let script {
             guard script.hasPrefix("/") || workingDirectory != nil else { return nil }
             let base = workingDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }

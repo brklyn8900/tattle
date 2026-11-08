@@ -78,7 +78,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// The app the process belongs to, by its own path or by an ancestor's.
     var app: AppBundle?
     /// What tells this process's code from another's of its name (`ProcessEntry.identity`).
-    var identity: String?
+    var identity: CodeIdentity?
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
@@ -165,7 +165,7 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     var signature: CodeSignature?
     /// What tells the row's program from another's of its name: the app, or the top process.
     /// None while a file in the app's bundle that its signer did not sign is running.
-    var identity: String?
+    var identity: CodeIdentity?
 
     /// The bundle, or the top-level program; macOS is not one place.
     var path: String? {
@@ -303,7 +303,7 @@ struct ProcessSnapshot: Equatable, Sendable {
             let key = groupKey(for: item, in: itemsByPid)
             if groupsByID[key.id] == nil {
                 let groupSignature: CodeSignature?
-                var identity: String?
+                var identity: CodeIdentity?
                 switch key.kind {
                 case .app(let bundle):
                     groupSignature = bundle.signature(reading: signature)

@@ -73,12 +73,12 @@ final class ApplesProgramTests: XCTestCase {
     func testIdentitiesAcrossTheTabs() throws {
         // The script's file, not its interpreter or its name.
         let script = ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: "job.sh", path: "/bin/sh", interpreter: "sh", script: "/x/job.sh", started: started)
-        XCTAssertEqual(script.identity(executable: CodeSignature(signer: .apple)), "script:/x/job.sh")
+        XCTAssertEqual(script.identity(executable: CodeSignature(signer: .apple)), .script(at: "/x/job.sh"))
         var relative = script
         relative.script = "../job.sh"
         XCTAssertNil(relative.identity(executable: nil), "a working directory that cannot be read")
         relative.workingDirectory = "/x/y"
-        XCTAssertEqual(relative.identity(executable: nil), "script:/x/job.sh")
+        XCTAssertEqual(relative.identity(executable: nil), .script(at: "/x/job.sh"))
         var unnamed = script
         unnamed.script = nil
         unnamed.runsUnnamedCode = true
@@ -102,7 +102,7 @@ final class ApplesProgramTests: XCTestCase {
                                                 signature: { _ in CodeSignature(signer: .unsigned) })
             return LiveConnection(connection: connection(pid, at: 0), owner: owner, isNew: false)
         }
-        XCTAssertEqual(NetworkSnapshot(connections: [named(1, "/a/updater")], takenAt: started).groups.first?.identity, "path:/a/updater")
+        XCTAssertEqual(NetworkSnapshot(connections: [named(1, "/a/updater")], takenAt: started).groups.first?.identity?.text, "unsigned:/a/updater")
         XCTAssertNil(NetworkSnapshot(connections: [named(1, "/a/updater"), named(2, "/b/updater")], takenAt: started).groups.first?.identity)
 
         // Ports reads no arguments: a program has an identity, an interpreter none.
@@ -111,7 +111,7 @@ final class ApplesProgramTests: XCTestCase {
             return PortItem(id: "x", proto: .tcp, port: 8000, binding: .loopback, families: "IPv4", pid: 9, uid: 501,
                             process: ProcessIdentity(pid: 9, name: name, path: path), signature: signature, serviceName: nil)
         }
-        XCTAssertEqual(port("/x/server", CodeSignature(signer: .unsigned)).identity, "path:/x/server")
+        XCTAssertEqual(port("/x/server", CodeSignature(signer: .unsigned)).identity?.text, "unsigned:/x/server")
         XCTAssertNil(port("/usr/bin/python3", CodeSignature(signer: .apple, identifier: "com.apple.python3")).identity)
 
         // A launch item's is its program's signature, else what its plist says runs.
@@ -120,6 +120,9 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(item.identity, CodeIdentity.command("/bin/sh -c x"))
         item.signature = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345")
         XCTAssertEqual(item.identity, "team:ABCDE12345:com.acme.a")
+        item.signature = CodeSignature(signer: .unsigned)
+        item.codeFile = "/x/job"
+        XCTAssertEqual(item.identity?.contentFile, "/x/job", "the file its line reaches, when nothing else says which version")
     }
 
     /// A plist's first word can be a wrapper, which says nothing about the code it starts.

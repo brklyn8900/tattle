@@ -89,9 +89,10 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
 
     /// Whether this rule may explain the item: a name alone does not make it the program the
     /// rule is about, confirmed or not.
-    func answers(_ request: ExplainRequest) -> Bool {
+    /// `identity` is the item's as it would be kept (`CodeIdentity`).
+    func answers(_ request: ExplainRequest, identity: String?) -> Bool {
         if describesApplesProgram { return request.isApplesProgram }
-        return !needsIdentity || (!identity.isEmpty && identity == request.identity)
+        return !needsIdentity || (!self.identity.isEmpty && self.identity == identity)
     }
 
     /// True once an unconfirmed LLM rule has outlived its lifetime.

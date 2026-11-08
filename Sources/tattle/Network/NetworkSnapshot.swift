@@ -17,7 +17,7 @@ struct ConnectionOwner: Equatable, Sendable {
     /// holds it in its bundle, so this says nothing about the process's own code.
     var appSignature: CodeSignature?
     /// What tells the process's code from another's of its name (`ProcessEntry.identity`).
-    var identity: String?
+    var identity: CodeIdentity?
 
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
@@ -25,7 +25,7 @@ struct ConnectionOwner: Equatable, Sendable {
     /// The row is the app when there is one, else the process.
     var groupSignature: CodeSignature? { app == nil ? signature : appSignature }
     /// None for a file in the app's bundle that its signer did not sign.
-    var groupIdentity: String? {
+    var groupIdentity: CodeIdentity? {
         guard let app else { return identity }
         return app.holdsForeign(path, signed: interpreterSignature ?? signature, bundle: appSignature) ? nil : CodeIdentity.of(appSignature, path: app.path)
     }
@@ -200,7 +200,7 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
 
     /// What tells the row's program from another's of its name, when its connections are all
     /// one program's: a process that took the name shares the row.
-    var identity: String? {
+    var identity: CodeIdentity? {
         let identities = Set(connections.map(\.owner.groupIdentity))
         return identities.count == 1 ? identities.first ?? nil : nil
     }

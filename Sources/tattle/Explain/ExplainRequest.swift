@@ -11,9 +11,9 @@ struct ExplainRequest: Equatable, Sendable {
     var isApplesProgram: Bool
     /// What tells the item's code from another's by the same key (`CodeIdentity`). Nil for a
     /// host, which is its own name, and for code nothing tells apart.
-    var identity: String?
+    var identity: CodeIdentity?
 
-    init(kind: Rule.Kind, key: String, facts: [Fact] = [], isApplesProgram: Bool = false, identity: String? = nil) {
+    init(kind: Rule.Kind, key: String, facts: [Fact] = [], isApplesProgram: Bool = false, identity: CodeIdentity? = nil) {
         self.kind = kind
         self.key = Rule.normalize(key, for: kind)
         self.facts = facts
