@@ -3,13 +3,17 @@ import XCTest
 
 final class ResourceSampleTests: XCTestCase {
     private func snapshot(
-        at seconds: TimeInterval, busy: UInt64, total: UInt64, bytesIn: UInt64, bytesOut: UInt64
+        at seconds: TimeInterval, busy: UInt64, total: UInt64, bytesIn: UInt32, bytesOut: UInt32
     ) -> SystemSnapshot {
         SystemSnapshot(
             time: Date(timeIntervalSinceReferenceDate: seconds),
             cpu: CPUTicks(busy: busy, total: total),
             memory: MemoryUsage(used: 1, total: 2),
-            network: NetworkCounters(bytesIn: bytesIn, bytesOut: bytesOut))
+            network: counters(["en0": (bytesIn, bytesOut)]))
+    }
+
+    private func counters(_ interfaces: [String: (UInt32, UInt32)]) -> NetworkCounters {
+        NetworkCounters(interfaces: interfaces.mapValues { .init(bytesIn: $0.0, bytesOut: $0.1) })
     }
 
     func testRatesBetweenSnapshots() {
@@ -27,9 +31,45 @@ final class ResourceSampleTests: XCTestCase {
         XCTAssertEqual(ResourceSample.between(a, a).cpu, 0)
     }
 
-    func testNetworkCounterWrap() {
-        XCTAssertEqual(NetworkCounters.wrappedDelta(from: 10, to: 30), 20)
-        XCTAssertEqual(NetworkCounters.wrappedDelta(from: UInt64(UInt32.max) - 9, to: 10), 20)
+    func testACounterThatWrapsCountsTheBytesAcrossTheWrap() {
+        let delta = counters(["en0": (10, 30)]).delta(from: counters(["en0": (.max - 9, 10)]))
+        XCTAssertEqual(delta.bytesIn, 20)
+        XCTAssertEqual(delta.bytesOut, 20)
+    }
+
+    func testEachInterfaceWrapsOnItsOwn() {
+        let delta = counters(["en0": (10, 0), "en1": (5, 0)])
+            .delta(from: counters(["en0": (.max - 9, 0), "en1": (.max - 4, 0)]))
+        XCTAssertEqual(delta.bytesIn, 30)
+    }
+
+    func testAnInterfaceThatVanishesCountsNothing() {
+        let delta = counters(["en0": (1_100, 520)])
+            .delta(from: counters(["en0": (1_000, 500), "en7": (2_000_000_000, 7)]))
+        XCTAssertEqual(delta.bytesIn, 100)
+        XCTAssertEqual(delta.bytesOut, 20)
+    }
+
+    func testAnInterfaceThatAppearsCountsFromItsSecondReading() {
+        let delta = counters(["en0": (1_100, 520), "en7": (2_000_000_000, 7)])
+            .delta(from: counters(["en0": (1_000, 500)]))
+        XCTAssertEqual(delta.bytesIn, 100)
+        XCTAssertEqual(delta.bytesOut, 20)
+    }
+
+    func testInterfacesThatVanishTogetherDoNotTrap() {
+        let delta = counters(["en0": (1_100, 0)])
+            .delta(from: counters(["en0": (1_000, 0), "en7": (4_000_000_000, 0), "en8": (4_000_000_000, 0)]))
+        XCTAssertEqual(delta.bytesIn, 100)
+    }
+
+    func testOnlyInterfacesWithTheirOwnTrafficAreCounted() {
+        for name in ["utun4", "ipsec0", "gif0", "stf0", "bridge0", "bridge100", "vmenet0", "vlan0", "bond0", "feth0"] {
+            XCTAssertFalse(NetworkCounters.carriesItsOwnTraffic(name), name)
+        }
+        for name in ["en0", "en7", "ap1", "awdl0", "llw0", "anpi0"] {
+            XCTAssertTrue(NetworkCounters.carriesItsOwnTraffic(name), name)
+        }
     }
 
     func testCompactRate() {
@@ -55,5 +95,8 @@ final class ResourceSampleTests: XCTestCase {
         XCTAssertLessThanOrEqual(snapshot.cpu.busy, snapshot.cpu.total)
         XCTAssertGreaterThan(snapshot.memory.total, 0)
         XCTAssertLessThanOrEqual(snapshot.memory.used, snapshot.memory.total)
+        XCTAssertFalse(snapshot.network.interfaces.isEmpty)
+        XCTAssertNil(snapshot.network.interfaces["lo0"])
+        XCTAssertTrue(snapshot.network.interfaces.keys.allSatisfy(NetworkCounters.carriesItsOwnTraffic))
     }
 }

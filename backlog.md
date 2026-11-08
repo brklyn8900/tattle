@@ -39,7 +39,7 @@ once every line is ticked)
 - [x] 16 (K3, K4): relay rules and stale names match Apple's documentation. fix-3-identity.
 - [x] 4 (B1): the exception-port drop covers EXC_CRASH; corpse notifications stay, for crash
   reports (ADR-0003). fix-4-broker-counters.
-- [ ] 5 (R1, R2): the network-rate sampler survives interfaces disappearing.
+- [x] 5 (R1, R2): the network-rate sampler survives interfaces disappearing.
   fix-4-broker-counters.
 - [ ] 6 (E1, E3): Explain's command runs without Tattle's privacy grants; the login PATH is
   documented. fix-5-explain.

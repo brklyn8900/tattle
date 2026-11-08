@@ -66,17 +66,31 @@ struct MemoryUsage: Equatable, Sendable {
     }
 }
 
-/// Bytes in and out summed over the interfaces that carry real traffic. The per-interface
-/// kernel counters are 32-bit and wrap; `delta(from:)` accounts for that.
+/// Bytes in and out of each interface that carries its own traffic, by name. The kernel's
+/// per-interface counters are 32-bit, and they wrap and go away with the interface, so two
+/// readings are compared one interface at a time; see `delta(from:)`.
 struct NetworkCounters: Equatable, Sendable {
-    var bytesIn: UInt64
-    var bytesOut: UInt64
+    struct Interface: Equatable, Sendable {
+        var bytesIn: UInt32
+        var bytesOut: UInt32
+    }
+
+    var interfaces: [String: Interface]
+
+    /// Interface names of the virtual kinds whose bytes are counted again on the interface
+    /// beneath them: tunnels, bridges and the VM interfaces that join them, VLANs, link
+    /// aggregates and virtual Ethernet pairs.
+    private static let layeredInterfaces = ["utun", "ipsec", "gif", "stf", "bridge", "vmenet", "vlan", "bond", "feth"]
+
+    static func carriesItsOwnTraffic(_ name: String) -> Bool {
+        !layeredInterfaces.contains { name.hasPrefix($0) }
+    }
 
     static func read() -> NetworkCounters? {
         var list: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&list) == 0 else { return nil }
         defer { freeifaddrs(list) }
-        var counters = NetworkCounters(bytesIn: 0, bytesOut: 0)
+        var interfaces: [String: Interface] = [:]
         var cursor = list
         while let entry = cursor {
             defer { cursor = entry.pointee.ifa_next }
@@ -84,25 +98,25 @@ struct NetworkCounters: Equatable, Sendable {
                   address.pointee.sa_family == UInt8(AF_LINK),
                   let data = entry.pointee.ifa_data else { continue }
             if entry.pointee.ifa_flags & UInt32(IFF_LOOPBACK) != 0 { continue }
-            // Tunnel interfaces carry traffic that is already counted on the physical
-            // interface underneath them.
             let name = String(cString: entry.pointee.ifa_name)
-            if name.hasPrefix("utun") || name.hasPrefix("ipsec") { continue }
+            guard carriesItsOwnTraffic(name) else { continue }
             let stats = data.assumingMemoryBound(to: if_data.self).pointee
-            counters.bytesIn += UInt64(stats.ifi_ibytes)
-            counters.bytesOut += UInt64(stats.ifi_obytes)
+            interfaces[name] = Interface(bytesIn: stats.ifi_ibytes, bytesOut: stats.ifi_obytes)
         }
-        return counters
+        return NetworkCounters(interfaces: interfaces)
     }
 
-    /// Bytes transferred since `earlier`. A sum that went down means one interface's
-    /// 32-bit counter wrapped, so the wrap is added back.
+    /// Bytes transferred since `earlier`, over the interfaces in both readings: one that
+    /// appeared or vanished in between says nothing about the interval. A counter that went
+    /// down wrapped, which the 32-bit subtraction undoes.
     func delta(from earlier: NetworkCounters) -> (bytesIn: UInt64, bytesOut: UInt64) {
-        (Self.wrappedDelta(from: earlier.bytesIn, to: bytesIn),
-         Self.wrappedDelta(from: earlier.bytesOut, to: bytesOut))
-    }
-
-    static func wrappedDelta(from earlier: UInt64, to later: UInt64) -> UInt64 {
-        later >= earlier ? later - earlier : later + (1 << 32) - earlier
+        var bytesIn: UInt64 = 0
+        var bytesOut: UInt64 = 0
+        for (name, later) in interfaces {
+            guard let before = earlier.interfaces[name] else { continue }
+            bytesIn += UInt64(later.bytesIn &- before.bytesIn)
+            bytesOut += UInt64(later.bytesOut &- before.bytesOut)
+        }
+        return (bytesIn, bytesOut)
     }
 }
