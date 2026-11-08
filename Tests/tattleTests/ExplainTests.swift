@@ -87,14 +87,42 @@ final class RedactorTests: XCTestCase {
         let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev.local", "dev"])
         XCTAssertEqual(dev.redact("Apple Development (ABCDE12345)", as: .host), "Apple Development (ABCDE12345)")
         XCTAssertEqual(dev.redact("my-dev-box devices dev2 webdev my-dev", as: .host), "my-dev-box devices dev2 webdev my-dev")
-        XCTAssertEqual(dev.redact("dev, DEV.local and dev.lan", as: .host), "<machine>, <machine> and <machine>.lan")
+        XCTAssertEqual(dev.redact("dev, DEV.local and dev.lan", as: .host), "<machine>, <machine> and dev.lan")
     }
 
-    /// A later label of a dotted name is someone else's host, not this Mac.
-    func testMachineNamesMatchOnlyAsTheFirstLabel() {
+    /// A host is this Mac's only when all of it is one of the Mac's names: the name's first
+    /// label under an unknown domain is someone else's host.
+    func testAHostIsTheMachineOnlyWhenAllOfItIs() {
+        let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev", "dev.local", "dev.lan"])
+        XCTAssertEqual(dev.redact("dev.azure.com, dev.example.com, dev.local.example, pages.dev", as: .host), "dev.azure.com, dev.example.com, dev.local.example, pages.dev")
+        XCTAssertEqual(dev.redact("dev, dev.local, dev.lan. Then", as: .host), "<machine>, <machine>, <machine>. Then")
+    }
+
+    /// A process's name is its author's: a Mac's name in it is a coincidence.
+    func testAProgramNeverMatchesTheMachinesNames() {
+        let studio = Redactor(home: "/Users/username", username: "username", machineNames: ["Studio", "server"])
+        XCTAssertEqual(studio.redact("Android Studio (pid 4), /srv/app/server.js", as: .program), "Android Studio (pid 4), /srv/app/server.js")
+    }
+
+    /// A login in a host name is a coincidence too: only a value that is the login goes.
+    func testAHostKeepsALoginInsideItsName() {
+        let mail = Redactor(home: "/Users/mail", username: "mail", machineNames: [])
+        XCTAssertEqual(mail.redact("mail-attachment.googleusercontent.com, x-mail.example, mail.google.com", as: .host), "mail-attachment.googleusercontent.com, x-mail.example, mail.google.com")
+        XCTAssertEqual(mail.redact("mail", as: .host), "<user>")
+    }
+
+    /// A bare name that is known does not stop a peer's name from being replaced whole.
+    func testATailnetNameIsReplacedWholeWhenOnlyItsFirstLabelIsKnown() {
+        let nas = Redactor(home: "", username: "", machineNames: ["nas"])
+        XCTAssertEqual(nas.redact("nas.tail1234.ts.net", as: .host), "<tailnet-device>")
+    }
+
+    /// In edited instructions a later label of a dotted name is someone else's host, not this
+    /// Mac; the first label is read as the Mac.
+    func testInstructionsMatchMachineNamesAsTheFirstLabel() {
         let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev.local", "dev"])
-        XCTAssertEqual(dev.redact("pages.dev, api.dev.example.com, x.dev.local", as: .host), "pages.dev, api.dev.example.com, x.dev.local")
-        XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev.", as: .host), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
+        XCTAssertEqual(dev.redact("pages.dev, api.dev.example.com, x.dev.local", as: .instructions), "pages.dev, api.dev.example.com, x.dev.local")
+        XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev.", as: .instructions), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
     }
 
     /// macOS stores a curly apostrophe in the computer name; other text often has a straight one.
@@ -112,7 +140,7 @@ final class RedactorTests: XCTestCase {
         let username = Redactor(home: "/Users/username", username: "username", machineNames: names)
         XCTAssertEqual(
             username.redact("Username’s Computer, Users-Computer.local, users-computer.tail1234.ts.net, users-computer.lan", as: .host),
-            "<machine>, <machine>, <machine>, <machine>.lan")
+            "<machine>, <machine>, <machine>, users-computer.lan")
         XCTAssertEqual(username.redact("desktop.corp.example.com, desktop.localdomain", as: .host), "<machine>, <machine>")
         let none = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "localhost", domains: ["localdomain"])
         XCTAssertEqual(none, [])
@@ -170,7 +198,7 @@ final class RedactorTests: XCTestCase {
         guard let local = SCDynamicStoreCopyLocalHostName(nil) as String? else {
             throw XCTSkip("this Mac has no local host name")
         }
-        XCTAssertEqual(Redactor.current.redact("\(local) and \(local.lowercased()).lan", as: .host), "<machine> and <machine>.lan")
+        XCTAssertEqual(Redactor.current.redact(local, as: .host), "<machine>")
         let domains = SystemDNS.current.domains
         guard !domains.isEmpty else { throw XCTSkip("this Mac has no search domains") }
         for domain in domains {
@@ -274,12 +302,13 @@ final class PromptTests: XCTestCase {
             let data = try capturedData(in: Prompt.build(instructions: "x", request: ExplainRequest(kind: kind, key: key), redactor: redactor))
             return (data["item"] as? [String: String])?["key"]
         }
-        XCTAssertEqual(try key(.process, "postgres: username dev [local] idle"), "postgres: <user> <machine> [local] idle")
+        XCTAssertEqual(try key(.process, "postgres: username dev [local] idle"), "postgres: <user> dev [local] idle")
         XCTAssertEqual(try key(.process, "ruby /Users/username/bin/sync"), "ruby <home>/bin/sync")
-        XCTAssertEqual(try key(.port, "postgres: username dev 192.168.1.9(5000) idle:tcp/5432"), "postgres: <user> <machine> <private-ip>(5000) idle:tcp/5432")
+        XCTAssertEqual(try key(.port, "postgres: username dev 192.168.1.9(5000) idle:tcp/5432"), "postgres: <user> dev <private-ip>(5000) idle:tcp/5432")
         XCTAssertEqual(try key(.process, "username.helper"), "username.helper", "the dotted-name rule holds in keys")
-        XCTAssertEqual(try key(.host, "username-dev.example"), "<user>-dev.example")
-        XCTAssertEqual(try key(.host, "dev.lan"), "<machine>.lan")
+        XCTAssertEqual(try key(.host, "username-dev.example"), "username-dev.example")
+        XCTAssertEqual(try key(.host, "dev.lan"), "dev.lan")
+        XCTAssertEqual(try key(.host, "dev"), "<machine>")
         XCTAssertEqual(try key(.launchItem, "username-backup"), "<user>-backup")
         XCTAssertEqual(try key(.launchItem, "dev-backup"), "dev-backup", "a machine name matches only as a whole host name")
     }
@@ -317,6 +346,7 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try sent(login: "apple", .process, "Apple"), "Apple")
         XCTAssertEqual(try sent(login: "admin", .port, "Admin Tools:tcp/8000"), "Admin Tools:tcp/8000")
         XCTAssertEqual(try sent(login: "code", .process, "postgres: code db [local] idle"), "postgres: <user> db [local] idle")
+        XCTAssertEqual(try sent(login: "mail", .host, "mail-attachment.googleusercontent.com"), "mail-attachment.googleusercontent.com")
     }
 
     /// A launch item's label and plist name are reverse-DNS identifiers, not host names: a
@@ -421,9 +451,8 @@ final class ExplainerTests: XCTestCase {
 
         let sent = try XCTUnwrap(provider.seen.prompts.first)
         XCTAssertFalse(sent.contains("/Users/username"))
-        XCTAssertFalse(sent.contains("Users-Computer"))
         XCTAssertTrue(sent.contains("<home>/Applications/Acme.app"))
-        XCTAssertTrue(sent.contains(#"{"name":"Host","value":"<machine>"}"#))
+        XCTAssertTrue(sent.contains(#"{"name":"Host","value":"Users-Computer"}"#), "a process's facts keep the Mac's names")
         XCTAssertEqual(explainer.lastPrompt, sent)
         XCTAssertTrue(sent.hasPrefix("Go.\n"))
     }

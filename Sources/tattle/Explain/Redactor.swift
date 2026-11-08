@@ -49,9 +49,9 @@ struct Redactor: Sendable {
 
     /// The computer name, the Bonjour name bare and with .local, the hostname, and each host
     /// label under every search domain, which is how Tailscale and the router's DHCP name
-    /// this Mac. The bare name covers name.lan, which reads <machine>.lan.
+    /// this Mac.
     ///
-    /// Not covered: a name the router invents, Tailscale's suffix for a name another device
+    /// Not covered: a name the router invents and no search domain carries, Tailscale's suffix for a name another device
     /// already has (`-1`), and a rename in Tailscale's admin console.
     static func machineNames(computerName: String?, localHostName: String?, hostName: String?, domains: [String]) -> [String] {
         let bare = [computerName, localHostName, localHostName.map { $0 + ".local" }, hostName].compactMap { $0 }
@@ -103,17 +103,7 @@ struct Redactor: Sendable {
             let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![\\w.~@+-])"
             out = out.replacingOccurrences(of: pattern, with: "<home>", options: [.regularExpression, .caseInsensitive])
         }
-        // A machine name matches only as a whole host name, so on a Mac called dev
-        // "Apple Development" stays whole. It matches only as the first label, so
-        // "pages.dev" stays whole and "dev.lan" reads <machine>.lan. Either apostrophe matches:
-        // macOS stores a curly one in the computer name, and other text often has a straight one.
-        for name in machineNames.sorted(by: { $0.count > $1.count }) {
-            let escaped = NSRegularExpression.escapedPattern(for: name)
-                .replacingOccurrences(of: "['’]", with: "['’]", options: .regularExpression)
-            out = out.replacingOccurrences(
-                of: "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + escaped + "(?![A-Za-z0-9-])",
-                with: "<machine>", options: [.regularExpression, .caseInsensitive])
-        }
+        out = redactMachineNames(out, in: context)
         // After the machine's names, so this Mac's own MagicDNS name reads as the machine. A
         // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account.
         if captured {
@@ -124,6 +114,28 @@ struct Redactor: Sendable {
         out = redactUsername(out, in: context)
         if captured { out = redactFolders(out) }
         return Self.redactAddresses(out)
+    }
+
+    /// Where a text can say it is this Mac. A host is, only when all of it is one of the Mac's
+    /// names: "dev.azure.com" is not the Mac called dev. A process's name is its author's, so
+    /// a Mac's name in it is a coincidence. Edited instructions read as prose: the name matches
+    /// as a word or a first label, so "Apple Development" and "pages.dev" stay whole on a Mac
+    /// called dev and "dev.lan" reads <machine>.lan. Either apostrophe matches: macOS stores
+    /// a curly one in the computer name, and other text often has a straight one.
+    private func redactMachineNames(_ text: String, in context: Context) -> String {
+        let (before, after): (String, String)
+        switch context {
+        case .program, .launchItem: return text
+        case .host: (before, after) = ("(?<![A-Za-z0-9.-])", "(?![A-Za-z0-9-]|\\.[A-Za-z0-9-])")
+        case .instructions: (before, after) = ("(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)", "(?![A-Za-z0-9-])")
+        }
+        var out = text
+        for name in machineNames.sorted(by: { $0.count > $1.count }) {
+            let escaped = NSRegularExpression.escapedPattern(for: name)
+                .replacingOccurrences(of: "['’]", with: "['’]", options: .regularExpression)
+            out = out.replacingOccurrences(of: before + escaped + after, with: "<machine>", options: [.regularExpression, .caseInsensitive])
+        }
+        return out
     }
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
@@ -142,9 +154,10 @@ struct Redactor: Sendable {
     }
 
     /// The login matches only as written, so the login "code" leaves the app "Code" alone.
-    /// Where dotted names are hosts the username never matches as a label of one, so
-    /// "mail.google.com" stays whole for a user called mail. A dot that ends a sentence does
-    /// not join a label.
+    /// In a host it matches only as a whole name, so "mail.google.com" and
+    /// "mail-attachment.example" stay whole for a user called mail. Elsewhere the username
+    /// never matches as a label of a dotted name. A dot that ends a sentence does not join a
+    /// label.
     ///
     /// A login of one or two letters would match ordinary text ("-e"), so it goes only where
     /// a login stands: before an "@" ("e@ttys003") and first in a process title ("postgres: e
@@ -154,7 +167,12 @@ struct Redactor: Sendable {
         guard !username.isEmpty else { return text }
         let login = NSRegularExpression.escapedPattern(for: username)
         if username.count >= 3 {
-            let pattern = context != .launchItem ? "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])" : "\\b" + login + "\\b"
+            let pattern: String
+            switch context {
+            case .host: pattern = "(?<![\\w.-])" + login + "(?![\\w-]|\\.[\\w-])"
+            case .launchItem: pattern = "\\b" + login + "\\b"
+            case .program, .instructions: pattern = "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])"
+            }
             return text.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
         }
         if context == .instructions { return text }
