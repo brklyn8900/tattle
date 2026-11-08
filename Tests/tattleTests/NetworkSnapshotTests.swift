@@ -133,6 +133,21 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.groups.first?.signature?.summary, "EXAMPLE DEVELOPER", "the row is the app's")
     }
 
+    /// A process that took a name shares its row: the newest connection's signer alone would
+    /// read as Apple's with the impostor's connections inside.
+    func testARowWhoseConnectionsDifferNamesNoSigner() throws {
+        func live(_ pid: Int32, _ signature: CodeSignature, at: TimeInterval) -> LiveConnection {
+            LiveConnection(connection: connection(pid, "1.1.1.1", at: at), owner: ConnectionOwner(processName: "curl", signature: signature), isNew: false)
+        }
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.curl")
+        let mixed = try XCTUnwrap(NetworkSnapshot(connections: [live(1, CodeSignature(signer: .unsigned), at: 0), live(2, apple, at: 1)], takenAt: t0).groups.first)
+        XCTAssertNil(mixed.signature)
+        XCTAssertFalse(mixed.facts(gone: false).contains { $0.name == "Signed by" }, "nor is the model told one")
+
+        let same = try XCTUnwrap(NetworkSnapshot(connections: [live(1, apple, at: 0), live(2, apple, at: 1)], takenAt: t0).groups.first)
+        XCTAssertEqual(same.signature?.summary, "Apple")
+    }
+
     /// A process as Network lists it: named without its signature.
     private func listed(_ pid: Int32, _ parent: Int32, _ path: String, _ arguments: [String]) -> ProcessEntry {
         let named = ProcessEntry.name(path: path, arguments: arguments, command: "", startedByLaunchd: parent == 1)

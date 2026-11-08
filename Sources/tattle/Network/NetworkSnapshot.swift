@@ -165,9 +165,17 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
 struct ConnectionGroup: Equatable, Sendable, Identifiable {
     var id: String
     var name: String
-    var signature: CodeSignature?
     /// Newest first.
     var connections: [LiveConnection]
+
+    /// Who signed the row's program, when its connections all say the same: a process that
+    /// took the name shares the row, so the newest connection's alone could name Apple over
+    /// the impostor's connections.
+    var signature: CodeSignature? {
+        guard let newest = connections.first?.owner.groupSignature,
+              connections.allSatisfy({ newest.isSameSigner(as: $0.owner.groupSignature) }) else { return nil }
+        return newest
+    }
 
     /// Apple's own program by the group's name when every connection's owner is. A process
     /// that took the name shares the row, so the newest connection's signature alone would
@@ -209,7 +217,7 @@ struct NetworkSnapshot: Equatable, Sendable {
         for live in connections.sorted(by: { $0.connection.firstSeen > $1.connection.firstSeen }) {
             let id = live.owner.groupID
             if byID[id] == nil {
-                byID[id] = ConnectionGroup(id: id, name: live.owner.displayName, signature: live.owner.groupSignature, connections: [])
+                byID[id] = ConnectionGroup(id: id, name: live.owner.displayName, connections: [])
                 order.append(id)
             }
             byID[id]!.connections.append(live)
