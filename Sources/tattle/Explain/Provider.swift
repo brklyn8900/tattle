@@ -47,17 +47,6 @@ struct ShellProvider: ExplainProvider {
                command: "ollama run llama3.2 --format json"),
     ]
 
-    private static let retiredCommands = [
-        "claude -p --setting-sources project,local --tools \"\" --permission-prompts none --output-format json --json-schema {schema}": "claude",
-    ]
-
-    /// A preset is saved as its text, so a command saved by an earlier version would go on
-    /// running that version's flags. It is read as the preset it was; any other command is
-    /// the user's own.
-    static func current(forSaved command: String) -> String {
-        retiredCommands[command].flatMap { id in presets.first { $0.id == id }?.command } ?? command
-    }
-
     func explain(_ prompt: String) async throws -> String {
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { throw ProviderError.notConfigured }

@@ -39,8 +39,9 @@ connectors.
   only address redaction (`<private-ip>`), facts and instructions get the full redaction.
 - `ex-no-grants`: the command is charged to itself, and cannot open what only Tattle's Full
   Disk Access opens.
-- `ex-preset`: the Claude Code preset works from the app, leaves nothing per call, and a
-  command saved by an earlier version runs as the current preset.
+- `ex-preset`: the Claude Code preset works from the app and leaves nothing per call. A
+  command saved by an earlier version is moved to the current preset once; the same text
+  typed later stays the user's.
 - `ex-login-path`: Settings says that a tool on a PATH set only in `~/.zshrc` needs its full
   path.
 
@@ -142,16 +143,19 @@ Preconditions:
   `ls` fails with `Operation not permitted`. A build before the fix: charged to the copy's
   `tattle`, `ls` lists the `.btm` files.
 - **The Claude Code preset, for real.** One real request; the item goes to Anthropic, so use
-  the `connect named` row. Save the earlier preset (`claude -p --setting-sources project,local
-  --tools "" --permission-prompts none --output-format json --json-schema {schema}`) as
-  `provider.command` before launch, and count `~/.claude/projects/*tattle-explain*`,
+  the `connect named` row. Migration `v6-claude-preset-flags` runs once per database, so before
+  launch delete its row from `grdb_migrations` and save the earlier preset (`claude -p
+  --setting-sources project,local --tools "" --permission-prompts none --output-format json
+  --json-schema {schema}`) as `provider.command`. Count `~/.claude/projects/*tattle-explain*`,
   `~/Library/Caches/claude-cli-nodejs/*tattle-explain*` and `tattle-explain` in `~/.claude.json`.
-  `Explain` gives `Model answer, unconfirmed`, and the three counts do not change. With the
-  earlier preset's flags, a signed-in call adds a folder to each of the first two.
+  After launch the row holds the current preset. `Explain` gives `Model answer, unconfirmed`,
+  and the three counts do not change. With the earlier preset's flags, a signed-in call adds a
+  folder to each of the first two.
 - **Settings.** `tattle-ax` reaches only the panel. Walk the app's `AXWindows` whose subrole
-  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. With the
-  earlier preset saved, the `AXPopUpButton` reads `Claude Code` and the command field holds
-  the current flags. The footnote ends in `needs its full path.`
+  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. After the
+  migration the `AXPopUpButton` reads `Claude Code` and the command field holds the current
+  flags. Set the field to the earlier preset's text and relaunch: the row keeps it and the
+  picker reads `Custom`.
 
 ## Gotchas
 

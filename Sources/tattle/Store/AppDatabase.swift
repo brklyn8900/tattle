@@ -135,6 +135,16 @@ struct AppDatabase: Sendable {
             try db.drop(table: "rule")
             try db.rename(table: "rule_new", to: "rule")
         }
+        migrator.registerMigration("v6-claude-preset-flags") { db in
+            // A preset is saved as its text, so one saved earlier would keep its old flags. This
+            // runs once: the same text typed later is the user's own.
+            try db.execute(
+                sql: "UPDATE setting SET value = ? WHERE key = 'provider.command' AND value = ?",
+                arguments: [
+                    #"claude -p --setting-sources project,local --no-session-persistence --strict-mcp-config --system-prompt "" --tools "" --permission-prompts none --output-format json --json-schema {schema}"#,
+                    #"claude -p --setting-sources project,local --tools "" --permission-prompts none --output-format json --json-schema {schema}"#,
+                ])
+        }
         return migrator
     }
 }
