@@ -50,12 +50,15 @@ done)
 - `LaunchedCode`'s option tables come from the manual pages, and an option they do not list
   counts as taking no value. A real option that takes one but is not listed (mostly node's
   and java's long options) makes its value read as the script: a process is then named
-  after it (`LaunchedCode.swift`). Proposed: write each table as the program's getopt
-  string, from its manual page or source, and read an option no table lists as unnamed
-  code, so an unknown option fails closed. With it, one table of program kinds
-  (interpreter, launcher, wrapper, `open`, `find`, `xargs`) in place of the three tables and
-  the checks by name, each kind with only the fields it uses: `Takes.code` now means inline
-  code for an interpreter and a command not followed for a wrapper.
+  after it (`LaunchedCode.swift`). A wrapper's value reads as the command it runs instead,
+  and a launch item shows that file's signer, Apple's when it names one of Apple's
+  programs: until sudo's long options were listed, `sudo --prompt /bin/ls /x/agent` read
+  as `/bin/ls`. Proposed: write each table as the program's getopt string, from its manual
+  page or source, and read an option no table lists as unnamed code, so an unknown option
+  fails closed. With it, one table of program kinds (interpreter, launcher, wrapper, `open`,
+  `find`, `xargs`) in place of the three tables and the checks by name, each kind with only
+  the fields it uses: `Takes.code` now means inline code for an interpreter and a command
+  not followed for a wrapper.
 - No list completes the Apple programs that run code they are given: the tables follow
   nohup, env, xcrun, sudo, find and the rest, but one they do not list (`launchctl asuser`,
   `su`) reads as itself, Apple, whatever it runs (`LaunchedCode.swift`).
