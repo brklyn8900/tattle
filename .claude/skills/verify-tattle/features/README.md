@@ -46,7 +46,10 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   that replaces itself 2026-11-08.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
-  both copies, Remove from Startup and the refused callers on the release build.
+  both copies, Remove from Startup and the refused callers on the release build; a
+  launcher's crash port 2026-11-08.
+- [Resources line](./resources.md): CPU, memory and the network rate above the tabs, and
+  which interfaces the rate counts. Proven 2026-11-08.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
   Proven 2026-10-25; a command line's signer 2026-11-07; Apple's developer tools, copies
   of them, `open`'s long options, xcrun, registered items and launch items running Apple's
