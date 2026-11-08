@@ -87,11 +87,29 @@ input and prints the answer on standard output. Tattle replaces `{schema}` in th
 with the JSON schema the answer must match. **Output contract** in Settings shows the
 schema.
 
-Before sending, Tattle replaces your home path, your username, private and local IP
-addresses, and the Mac's names in the item and its facts with placeholders. Your own
-instructions lose only the home path and the addresses. A username of one or two letters is
-replaced only where a login stands: before an `@` and first in a process title. **Last
-prompt sent** shows the exact text.
+Before sending, Tattle replaces these in the item and its facts with placeholders: your home
+path, your username, private and local IP addresses, the Mac's names, Tailscale device names,
+other accounts' folders, disk names, and a public address a port is bound to. The default
+instructions go out as written; instructions you edit lose your home path, your username, the
+Mac's names and private or local addresses. **Last prompt sent** shows the exact text.
+
+A name is replaced only where Tattle can tell it from an ordinary word, so some stay:
+
+- Your home folder's path matches in any case; your username as a word only as written, so
+  a login `code` leaves the app `Code` alone. An exact match that is the item's own name is
+  still replaced.
+- Your username stays inside a host name, next to `_` (`username_db`), and in a file named for it
+  (`username.py`). In another dotted name it is replaced only as the author's part
+  (`com.username.helper`), the label after a domain ending.
+- A username of one or two letters is replaced only before an `@`, straight after the program
+  in a process title, and as the author's part. In edited instructions it stays.
+- The Mac's names are replaced in a host only when the whole host is one of them, so
+  `dev.azure.com` stays on a Mac called `dev`, and `dev.lan` stays unless `lan` is a search
+  domain. In a startup item they are replaced only as the author's part, and in a process or
+  a port they stay. Straight and curly apostrophes count as one; other spellings do not match.
+- A disk's name with spaces is replaced whole only while the disk is mounted. Another
+  account's folder is replaced only at the start of a path, up to the first space.
+
 The Claude Code preset keeps no transcript of the call and starts none of your account's
 connectors, but Claude Code adds the email address it is signed in with to the request, and
 Tattle cannot remove it.
