@@ -118,24 +118,34 @@ struct Redactor: Sendable {
 
     /// Where a text can say it is this Mac. A host is, only when all of it is one of the Mac's
     /// names: "dev.azure.com" is not the Mac called dev. A process's name is its author's, so
-    /// a Mac's name in it is a coincidence. Edited instructions read as prose: the name matches
-    /// as a word or a first label, so "Apple Development" and "pages.dev" stay whole on a Mac
-    /// called dev and "dev.lan" reads <machine>.lan. Either apostrophe matches: macOS stores
-    /// a curly one in the computer name, and other text often has a straight one.
+    /// a Mac's name in it is a coincidence. A launch item can be named for its Mac only as the
+    /// author's part of its label. Edited instructions read as prose: the name matches as a
+    /// word or a first label, so "Apple Development" and "pages.dev" stay whole on a Mac called
+    /// dev and "dev.lan" reads <machine>.lan. Either apostrophe matches: macOS stores a curly
+    /// one in the computer name, and other text often has a straight one.
     private func redactMachineNames(_ text: String, in context: Context) -> String {
-        let (before, after): (String, String)
+        let bounded: (String) -> String
         switch context {
-        case .program, .launchItem: return text
-        case .host: (before, after) = ("(?<![A-Za-z0-9.-])", "(?![A-Za-z0-9-]|\\.[A-Za-z0-9-])")
-        case .instructions: (before, after) = ("(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)", "(?![A-Za-z0-9-])")
+        case .program: return text
+        case .host: bounded = { "(?<![A-Za-z0-9.-])" + $0 + "(?![A-Za-z0-9-]|\\.[A-Za-z0-9-])" }
+        case .launchItem: bounded = Self.authorPart
+        case .instructions: bounded = { "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + $0 + "(?![A-Za-z0-9-])" }
         }
         var out = text
         for name in machineNames.sorted(by: { $0.count > $1.count }) {
             let escaped = NSRegularExpression.escapedPattern(for: name)
                 .replacingOccurrences(of: "['’]", with: "['’]", options: .regularExpression)
-            out = out.replacingOccurrences(of: before + escaped + after, with: "<machine>", options: [.regularExpression, .caseInsensitive])
+            out = out.replacingOccurrences(of: bounded(escaped), with: "<machine>", options: [.regularExpression, .caseInsensitive])
         }
         return out
+    }
+
+    /// The author's part of a reverse-DNS name that is not a host: the label straight after its
+    /// domain ending, with more labels following, as in "com.username.helper". Any other label is
+    /// a product or an extension, so "at.obdev.x", "server.js" and "com.apple.mail.x" stay
+    /// whole for a user called at, js or mail.
+    private static func authorPart(_ name: String) -> String {
+        "(?<=(?<![\\w.-])(?:[a-z]{2}|com|org|net|info|biz|dev|xyz|name|local)\\.)" + name + "(?=\\.[\\w-])"
     }
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
@@ -160,29 +170,28 @@ struct Redactor: Sendable {
     /// label.
     ///
     /// A login of one or two letters would match ordinary text ("-e"), so it goes only where
-    /// a login stands: before an "@" ("e@ttys003") and first in a process title ("postgres: e
-    /// db"). Where it appears in a path the home replacement covers it; the facts built for a
-    /// prompt never carry it as "you (e)" (UserName.describeForModel).
+    /// a login stands: before an "@" ("e@ttys003"), first after the program in a process title
+    /// ("postgres: e db") and as the author's part of a dotted name. Where it appears in a path
+    /// the home replacement covers it; the facts built for a prompt never carry it as "you
+    /// (e)" (UserName.describeForModel).
     private func redactUsername(_ text: String, in context: Context) -> String {
         guard !username.isEmpty else { return text }
         let login = NSRegularExpression.escapedPattern(for: username)
+        var out = text
         if username.count >= 3 {
-            let pattern: String
-            switch context {
-            case .host: pattern = "(?<![\\w.-])" + login + "(?![\\w-]|\\.[\\w-])"
-            case .launchItem: pattern = "\\b" + login + "\\b"
-            case .program, .instructions: pattern = "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])"
-            }
-            return text.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
+            let pattern = context == .host
+                ? "(?<![\\w.-])" + login + "(?![\\w-]|\\.[\\w-])"
+                : "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])"
+            out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
+        } else if context != .instructions {
+            out = out
+                .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: .regularExpression)
+                .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: .regularExpression)
         }
-        if context == .instructions { return text }
-        let replaced = text
-            .replacingOccurrences(of: "(?<![\\w.+-])" + login + "(?=@)", with: "<user>", options: .regularExpression)
-            .replacingOccurrences(of: "(?m)^([\\w.-]+: )" + login + "(?=\\s|$)", with: "$1<user>", options: .regularExpression)
-        if context != .launchItem { return replaced }
-        return replaced.replacingOccurrences(
-            of: "(?<![\\w-])" + login + "(?=\\.[\\w-])|(?<=[\\w-]\\.)" + login + "(?![\\w-])",
-            with: "<user>", options: .regularExpression)
+        if context == .program || context == .launchItem {
+            out = out.replacingOccurrences(of: Self.authorPart(login), with: "<user>", options: .regularExpression)
+        }
+        return out
     }
 
     /// Replaces private and local IP addresses only.

@@ -347,24 +347,50 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try sent(login: "admin", .port, "Admin Tools:tcp/8000"), "Admin Tools:tcp/8000")
         XCTAssertEqual(try sent(login: "code", .process, "postgres: code db [local] idle"), "postgres: <user> db [local] idle")
         XCTAssertEqual(try sent(login: "mail", .host, "mail-attachment.googleusercontent.com"), "mail-attachment.googleusercontent.com")
+        XCTAssertEqual(try sent(login: "mail", .launchItem, "com.apple.mail.helper"), "com.apple.mail.helper")
+        XCTAssertEqual(try sent(login: "mail", .launchItem, "/Library/LaunchAgents/com.apple.mail.helper.plist"), "/Library/LaunchAgents/com.apple.mail.helper.plist")
+        XCTAssertEqual(try sent(login: "test", .process, "foo.test.js"), "foo.test.js")
     }
 
-    /// A launch item's label and plist name are reverse-DNS identifiers, not host names: a
-    /// login that is one of their labels is the author's own name.
-    func testALoginInALaunchItemsDottedNameIsReplaced() throws {
-        func sent(_ redactor: Redactor, _ kind: Rule.Kind, _ key: String) throws -> (key: String?, plist: String?) {
-            let request = ExplainRequest(kind: kind, key: key, facts: [Fact(name: "Plist", value: "/Library/LaunchAgents/\(key).plist")])
+    /// A dotted name that is not a host can carry its author: the label after the domain ending
+    /// in "com.username.helper". Any other label is someone's product or a file's extension.
+    func testTheAuthorPartOfADottedNameIsReplaced() throws {
+        func sent(_ redactor: Redactor, _ kind: Rule.Kind, _ key: String) throws -> (key: String?, path: String?) {
+            let request = ExplainRequest(kind: kind, key: key, facts: [Fact(name: "Path", value: "/Library/Tools/\(key).plist")])
             let data = try capturedData(in: Prompt.build(instructions: "x", request: request, redactor: redactor))
             return ((data["item"] as? [String: String])?["key"], (data["facts"] as? [[String: String]])?.first?["value"])
         }
-        let username = Redactor(home: "/Users/username", username: "username", machineNames: [])
-        let label = try sent(username, .launchItem, "com.username.backup")
-        XCTAssertEqual(label.key, "com.<user>.backup")
-        XCTAssertEqual(label.plist, "/Library/LaunchAgents/com.<user>.backup.plist")
+        let username = Redactor(home: "/Users/username", username: "username", machineNames: ["testmac"])
+        for kind in [Rule.Kind.launchItem, .process] {
+            let label = try sent(username, kind, "com.username.backup")
+            XCTAssertEqual(label.key, "com.<user>.backup", "\(kind)")
+            XCTAssertEqual(label.path, "/Library/Tools/com.<user>.backup.plist", "\(kind)")
+        }
         let short = try sent(Redactor(home: "/Users/u", username: "e", machineNames: []), .launchItem, "com.e.backup")
         XCTAssertEqual(short.key, "com.<user>.backup")
-        XCTAssertEqual(short.plist, "/Library/LaunchAgents/com.<user>.backup.plist")
-        XCTAssertEqual(try sent(username, .host, "com.username.backup").key, "com.username.backup", "a dotted name elsewhere can be a host")
+        XCTAssertEqual(short.path, "/Library/Tools/com.<user>.backup.plist")
+        let mac = try sent(username, .launchItem, "com.testmac.backup")
+        XCTAssertEqual(mac.key, "com.<machine>.backup")
+        XCTAssertEqual(mac.path, "/Library/Tools/com.<machine>.backup.plist")
+        XCTAssertEqual(try sent(username, .process, "com.testmac.helper").key, "com.testmac.helper", "no machine names in a process")
+        XCTAssertEqual(try sent(username, .host, "com.username.backup").key, "com.username.backup", "a dotted name in a host item is a host")
+    }
+
+    /// Only the author's part goes: a login that is a domain ending, a product or an extension
+    /// leaves the name whole.
+    func testALoginOutsideTheAuthorPartLeavesADottedNameWhole() throws {
+        func key(_ login: String, _ kind: Rule.Kind, _ key: String) throws -> String? {
+            let redactor = Redactor(home: "/Users/\(login)", username: login, machineNames: [])
+            let data = try capturedData(in: Prompt.build(instructions: "x", request: ExplainRequest(kind: kind, key: key), redactor: redactor))
+            return (data["item"] as? [String: String])?["key"]
+        }
+        XCTAssertEqual(try key("at", .launchItem, "at.obdev.littlesnitch.daemon"), "at.obdev.littlesnitch.daemon")
+        XCTAssertEqual(try key("de", .launchItem, "de.appsolute.mampd"), "de.appsolute.mampd")
+        XCTAssertEqual(try key("js", .launchItem, "/opt/app/server.js"), "/opt/app/server.js")
+        XCTAssertEqual(try key("mail", .launchItem, "com.apple.mail.helper"), "com.apple.mail.helper")
+        XCTAssertEqual(try key("test", .process, "foo.test.js"), "foo.test.js")
+        XCTAssertEqual(try key("username", .process, "username.py"), "username.py", "a file named for the login is not caught")
+        XCTAssertEqual(try key("username", .launchItem, "com.username"), "com.username", "two labels have no author's part")
     }
 
     func testPanelOnlyFactsAndPromptValues() throws {
