@@ -68,8 +68,6 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(snapshot.items.map(\.isApplesProgram), [true, false])
     }
 
-    /// /usr/local is on the Data volume, and Preboot's cryptex folders are world-writable, so a
-    /// copy placed there is not the program. /Library/Apple is kept for Apple's updates.
     func testIdentitiesAcrossTheTabs() throws {
         // The script's file, not its interpreter or its name.
         let script = ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: "job.sh", path: "/bin/sh", interpreter: "sh", script: "/x/job.sh", started: started)
@@ -138,6 +136,8 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(item("/Users/x/good", acme).identity, "team:ABCDE12345:com.acme.a", "a publisher's code, through any wrapper")
     }
 
+    /// /usr/local is on the Data volume, and Preboot's cryptex folders are world-writable, so a
+    /// copy placed there is not the program. /Library/Apple is kept for Apple's updates.
     func testWhereTheProgramRuns() {
         let apple = CodeSignature(signer: .apple)
         XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/usr/local/bin/mDNSResponder", signature: apple))
