@@ -8,10 +8,10 @@
 // <service> is a test agent's Mach service in the user's launchd domain. --delay waits before
 // asking, so a test can replace the file on disk after launch. Prints
 // one line: accepted | refused | bad-request | open-failed <errno> | transport <errno>.
-// --exception-ports adds three lines: "inherited-ports <n>", how many crash exception ports the
-// probe held before asking; "exception-ports <n>", how many ports it still holds after asking for
-// types that hand over its live task; and "corpse-ports <n>", how many it holds for corpse
-// notifications, which must stay (ADR-0003).
+// --exception-ports adds three lines: "dropped-at-launch <n>", how many inherited task exception
+// ports the launch drop removed; "exception-ports <n>", how many the probe still held when its own
+// code started, for types that hand over its live task; and "corpse-ports <n>", how many it held
+// then for corpse notifications, which must stay (ADR-0003).
 //
 //   tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]
 //
@@ -85,6 +85,9 @@ static int send_then_exec(const char *service, const char *ifname, char **progra
 }
 
 int main(int argc, char **argv) {
+    // What this program holds when its own code starts, before it asks anything.
+    int held = exception_ports(EXC_MASK_ALL | EXC_MASK_CRASH);
+    int corpse = exception_ports(EXC_MASK_CORPSE_NOTIFY);
     unsigned delay = 0;
     bool show_ports = false;
     bool usable = argc >= 3;
@@ -100,14 +103,13 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (delay > 0) sleep(delay);
-    int inherited = exception_ports(EXC_MASK_CRASH);
     int status = 0, err = 0;
     int fd = tattle_broker_request(argv[1], 0, argv[2], &status, &err);
     report(fd, status, err);
     if (show_ports) {
-        printf("inherited-ports %d\n", inherited);
-        printf("exception-ports %d\n", exception_ports(EXC_MASK_ALL | EXC_MASK_CRASH));
-        printf("corpse-ports %d\n", exception_ports(EXC_MASK_CORPSE_NOTIFY));
+        printf("dropped-at-launch %d\n", tattle_launch_exception_ports_dropped());
+        printf("exception-ports %d\n", held);
+        printf("corpse-ports %d\n", corpse);
     }
     return 0;
 }

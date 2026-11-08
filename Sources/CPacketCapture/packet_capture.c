@@ -1,7 +1,9 @@
 #include "packet_capture.h"
 
+#include <crt_externs.h>
 #include <dispatch/dispatch.h>
 #include <mach/mach.h>
+#include <mach-o/loader.h>
 #include <servers/bootstrap.h>
 #include <xpc/xpc.h>
 #include <errno.h>
@@ -138,14 +140,48 @@ static int broker_request_once(const char *service, int privileged, const char *
     return fd;
 }
 
+// The header of the image this file is linked into, defined by the linker for every image.
+extern const struct mach_header __dso_handle;
+
+static int launch_exception_ports_dropped = -1;
+
+int tattle_launch_exception_ports_dropped(void) { return launch_exception_ports_dropped; }
+
+// Whoever launched this program chose the task exception ports it inherited, and a trap would
+// hand them its task: code running as Tattle, which can ask the broker for a descriptor. The
+// broker cannot see them (ADR-0003), and a launcher can force a trap at startup, through an
+// inherited stack limit for one, so they go before any of the program's own code runs, not
+// just before it first asks. EXC_MASK_ALL leaves out EXC_CRASH, which hands over the dying
+// task with its memory still writable. EXC_CORPSE_NOTIFY stays, because macOS's crash reports
+// arrive through it: it hands over the dead process, whose memory can be read but which holds
+// no descriptor and runs no code.
+//
+// Only in a program that has this file in its own executable: the app, and the test probe that
+// stands in for it. A test runner loads it inside a test bundle and keeps its ports.
+__attribute__((constructor))
+static void drop_inherited_exception_ports(void) {
+    if ((const void *)&__dso_handle != (const void *)_NSGetMachExecuteHeader()) return;
+    exception_mask_t masks[EXC_TYPES_COUNT];
+    mach_port_t ports[EXC_TYPES_COUNT];
+    exception_behavior_t behaviors[EXC_TYPES_COUNT];
+    thread_state_flavor_t flavors[EXC_TYPES_COUNT];
+    mach_msg_type_number_t count = EXC_TYPES_COUNT;
+    if (task_swap_exception_ports(mach_task_self(), EXC_MASK_ALL | EXC_MASK_CRASH, MACH_PORT_NULL, EXCEPTION_DEFAULT,
+                                  THREAD_STATE_NONE, masks, &count, ports, behaviors, flavors) != KERN_SUCCESS) {
+        launch_exception_ports_dropped = -2;
+        return;
+    }
+    int dropped = 0;
+    for (mach_msg_type_number_t i = 0; i < count; i++) {
+        if (!MACH_PORT_VALID(ports[i])) continue;
+        dropped++;
+        mach_port_deallocate(mach_task_self(), ports[i]);
+    }
+    launch_exception_ports_dropped = dropped;
+}
+
 int tattle_broker_request(const char *service, int privileged, const char *ifname, int *status, int *err) {
-    // Whoever launched this process chose the task exception ports it inherited, and a trap
-    // would hand them its task, and with it the descriptor. The broker cannot see them
-    // (ADR-0003), so they go before any request. EXC_MASK_ALL leaves out EXC_CRASH, which hands
-    // over the dying task with its memory still writable. EXC_CORPSE_NOTIFY stays, because
-    // macOS's crash reports arrive through it: it hands over the dead process, whose memory can
-    // be read but which holds no descriptor and runs no code.
-    if (task_set_exception_ports(mach_task_self(), EXC_MASK_ALL | EXC_MASK_CRASH, MACH_PORT_NULL, EXCEPTION_DEFAULT, THREAD_STATE_NONE) != KERN_SUCCESS) {
+    if (launch_exception_ports_dropped == -2) {
         *status = -1;
         *err = EPERM;
         return -1;

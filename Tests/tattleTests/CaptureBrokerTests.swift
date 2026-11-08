@@ -1,3 +1,4 @@
+import CPacketCapture
 import Security
 import XCTest
 import XPC
@@ -448,9 +449,9 @@ final class CaptureBrokerTests: XCTestCase {
     }
 
     /// Whoever launches Tattle chooses the task exception ports it inherits, and a trap would
-    /// hand that process Tattle's task, which the broker cannot see. A caller drops them before
-    /// it asks, whatever the answer.
-    func testACallerDropsTheExceptionPortsItInheritedBeforeItAsks() throws {
+    /// hand that process Tattle's task, which the broker cannot see. A caller drops them at
+    /// launch, before its own code runs, and still asks.
+    func testACallerDropsTheExceptionPortsItInheritedAtLaunch() throws {
         let hardened = try caller(.hardened)
         var output = ""
         try withInheritedExceptionPort {
@@ -458,7 +459,12 @@ final class CaptureBrokerTests: XCTestCase {
         }
         let lines = output.split(separator: "\n")
         XCTAssertEqual(lines.first, "transport \(ECONNREFUSED)", "no job serves the name")
-        XCTAssertEqual(Array(lines.dropFirst()), ["inherited-ports 1", "exception-ports 0", "corpse-ports 1"], "the corpse port is how macOS's crash reports arrive")
+        XCTAssertEqual(Array(lines.dropFirst()), ["dropped-at-launch 1", "exception-ports 0", "corpse-ports 1"], "the corpse port is how macOS's crash reports arrive")
+    }
+
+    /// The test runner loads the code in a bundle, so it keeps the ports it was started with.
+    func testTheTestRunnerKeepsItsExceptionPorts() {
+        XCTAssertEqual(tattle_launch_exception_ports_dropped(), -1)
     }
 
     /// Runs the program with `posix_spawn`, because `Process` does not pass exception ports on,
@@ -488,8 +494,8 @@ final class CaptureBrokerTests: XCTestCase {
         return String(decoding: output, as: UTF8.self)
     }
 
-    /// Runs `body` with a port of this process's own as its bad-access, crash and corpse exception
-    /// port, which a process started inside inherits, then puts back the ports it had.
+    /// Runs `body` with a port of this process's own as its exception port for every type, which a
+    /// process started inside inherits, then puts back the ports it had.
     private func withInheritedExceptionPort(_ body: () throws -> Void) throws {
         let task = mach_task_self_
         var port = mach_port_t(MACH_PORT_NULL)
@@ -502,7 +508,9 @@ final class CaptureBrokerTests: XCTestCase {
         var behaviors = [exception_behavior_t](repeating: 0, count: capacity)
         var flavors = [thread_state_flavor_t](repeating: 0, count: capacity)
         var count = mach_msg_type_number_t(capacity)
-        XCTAssertEqual(task_swap_exception_ports(task, exception_mask_t(1 << EXC_BAD_ACCESS | 1 << EXC_CRASH | 1 << EXC_CORPSE_NOTIFY), port, EXCEPTION_DEFAULT, THREAD_STATE_NONE,
+        // Every exception type, numbered 1 to 13; Swift does not import EXC_MASK_ALL.
+        let every = (EXC_BAD_ACCESS...EXC_CORPSE_NOTIFY).reduce(exception_mask_t(0)) { $0 | exception_mask_t(1) << $1 }
+        XCTAssertEqual(task_swap_exception_ports(task, every, port, EXCEPTION_DEFAULT, THREAD_STATE_NONE,
                                                  &masks, &count, &ports, &behaviors, &flavors), KERN_SUCCESS)
         defer {
             for i in 0..<Int(count) {

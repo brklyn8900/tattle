@@ -73,12 +73,21 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 
    The only lever left to whoever launched the caller is the task exception ports the
    caller inherits, and the broker cannot see them. A trap would hand the caller's task to
-   those ports. So Tattle drops its own exception ports before every request, the crash
-   port included. The corpse-notification port stays, because macOS's crash reports arrive
-   through it. Whoever holds it receives the dead process: no descriptor and no way to run
-   code in it, but all of its memory can be read, and that holds the last packets Tattle
-   read and the names it had. A launcher that holds the port can choose that moment by
-   killing Tattle. Crash reports are worth that.
+   those ports, and the code it then runs is Tattle, which the broker accepts. The launcher
+   can force that trap, for instance with a stack limit that runs out during Tattle's
+   startup. So Tattle drops its own exception ports at launch, in an initializer of its own
+   executable, before any of its other code runs, the crash port included. A test runner
+   that loads the same code in a bundle keeps its ports. The corpse-notification port
+   stays, because macOS's crash reports arrive through it. Whoever holds it receives the
+   dead process: no descriptor and no way to run code in it, but all of its memory can be
+   read, and that holds the last packets Tattle read and the names it had. A launcher that
+   holds the port can choose that moment by killing Tattle. Crash reports are worth that.
+
+   What runs before that initializer, the dynamic loader and the system libraries'
+   initializers, still runs with the launcher's ports. Checked on 2026-11-08 on an Intel
+   Mac with macOS 26.7.1: under an inherited stack limit of 56 KB or less, Tattle's startup
+   overflows in the dynamic loader and the launcher receives a task it can run code in.
+   From 64 KB up it receives nothing, or only the dead process.
 
    Every build of Tattle and of the broker, ad hoc included, is signed with the hardened
    runtime. An ad-hoc build changes its code hash on every rebuild, so it must install the
@@ -124,7 +133,8 @@ as root.
   Other accounts on the Mac are refused. This guarantee claims nothing about:
   - root
   - software that makes `/dev/bpf*` readable, such as Wireshark's ChmodBPF
-  - a launcher that makes Tattle trap before it first asks
+  - a launcher that makes Tattle trap before its own initializer runs, in the dynamic
+    loader or a system library's initializer
   - an app replaced before the user first opened it, which is the user installing
     someone else's app
 - What "Tattle's signature" means depends on how the build is signed. Ad hoc, it means
@@ -154,6 +164,12 @@ as root.
   but an inherited handler for resource-limit reports. Crash reports come through the
   corpse-notification port, which Tattle keeps as it inherited it. A launcher that put its
   own port there gets the dead process instead, and macOS writes no report.
+- A debugger that launches a debuggable build (`swift build`'s, which carries get-task-allow)
+  loses it at the first breakpoint: the launch drop removes the ports the debugger set, and
+  the process dies there (signal 11). Attaching to a running build works, since the debugger
+  sets its ports after the drop. The dev copy and the release build are hardened without
+  get-task-allow, so lldb cannot debug them either way. Instruments' Time Profiler records
+  every build, launched or attached. Checked on 2026-11-08 on testmac.
 - The sniffer code is the same as planned. It receives a descriptor instead of opening
   the file.
 - The broker is a second signed artifact to build, install and update. It is small
