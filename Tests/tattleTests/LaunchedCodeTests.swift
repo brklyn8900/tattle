@@ -323,6 +323,22 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(ProcessEntry.name(path: "/bin/zsh", arguments: ["-zsh"], command: "zsh").interpreter)
     }
 
+    func testADeveloperToolReadingItsStandardInputRunsUnnamedCode() {
+        let python = "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.python3")
+        for arguments in [[python], [python, "-"]] {
+            let named = ProcessEntry.name(path: python, arguments: arguments, command: "Python", signature: apple)
+            XCTAssertEqual(named.interpreter, "Python", "\(arguments)")
+            XCTAssertTrue(named.runsUnnamedCode, "\(arguments)")
+        }
+        let job = ProcessEntry.name(path: python, arguments: [python], command: "Python", signature: apple, startedByLaunchd: true)
+        XCTAssertEqual(job.interpreter, "Python")
+        XCTAssertFalse(job.runsUnnamedCode, "under launchd its standard input is a script")
+        let shell = ProcessEntry.name(path: "/bin/zsh", arguments: ["-zsh"], command: "zsh",
+                                      signature: CodeSignature(signer: .apple, identifier: "com.apple.zsh"))
+        XCTAssertNil(shell.interpreter, "not a developer tool: a person may be typing")
+    }
+
     func testPythonIsAnInterpreterInProcessesUnderItsFrameworkName() {
         let python = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
         let apple = CodeSignature(signer: .apple, identifier: "com.apple.python3")

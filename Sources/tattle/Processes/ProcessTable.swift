@@ -47,13 +47,16 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         var interpreter: String?
         var runsUnnamedCode = false
         if let path {
-            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) },
-                                        identity: LaunchedCode.Identity(path: path, signature: signature)) {
+            let identity = LaunchedCode.Identity(path: path, signature: signature)
+            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, identity: identity) {
             case .script(let script, let name): return (scriptName(script), name, false)
             case .unnamed(let name):
                 interpreter = name
                 runsUnnamedCode = true
             case .standardInput(let name) where startedByLaunchd: interpreter = name
+            case .standardInput(let name) where identity.isDeveloperTool:
+                interpreter = name
+                runsUnnamedCode = true
             case .program, .standardInput, .undetermined: break
             }
         }
