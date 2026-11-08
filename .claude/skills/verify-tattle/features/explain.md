@@ -82,6 +82,24 @@ Preconditions:
   shows under iTerm, `this network`. Press the row, `Explain`, `$V ax wait "fake answer"`.
   The recorded prompt's data line has `"item":{"key":"<private-ip>","kind":"host"}` and
   no address; the detail reads `Model answer, unconfirmed`.
+- **What the prompt keeps back.** With the fake provider, start processes under a title
+  (`nohup zsh -c "exec -a '<title>' /bin/sleep 900" &` from a script in Ghostty; Processes,
+  row `Ghostty,`, then the title) and add plists, not loaded, to `~/Library/LaunchAgents`
+  (Startup, `Refresh`, the label). Press `Explain` on each and read the recorded prompt:
+  - title `postgres: <login> <machine name> [local] idle`: the key and `Process` read
+    `postgres: <user> <machine> [local] idle`; the login in capitals, `<LOGIN>-helper`, reads
+    `<user>-helper`;
+  - label `com.<login>.proof`: the key reads `com.<user>.proof` and `Plist`
+    `<home>/Library/LaunchAgents/com.<user>.proof.plist`;
+  - a plist running `/Users/someone/bin/tool`: `Runs` reads `/Users/<other-user>/bin/tool (1
+    argument, not sent)`; one running `/Volumes/Proof Disk/bin/tool` reads
+    `/Volumes/<volume>/bin/tool (1 argument, not sent)`;
+  - `prompt.instructions` saved with the machine's name in it: the prompt's first line keeps
+    the name. Restore or delete the row after the run;
+  - where the login has one or two letters, the title `sshd-session: <login> <login>@ttys003`
+    reads `sshd-session: <user> <user>@ttys003`;
+  - where the computer name has a curly apostrophe, a title spelling it with a straight one
+    reads `<machine>`.
 
 - **An answer goes with its code.** With the fake provider, load a launch agent running
   `/bin/sh <dir>/a/updater` (`while :; do sleep 5; done`). In Processes, press `updater,`:
@@ -217,3 +235,10 @@ Preconditions:
   Settings and one real request in run `2026-11-08T174405`; the same text staying after a
   relaunch in run `2026-11-08T174445`; the command charged to `/bin/zsh` and refused the
   protected folder, with Startup listing login items, in run `2026-11-08T174453`.
+- What the prompt keeps back proven 2026-11-08 at `19b60f9`: the key, the login in any case and
+  as a launch item's label, another account's folder, a disk's name and the instructions on
+  testmac, run `2026-11-08T181031`, copied to `build/verify/runs/testmac-2026-11-08/`; a one-letter
+  login and the apostrophe on the development Mac, the only one with either, run
+  `2026-11-08T181445`. A tailnet name, an address spelled with hyphens and a public bound address
+  rest on unit tests: `connect` reaches only its approved hosts, and neither Mac holds a public
+  address.
