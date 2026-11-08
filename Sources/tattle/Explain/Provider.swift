@@ -13,9 +13,11 @@ enum ProviderError: Error, Equatable {
 }
 
 /// Runs a shell command with the prompt on stdin and reads the answer from stdout. The
-/// command runs in the user's login shell so PATH matches their terminal, and in a fresh
-/// empty directory so agent CLIs with a sandbox have nothing to look at. `{schema}` in the
-/// command is replaced with the output contract, shell-quoted.
+/// command runs in the user's login shell, which is not interactive: a PATH set in
+/// `.zprofile` applies and one set only in `.zshrc` does not, so a tool found only there
+/// needs its full path. It runs in a fresh empty directory so agent CLIs with a sandbox have
+/// nothing to look at. `{schema}` in the command is replaced with the output contract,
+/// shell-quoted.
 struct ShellProvider: ExplainProvider {
     var command: String
     var timeout: TimeInterval = 120
