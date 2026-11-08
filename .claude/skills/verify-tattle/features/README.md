@@ -64,4 +64,5 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27; an answer going with its code and one version of it, the shipped `claude` rule
-  and a host's prompt 2026-11-08.
+  a host's prompt, a command that holds none of Tattle's grants and the Claude Code preset
+  2026-11-08.

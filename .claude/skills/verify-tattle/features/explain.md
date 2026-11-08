@@ -15,6 +15,9 @@ answer stays while the detail holds that code and is not kept. A host's prompt s
 of the program that connected. Shipped rules about Apple's programs show only for Apple's own program
 by that name: Apple-signed, on the sealed system volume, and named for its own file. A
 shipped rule with another publisher's name on it shows only for that publisher's program.
+The provider command runs answering for itself, so it holds none of Tattle's privacy grants
+(ADR-0004). The Claude Code preset keeps no transcript and starts none of the account's
+connectors.
 
 ## Sub-features
 
@@ -34,6 +37,12 @@ shipped rule with another publisher's name on it shows only for that publisher's
 - `ex-publisher`: the shipped `claude` rule shows for Anthropic's program only.
 - `ex-redaction`: the prompt carries the item and facts as one JSON line; the key keeps
   only address redaction (`<private-ip>`), facts and instructions get the full redaction.
+- `ex-no-grants`: the command is charged to itself, and cannot open what only Tattle's Full
+  Disk Access opens.
+- `ex-preset`: the Claude Code preset works from the app, leaves nothing per call, and a
+  command saved by an earlier version runs as the current preset.
+- `ex-login-path`: Settings says that a tool on a PATH set only in `~/.zshrc` needs its full
+  path.
 
 ## How to get to it (user POV)
 
@@ -123,6 +132,26 @@ Preconditions:
   risk low · confidence high`. A script under the name, `/bin/sh <dir>/claude` started from
   a terminal app (its member row is `claude, pid N · bash script`), has `Signed by script,
   not signed` and `No explanation yet.`
+- **The command holds none of Tattle's grants.** On a copy with Full Disk Access (the dev copy
+  on the development Mac; check that Startup lists `Allowed in the background` with no `Login
+  items need Full Disk Access`). Point `provider.command` at a script that records
+  `responsibility_get_pid_responsible_for_pid($$)` (a few lines of C through `dlsym`, as in
+  `ResponsibleProcess.swift`; `launchctl procinfo` needs root) and the result of `ls
+  /private/var/db/com.apple.backgroundtaskmanagement/`, then prints the fake answer. Press
+  `Explain` on the `connect named` row: the record says the shell is charged to `/bin/zsh` and
+  `ls` fails with `Operation not permitted`. A build before the fix: charged to the copy's
+  `tattle`, `ls` lists the `.btm` files.
+- **The Claude Code preset, for real.** One real request; the item goes to Anthropic, so use
+  the `connect named` row. Save the earlier preset (`claude -p --setting-sources project,local
+  --tools "" --permission-prompts none --output-format json --json-schema {schema}`) as
+  `provider.command` before launch, and count `~/.claude/projects/*tattle-explain*`,
+  `~/Library/Caches/claude-cli-nodejs/*tattle-explain*` and `tattle-explain` in `~/.claude.json`.
+  `Explain` gives `Model answer, unconfirmed`, and the three counts do not change. With the
+  earlier preset's flags, a signed-in call adds a folder to each of the first two.
+- **Settings.** `tattle-ax` reaches only the panel. Walk the app's `AXWindows` whose subrole
+  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. With the
+  earlier preset saved, the `AXPopUpButton` reads `Claude Code` and the command field holds
+  the current flags. The footnote ends in `needs its full path.`
 
 ## Gotchas
 
@@ -140,6 +169,11 @@ Preconditions:
   `Refresh` after changing a plist.
 - A closed connection stays in its row as `closing` for about 30 s after its listener has
   gone (33 s measured), and the row counts it until then.
+- Over plain ssh, `claude` reads `Not logged in` on testmac (seen 2026-11-08; inferred: the login
+  keychain is not open to that session). `hc exec --on testmac` and testmac's GUI session are
+  signed in.
+- To see what the CLI sends, set `ANTHROPIC_BASE_URL` to a local relay that writes the request
+  body and never the headers (they hold the token). A relay that answers 400 sends nothing on.
 - A file in Documents, Desktop or Downloads makes macOS ask (`"TattleDev" would like to access
   files in your Documents folder`) the first time an answer is stored or looked up for it,
   and the detail waits for the reply. Nothing is read just by opening a detail with no answer
@@ -163,3 +197,10 @@ Preconditions:
 - A program replaced under its old date, one of Apple's programs by its line and a line that
   does not say where its code is proven 2026-11-08 on testmac, dev copy at `0749baf`, run
   `2026-11-08T141229`, copied to `build/verify/runs/testmac-2026-11-08/`.
+- The command holding none of Tattle's grants and the `~/.zshrc` line in Settings proven
+  2026-11-08 on the development Mac, where the dev copy has Full Disk Access: before the fix at
+  `01de0ee`, run `2026-11-08T170503`; after it at `ab06f99`, run `2026-11-08T170728`.
+- The Claude Code preset proven 2026-11-08 on testmac, dev copy at `ab06f99`: one real request
+  in run `2026-11-08T170858`, Settings in run `2026-11-08T171037`, both copied to
+  `build/verify/runs/testmac-2026-11-08/`. Packet capture is off there, so the row was the
+  connection's address.

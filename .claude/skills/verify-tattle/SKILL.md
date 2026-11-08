@@ -191,3 +191,7 @@ build/Tattle.app` starts it again.
   removing it stops names in every copy running.
 - Each copy has its own permission grants. Without Full Disk Access the Startup tab
   shows `Login items need Full Disk Access` instead of the login items.
+- A session whose terminal app has no Accessibility permission (Herdr Core on the development
+  Mac, seen 2026-11-08) cannot drive the panel: `launch` stops at `this terminal has no
+  Accessibility permission`. Put the `$V` commands in a script that writes its output to a
+  file and start it with `open -na Ghostty --args -e /bin/zsh <script>`, as on testmac.
