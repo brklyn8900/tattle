@@ -59,10 +59,24 @@ final class RedactorTests: XCTestCase {
     func testOtherAccountsFoldersAndDiskNamesAreReplaced() {
         XCTAssertEqual(redactor.redact("/Users/other/bin/x, /users/Other and /Users/Shared/x", as: .program), "/Users/<other-user>/bin/x, /Users/<other-user> and /Users/Shared/x")
         XCTAssertEqual(redactor.redact("/Users/Sharedstuff/x", as: .program), "/Users/<other-user>/x")
-        XCTAssertEqual(redactor.redact("/Volumes/My Passport/bin/x (2 arguments, not sent)", as: .program), "/Volumes/<volume>/bin/x (2 arguments, not sent)")
+        XCTAssertEqual(redactor.redact("/Volumes/Passport/bin/x (2 arguments, not sent)", as: .program), "/Volumes/<volume>/bin/x (2 arguments, not sent)")
         XCTAssertEqual(redactor.redact("node (/Volumes/Data/app.js)", as: .program), "node (/Volumes/<volume>/app.js)")
         XCTAssertEqual(redactor.redact("/Volumes/Backup/Users/other/x", as: .program), "/Volumes/<volume>/Users/<other-user>/x")
         XCTAssertEqual(redactor.redact("/System/Volumes/Preboot/x, /tmp/Volumes/y", as: .program), "/System/Volumes/Preboot/x, /tmp/Volumes/y")
+    }
+
+    /// A mounted disk is known by its name, which can hold spaces and brackets. Any other path
+    /// under /Volumes loses one word. Neither takes the text after it.
+    func testADiskNameTakesNothingBeyondItself() {
+        let disks = Redactor(home: "/Users/username", username: "username", machineNames: [], volumeNames: ["My Passport", "My Passport 2", "My (Work) Disk"])
+        XCTAssertEqual(disks.redact("/Volumes/My Passport/bin/x (2 arguments, not sent)", as: .program), "/Volumes/<volume>/bin/x (2 arguments, not sent)")
+        XCTAssertEqual(disks.redact("/Volumes/My Passport 2/x", as: .program), "/Volumes/<volume>/x")
+        XCTAssertEqual(disks.redact("/Volumes/My (Work) Disk/bin/tool", as: .program), "/Volumes/<volume>/bin/tool")
+        XCTAssertEqual(disks.redact("rsync /Volumes/My Passport (pid 12)", as: .program), "rsync /Volumes/<volume> (pid 12)")
+        XCTAssertEqual(disks.redact("rsync /Volumes/Data (pid 12)", as: .program), "rsync /Volumes/<volume> (pid 12)")
+        XCTAssertEqual(disks.redact("tool /Volumes/Data:tcp/8000", as: .program), "tool /Volumes/<volume>:tcp/8000")
+        XCTAssertEqual(disks.redact("copy /Volumes/Data and then /opt/x", as: .program), "copy /Volumes/<volume> and then /opt/x")
+        XCTAssertEqual(disks.redact("/Volumes/Other Disk/bin/x", as: .program), "/Volumes/<volume> Disk/bin/x", "a disk not mounted loses its first word only")
     }
 
     func testMachineNames() {

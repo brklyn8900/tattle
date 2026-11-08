@@ -27,6 +27,8 @@ struct Redactor: Sendable {
     var home: String
     var username: String
     var machineNames: [String]
+    /// The mounted disks' names, which can hold spaces and brackets.
+    var volumeNames: [String] = []
 
     /// The machine's names come from the dynamic store and the kernel, never from a name
     /// lookup: macOS holds an app's reverse lookups of its own addresses, loopback included,
@@ -41,7 +43,8 @@ struct Redactor: Sendable {
             machineNames: machineNames(
                 computerName: SCDynamicStoreCopyComputerName(nil, nil) as String?,
                 localHostName: SCDynamicStoreCopyLocalHostName(nil) as String?,
-                hostName: hostName, domains: SystemDNS.current.domains))
+                hostName: hostName, domains: SystemDNS.current.domains),
+            volumeNames: (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? [])
     }
 
     /// The computer name, the Bonjour name bare and with .local, the hostname, and each host
@@ -119,15 +122,22 @@ struct Redactor: Sendable {
                 with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
         }
         out = redactUsername(out, in: context)
-        if captured { out = Self.redactFolders(out) }
+        if captured { out = redactFolders(out) }
         return Self.redactAddresses(out)
     }
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
-    /// A disk's name can hold spaces, so it runs to the next slash. /Users/Shared is no account.
-    private static func redactFolders(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "(?i)(?<![\\w.-])/Volumes/[^/\\n\")]+", with: "/Volumes/<volume>", options: .regularExpression)
+    /// /Users/Shared is no account. A mounted disk is found by its whole name; any other path
+    /// under /Volumes loses one word, since text cannot show where a name with spaces ends.
+    private func redactFolders(_ text: String) -> String {
+        var out = text
+        for name in volumeNames.sorted(by: { $0.count > $1.count }) {
+            out = out.replacingOccurrences(
+                of: "(?i)(?<![\\w.-])/Volumes/" + NSRegularExpression.escapedPattern(for: name) + "(?![\\w.~@+-])",
+                with: "/Volumes/<volume>", options: .regularExpression)
+        }
+        return out
+            .replacingOccurrences(of: "(?i)(?<![\\w.-])/Volumes/[^\\s/\",;:()<]+", with: "/Volumes/<volume>", options: .regularExpression)
             .replacingOccurrences(of: "(?i)(?<![\\w.-])/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
     }
 
