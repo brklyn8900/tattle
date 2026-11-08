@@ -20,7 +20,7 @@ final class SeedLoaderTests: XCTestCase {
 
     func testRepoSeedsLoadAndRelayNamesResolve() throws {
         XCTAssertEqual(loader.load(from: repoSeeds), [.appleList, .builtin, .trackerRadar])
-        for host in ["mask.icloud.com", "mask-api.icloud.com", "MASK-H2.icloud.com", "apple-relay.apple.com", "ohttp-relay.cloudflare.com"] {
+        for host in ["mask.icloud.com", "mask-api.icloud.com", "MASK-H2.icloud.com", "ohttp-relay.cloudflare.com"] {
             XCTAssertEqual(try rules.lookup(kind: .host, key: host)?.category, "relay", host)
         }
         XCTAssertEqual(try rules.lookup(kind: .host, key: "cloudflare-ech.com")?.category, "ech-cover")
@@ -32,7 +32,7 @@ final class SeedLoaderTests: XCTestCase {
     /// starts like an operator's host must not reach it.
     func testRelayAndCoverRulesAreAnchoredToTheOperatorsDomains() throws {
         _ = loader.load(from: repoSeeds)
-        for host in ["apple-relay.cloudflare.com", "apple-relay.fastly-edge.com", "ohttp-relay-a.cloudflare.com", "ohttp-relay.fastly-edge.com"] {
+        for host in ["ohttp-relay-a.cloudflare.com", "ohttp-relay.fastly-edge.com"] {
             XCTAssertEqual(try rules.lookup(kind: .host, key: host)?.category, "relay", host)
         }
         for host in [
@@ -43,6 +43,34 @@ final class SeedLoaderTests: XCTestCase {
             "ohttp-relay.fastly-edge.com.evil.example", "cloudflare-ech.com.evil.example",
         ] {
             XCTAssertNil(try rules.lookup(kind: .host, key: host), host)
+        }
+    }
+
+    /// Apple's host list (support.apple.com/101555) names these as what they serve, so no row
+    /// says the destination is hidden, and none calls them Private Relay.
+    func testHostsAppleNamesReadAsWhatAppleSaysTheyAre() throws {
+        _ = loader.load(from: repoSeeds)
+        for (host, owner) in [("apple-relay.cloudflare.com", "Cloudflare"), ("apple-relay.fastly-edge.com", "Fastly")] {
+            let rule = try XCTUnwrap(try rules.lookup(kind: .host, key: host), host)
+            XCTAssertEqual(ConnectionName.kind(forCategory: rule.category), .destination, host)
+            XCTAssertEqual(rule.owner, owner, "a third party runs Private Cloud Compute's relay")
+            XCTAssertTrue(rule.purpose.contains("Private Cloud Compute"), host)
+            XCTAssertFalse(rule.purpose.contains("Private Relay"), host)
+            XCTAssertFalse(rule.purpose.contains("hidden"), host)
+        }
+        let extensions = try XCTUnwrap(try rules.lookup(kind: .host, key: "apple-relay.apple.com"))
+        XCTAssertEqual(ConnectionName.kind(forCategory: extensions.category), .destination)
+        XCTAssertTrue(extensions.purpose.contains("Apple Intelligence Extensions"))
+        XCTAssertFalse(extensions.purpose.contains("hidden"))
+    }
+
+    /// No source says Apple runs or uses these: their domains are the operators'.
+    func testOhttpRelaysClaimNothingAboutApple() throws {
+        _ = loader.load(from: repoSeeds)
+        for (host, owner) in [("ohttp-relay.cloudflare.com", "Cloudflare"), ("ohttp-relay.fastly-edge.com", "Fastly")] {
+            let rule = try XCTUnwrap(try rules.lookup(kind: .host, key: host), host)
+            XCTAssertEqual(rule.owner, owner, host)
+            XCTAssertFalse(rule.purpose.contains("Apple"), host)
         }
     }
 

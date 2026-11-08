@@ -13,7 +13,7 @@ once every line is ticked)
   the code it runs. fix-2-signer.
 - [x] 3 (A3, A8): a connection is signed by its own process. fix-3-identity.
 - [x] 8 (K1a, K1b): rules answer only for the identity they were given for. fix-3-identity.
-- [ ] 16 (K3, K4): relay rules and stale names match Apple's documentation. fix-3-identity.
+- [x] 16 (K3, K4): relay rules and stale names match Apple's documentation. fix-3-identity.
 - [ ] 4 (B1): the exception-port drop covers EXC_CRASH and corpse notifications.
   fix-4-broker-counters.
 - [ ] 5 (R1, R2): the network-rate sampler survives interfaces disappearing.
