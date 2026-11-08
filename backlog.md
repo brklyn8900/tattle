@@ -186,3 +186,14 @@ are the triage's)
   logs "copying every packet" (`Sniffer.swift`).
 - PR6: `ps` and `launchctl` run without a timeout; a hang would freeze the tab
   (`ProcessTable.swift`, `Launchctl.swift`).
+
+**From the interrogation of `fix/redaction`, 2026-11-08** (left by decision; the README says
+what stays)
+
+- A login in a file named for it goes out: `username.py` (`Redactor.swift`).
+- A login next to `_` goes out: `username_development`, `backup_username.sh` (`Redactor.swift`).
+- A one- or two-letter login that is also the database name is replaced only once:
+  `postgres: e e [local] idle` reads `postgres: <user> e [local] idle` (`Redactor.swift`).
+- Only straight and curly apostrophes count as one: a name stored with `’` misses `‘` and `ʼ`,
+  and an NFC name misses its NFD spelling. No fact source producing these was found
+  (`Redactor.swift`).
