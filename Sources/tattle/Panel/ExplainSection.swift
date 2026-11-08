@@ -18,7 +18,7 @@ struct ExplainSection: View {
                     Text(provenance(rule))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if rule.source == .llm && rule.confirmed == nil {
+                    if rule.source == .llm && rule.confirmed == nil && rule.id != nil {
                         Button("Confirm") { confirm(rule) }
                             .controlSize(.small)
                     }
@@ -59,7 +59,9 @@ struct ExplainSection: View {
     }
 
     private func load() {
-        rule = try? state.explainer.lookup(request)
+        // An answer not kept (no id) stays for as long as this item's view does.
+        let unkept = rule.flatMap { $0.id == nil && $0.pattern == request.key ? $0 : nil }
+        rule = (try? state.explainer.lookup(request)) ?? unkept
     }
 
     private func ask() {

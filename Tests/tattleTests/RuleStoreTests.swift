@@ -1,7 +1,34 @@
+import GRDB
 import XCTest
 @testable import tattle
 
 final class RuleStoreTests: XCTestCase {
+    /// Before the identity was part of a rule's key.
+    func testAnExistingRuleSurvivesTheMoveToIdentitiesAndTheNameCanHoldTwo() throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(queue, upTo: "v4-connection-app-signer")
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO rule (kind, match, pattern, purpose, source, confirmed, created)
+                VALUES ('process', 'exact', 'updater', 'old', 'llm', 0, 0)
+                """)
+        }
+        try AppDatabase.migrator.migrate(queue)
+        try queue.write { db in
+            let rows = try Rule.fetchAll(db)
+            XCTAssertEqual(rows.map(\.purpose), ["old"])
+            XCTAssertEqual(rows.first?.identity, "", "whose it was was never kept")
+            XCTAssertNotNil(rows.first?.confirmed)
+            var a = Rule(kind: .process, pattern: "updater", purpose: "a", source: .llm, identity: "team:A:x")
+            var b = Rule(kind: .process, pattern: "updater", purpose: "b", source: .llm, identity: "team:B:x")
+            var again = Rule(kind: .process, pattern: "updater", purpose: "a2", source: .llm, identity: "team:A:x")
+            try a.upsert(db)
+            try b.upsert(db)
+            try again.upsert(db)
+            XCTAssertEqual(try Rule.order(Column("purpose")).fetchAll(db).map(\.purpose), ["a2", "b", "old"])
+        }
+    }
+
     private var store: RuleStore!
 
     override func setUpWithError() throws {

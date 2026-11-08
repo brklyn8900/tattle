@@ -70,6 +70,58 @@ final class ApplesProgramTests: XCTestCase {
 
     /// /usr/local is on the Data volume, and Preboot's cryptex folders are world-writable, so a
     /// copy placed there is not the program. /Library/Apple is kept for Apple's updates.
+    func testIdentitiesAcrossTheTabs() throws {
+        // The script's file, not its interpreter or its name.
+        let script = ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: "job.sh", path: "/bin/sh", interpreter: "sh", script: "/x/job.sh", started: started)
+        XCTAssertEqual(script.identity(executable: CodeSignature(signer: .apple)), "script:/x/job.sh")
+        var relative = script
+        relative.script = "../job.sh"
+        XCTAssertNil(relative.identity(executable: nil), "a working directory that cannot be read")
+        relative.workingDirectory = "/x/y"
+        XCTAssertEqual(relative.identity(executable: nil), "script:/x/job.sh")
+        var unnamed = script
+        unnamed.script = nil
+        unnamed.runsUnnamedCode = true
+        XCTAssertNil(unnamed.identity(executable: CodeSignature(signer: .apple, identifier: "com.apple.sh")))
+
+        // Processes' and Network's rows for one app give one identity, so an answer given in
+        // one is shown in the other.
+        let mail = "/System/Applications/Mail.app"
+        let signed = CodeSignature(signer: .apple, identifier: "com.apple.mail")
+        let entry = ProcessEntry(pid: 70, parentPid: 1, uid: 501, name: "Mail", path: "\(mail)/Contents/MacOS/Mail", started: started)
+        let processes = ProcessSnapshot.build(entries: [entry], previous: nil, signature: { _ in signed }, responsible: { _ in nil }, takenAt: started)
+        let owner = ConnectionOwner.resolve(pid: 70, in: [70: entry], runningApp: { _ in nil }, responsible: { _ in nil }, signature: { _ in signed })
+        let network = NetworkSnapshot(connections: [LiveConnection(connection: connection(70, at: 0), owner: owner, isNew: false)], takenAt: started)
+        XCTAssertEqual(processes.group(id: mail)?.identity, "apple:com.apple.mail:")
+        XCTAssertEqual(try XCTUnwrap(network.groups.first).identity, processes.group(id: mail)?.identity)
+
+        // Two programs that took one name share a Network row, and neither speaks for it.
+        func named(_ pid: Int32, _ path: String) -> LiveConnection {
+            let entry = ProcessEntry(pid: pid, parentPid: 1, uid: 501, name: "updater", path: path, started: started)
+            let owner = ConnectionOwner.resolve(pid: pid, in: [pid: entry], runningApp: { _ in nil }, responsible: { _ in nil },
+                                                signature: { _ in CodeSignature(signer: .unsigned) })
+            return LiveConnection(connection: connection(pid, at: 0), owner: owner, isNew: false)
+        }
+        XCTAssertEqual(NetworkSnapshot(connections: [named(1, "/a/updater")], takenAt: started).groups.first?.identity, "path:/a/updater")
+        XCTAssertNil(NetworkSnapshot(connections: [named(1, "/a/updater"), named(2, "/b/updater")], takenAt: started).groups.first?.identity)
+
+        // Ports reads no arguments: a program has an identity, an interpreter none.
+        func port(_ path: String, _ signature: CodeSignature) -> PortItem {
+            let name = URL(fileURLWithPath: path).lastPathComponent
+            return PortItem(id: "x", proto: .tcp, port: 8000, binding: .loopback, families: "IPv4", pid: 9, uid: 501,
+                            process: ProcessIdentity(pid: 9, name: name, path: path), signature: signature, serviceName: nil)
+        }
+        XCTAssertEqual(port("/x/server", CodeSignature(signer: .unsigned)).identity, "path:/x/server")
+        XCTAssertNil(port("/usr/bin/python3", CodeSignature(signer: .apple, identifier: "com.apple.python3")).identity)
+
+        // A launch item's is its program's signature, else what its plist says runs.
+        var item = StartupItem(id: "a", group: .userAgents, name: "a", program: "/bin/sh", arguments: ["-c", "x"], trigger: "", state: .notLoaded,
+                               signature: CodeSignature(signer: .unnamed), isLoginItem: false)
+        XCTAssertEqual(item.identity, CodeIdentity.command("/bin/sh -c x"))
+        item.signature = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345")
+        XCTAssertEqual(item.identity, "team:ABCDE12345:com.acme.a")
+    }
+
     func testWhereTheProgramRuns() {
         let apple = CodeSignature(signer: .apple)
         XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/usr/local/bin/mDNSResponder", signature: apple))

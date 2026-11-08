@@ -9,12 +9,16 @@ struct ExplainRequest: Equatable, Sendable {
     var facts: [Fact]
     /// The item is Apple's own program by the name in its key (`ApplesProgram`).
     var isApplesProgram: Bool
+    /// What tells the item's code from another's by the same key (`CodeIdentity`). Nil for a
+    /// host, which is its own name, and for code nothing tells apart.
+    var identity: String?
 
-    init(kind: Rule.Kind, key: String, facts: [Fact] = [], isApplesProgram: Bool = false) {
+    init(kind: Rule.Kind, key: String, facts: [Fact] = [], isApplesProgram: Bool = false, identity: String? = nil) {
         self.kind = kind
         self.key = Rule.normalize(key, for: kind)
         self.facts = facts
         self.isApplesProgram = isApplesProgram
+        self.identity = identity
     }
 }
 

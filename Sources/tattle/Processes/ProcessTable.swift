@@ -22,6 +22,8 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// The interpreter runs code the command line does not name as a file, not a script:
     /// the row says "node, unnamed code" and signs it as such.
     var runsUnnamedCode = false
+    /// The script an interpreter runs, as the command line gives it.
+    var script: String?
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
     /// Working directory, readable for the user's own processes only.
@@ -42,14 +44,14 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// process that set its title keeps it.
     static func name(
         path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil, startedByLaunchd: Bool = false
-    ) -> (name: String, interpreter: String?, runsUnnamedCode: Bool) {
+    ) -> (name: String, interpreter: String?, runsUnnamedCode: Bool, script: String?) {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         var interpreter: String?
         var runsUnnamedCode = false
         if let path {
             let identity = LaunchedCode.Identity(path: path, signature: signature)
             switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, identity: identity) {
-            case .script(let script, let name): return (scriptName(script), name, false)
+            case .script(let script, let name): return (scriptName(script), name, false, script)
             case .unnamed(let name):
                 interpreter = name
                 runsUnnamedCode = true
@@ -65,9 +67,9 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             // like one ("/Users/u/Library/Application Support/x/server").
             let isTitle = first.contains(" ") && !first.hasPrefix("/")
             let started = (isTitle ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
-            if !started.isEmpty { return (String(started), interpreter, runsUnnamedCode) }
+            if !started.isEmpty { return (String(started), interpreter, runsUnnamedCode, nil) }
         }
-        return (executable ?? command, interpreter, runsUnnamedCode)
+        return (executable ?? command, interpreter, runsUnnamedCode, nil)
     }
 
     /// This entry named by its executable's signature, for one listed without it: a renamed
@@ -76,7 +78,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         guard let path else { return self }
         let named = Self.name(path: path, arguments: arguments, command: name, signature: signature, startedByLaunchd: parentPid == 1)
         var entry = self
-        (entry.name, entry.interpreter, entry.runsUnnamedCode) = named
+        (entry.name, entry.interpreter, entry.runsUnnamedCode, entry.script) = named
         return entry
     }
 
@@ -84,6 +86,19 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// script or unnamed code.
     func codeSignature(executable: CodeSignature?) -> CodeSignature? {
         interpreter == nil ? executable : CodeSignature(signer: runsUnnamedCode ? .unnamed : .script)
+    }
+
+    /// What tells the code this process runs from another's of its name (`CodeIdentity`),
+    /// given its executable's signature: the script's file, or the executable when it runs its
+    /// own code. Unnamed code, standard input and a script at a path relative to a working
+    /// directory that cannot be read have nothing to tell them apart.
+    func identity(executable: CodeSignature?) -> String? {
+        if let script {
+            guard script.hasPrefix("/") || workingDirectory != nil else { return nil }
+            let base = workingDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            return CodeIdentity.script(at: URL(fileURLWithPath: script, relativeTo: base).absoluteURL.standardized.path)
+        }
+        return interpreter == nil ? CodeIdentity.of(executable, path: path) : nil
     }
 
     /// A file inside an npm package is known by the package: "chrome-devtools-mcp"
@@ -188,7 +203,7 @@ enum ProcessTable {
         return ProcessEntry(
             pid: pid, parentPid: info.kp_eproc.e_ppid, uid: info.kp_eproc.e_ucred.cr_uid,
             name: named.name, path: path, interpreter: named.interpreter, runsUnnamedCode: named.runsUnnamedCode,
-            arguments: arguments,
+            script: named.script, arguments: arguments,
             workingDirectory: own ? workingDirectory(pid: pid) : nil,
             started: Date(timeIntervalSince1970: Double(started.tv_sec) + Double(started.tv_usec) / 1_000_000))
     }

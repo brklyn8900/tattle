@@ -14,8 +14,8 @@ struct RuleStore: Sendable {
 
     private func wrote() { writes.withLock { $0 += 1 } }
 
-    /// Inserts a rule, replacing an existing one with the same kind, match, pattern and
-    /// source. Returns the stored rule with its id. An unconfirmed rule never replaces a
+    /// Inserts a rule, replacing an existing one with the same kind, match, pattern, source
+    /// and identity. Returns the stored rule with its id. An unconfirmed rule never replaces a
     /// confirmed one of the same key: the upsert would reset the confirmation and the
     /// creation date, and a confirmed rule is the user's own.
     @discardableResult
@@ -40,7 +40,7 @@ struct RuleStore: Sendable {
         try Rule
             .filter(Column("kind") == rule.kind.rawValue && Column("match") == rule.match.rawValue
                     && Column("pattern") == rule.pattern && Column("source") == rule.source.rawValue
-                    && Column("confirmed") != nil)
+                    && Column("identity") == rule.identity && Column("confirmed") != nil)
             .fetchOne(db)
     }
 

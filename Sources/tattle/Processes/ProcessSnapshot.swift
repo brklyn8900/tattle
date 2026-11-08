@@ -69,6 +69,8 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var interpreterSignature: CodeSignature?
     /// The app the process belongs to, by its own path or by an ancestor's.
     var app: AppBundle?
+    /// What tells this process's code from another's of its name (`ProcessEntry.identity`).
+    var identity: String?
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
@@ -153,6 +155,8 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// Members by memory, largest first.
     var members: [ProcessItem]
     var signature: CodeSignature?
+    /// What tells the row's program from another's of its name: the app, or the top process.
+    var identity: String?
 
     /// The bundle, or the top-level program; macOS is not one place.
     var path: String? {
@@ -279,7 +283,8 @@ struct ProcessSnapshot: Equatable, Sendable {
                 usage: entry.usage, cpu: cpu,
                 signature: entry.codeSignature(executable: executableSignature),
                 interpreterSignature: entry.interpreter == nil ? nil : executableSignature,
-                app: app(of: entry.pid, in: { byPid[$0] }, runningApp: runningApp, responsible: responsible, memo: &apps)))
+                app: app(of: entry.pid, in: { byPid[$0] }, runningApp: runningApp, responsible: responsible, memo: &apps),
+                identity: entry.identity(executable: executableSignature)))
         }
 
         let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -289,12 +294,17 @@ struct ProcessSnapshot: Equatable, Sendable {
             let key = groupKey(for: item, in: itemsByPid)
             if groupsByID[key.id] == nil {
                 let groupSignature: CodeSignature?
+                var identity: String?
                 switch key.kind {
-                case .app(let bundle): groupSignature = bundle.signature(reading: signature)
-                case .process: groupSignature = key.root?.signature
+                case .app(let bundle):
+                    groupSignature = bundle.signature(reading: signature)
+                    identity = CodeIdentity.of(groupSignature, path: bundle.path)
+                case .process:
+                    groupSignature = key.root?.signature
+                    identity = key.root?.identity
                 case .system: groupSignature = CodeSignature(signer: .apple)
                 }
-                groupsByID[key.id] = ProcessGroup(id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature)
+                groupsByID[key.id] = ProcessGroup(id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature, identity: identity)
                 order.append(key.id)
             }
             groupsByID[key.id]!.members.append(item)

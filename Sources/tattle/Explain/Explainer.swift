@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// The explain step: knowledge base first, the model only when asked, and every answer
-/// kept as an exact-item rule with source `llm`.
+/// The explain step: knowledge base first, the model only when asked, and an answer kept as
+/// an exact-item rule with source `llm`, for the code it was given for (`CodeIdentity`).
 @MainActor @Observable
 final class Explainer {
     let store: RuleStore
@@ -25,16 +25,19 @@ final class Explainer {
 
     /// What the knowledge base already says, if anything. Never reaches the model.
     func lookup(_ request: ExplainRequest) throws -> Rule? {
-        try store.candidates(kind: request.kind, key: request.key)
-            .first { request.isApplesProgram || !$0.describesApplesProgram }
+        try store.candidates(kind: request.kind, key: request.key).first { $0.answers(request) }
     }
 
-    /// Asks the model and stores its answer. Called only from the explain button. Throws
-    /// `RuleStoreError.alreadyConfirmed`, before any model call, when the user has confirmed
-    /// the stored answer for the item: replacing it would need a rule editor.
+    /// Asks the model and stores its answer, unless nothing could tell a later item by this
+    /// key from this one: then the answer is returned with no id, for this view alone. Called
+    /// only from the explain button. Throws `RuleStoreError.alreadyConfirmed`, before any model
+    /// call, when the user has confirmed the stored answer for the item: replacing it would
+    /// need a rule editor.
     func ask(_ request: ExplainRequest) async throws -> Rule {
-        let key = Rule(kind: request.kind, match: .exact, pattern: request.key, purpose: "", source: .llm)
-        if let kept = try store.confirmedRule(replacedBy: key) { throw RuleStoreError.alreadyConfirmed(kept.id!) }
+        let identity = request.identity ?? ""
+        let key = Rule(kind: request.kind, match: .exact, pattern: request.key, purpose: "", source: .llm, identity: identity)
+        let isKept = !key.needsIdentity || request.identity != nil
+        if isKept, let kept = try store.confirmedRule(replacedBy: key) { throw RuleStoreError.alreadyConfirmed(kept.id!) }
         let provider = makeProvider(settings.providerCommand)
         let prompt = Prompt.build(instructions: settings.promptInstructions, request: request, redactor: makeRedactor())
         lastPrompt = prompt
@@ -43,7 +46,7 @@ final class Explainer {
         let rule = Rule(
             kind: request.kind, match: .exact, pattern: request.key,
             owner: answer.owner, purpose: answer.purpose, category: answer.category,
-            risk: answer.risk, confidence: answer.confidence, source: .llm)
-        return try store.save(rule)
+            risk: answer.risk, confidence: answer.confidence, source: .llm, identity: identity)
+        return isKept ? try store.save(rule) : rule
     }
 }

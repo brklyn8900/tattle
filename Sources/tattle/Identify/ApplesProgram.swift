@@ -13,8 +13,12 @@ enum ApplesProgram {
     private static let excluded = ["/usr/local/", "/System/Volumes/"]
 
     static func isNamed(_ name: String, path: String?, signature: CodeSignature?) -> Bool {
-        guard let path, signature?.signer == .apple,
-              roots.contains(where: { path.hasPrefix($0) }), !excluded.contains(where: { path.hasPrefix($0) }) else { return false }
+        guard let path, signature?.signer == .apple, isInstalled(at: path) else { return false }
         return URL(fileURLWithPath: path).lastPathComponent == name
+    }
+
+    /// Where only macOS installs programs.
+    static func isInstalled(at path: String) -> Bool {
+        roots.contains { path.hasPrefix($0) } && !excluded.contains { path.hasPrefix($0) }
     }
 }

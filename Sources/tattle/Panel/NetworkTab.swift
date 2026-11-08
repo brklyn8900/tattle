@@ -169,7 +169,7 @@ private struct ConnectionGroupDetail: View {
                 // The same key as the Processes tab, so an explanation of the program
                 // given there is shown here and the other way round.
                 ExplainSection(request: ExplainRequest(kind: .process, key: group.name, facts: group.facts(gone: current == nil),
-                                                         isApplesProgram: group.isApplesProgram), state: state)
+                                                         isApplesProgram: group.isApplesProgram, identity: group.identity), state: state)
                 Divider()
                 HStack {
                     if let path = group.connections.first?.owner.app?.path ?? group.connections.first?.owner.path {

@@ -107,6 +107,34 @@ struct AppDatabase: Sendable {
             // A row under an app held the app's signer; the process's own was never read.
             try db.execute(sql: "UPDATE connection SET appSigner = signer, signer = NULL WHERE appPath IS NOT NULL")
         }
+        migrator.registerMigration("v5-rule-identity") { db in
+            // SQLite cannot change a table's unique key, so the table is rebuilt. Empty, not
+            // null: SQLite treats nulls as distinct, so a key with one would never conflict.
+            try db.create(table: "rule_new") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull()
+                t.column("match", .text).notNull()
+                t.column("pattern", .text).notNull()
+                t.column("owner", .text)
+                t.column("purpose", .text).notNull()
+                t.column("category", .text)
+                t.column("risk", .text)
+                t.column("confidence", .text)
+                t.column("source", .text).notNull()
+                t.column("identity", .text).notNull().defaults(to: "")
+                t.column("confirmed", .datetime)
+                t.column("created", .datetime).notNull()
+                // One rule per item and per program: an answer about one program with a name
+                // must not replace another's.
+                t.uniqueKey(["kind", "match", "pattern", "source", "identity"])
+            }
+            try db.execute(sql: """
+                INSERT INTO rule_new (id, kind, match, pattern, owner, purpose, category, risk, confidence, source, confirmed, created)
+                SELECT id, kind, match, pattern, owner, purpose, category, risk, confidence, source, confirmed, created FROM rule
+                """)
+            try db.drop(table: "rule")
+            try db.rename(table: "rule_new", to: "rule")
+        }
         return migrator
     }
 }

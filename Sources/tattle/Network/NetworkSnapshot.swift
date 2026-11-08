@@ -16,12 +16,15 @@ struct ConnectionOwner: Equatable, Sendable {
     /// Who signed the app the connection is filed under. The app only started the process, or
     /// holds it in its bundle, so this says nothing about the process's own code.
     var appSignature: CodeSignature?
+    /// What tells the process's code from another's of its name (`ProcessEntry.identity`).
+    var identity: String?
 
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
     /// The row is the app when there is one, else the process.
     var groupSignature: CodeSignature? { app == nil ? signature : appSignature }
+    var groupIdentity: String? { app.map { CodeIdentity.of(appSignature, path: $0.path) } ?? identity }
     var isApplesProgram: Bool { ApplesProgram.isNamed(displayName, path: path, signature: signature) }
 
     static let unknown = ConnectionOwner(processName: "unknown process")
@@ -47,7 +50,8 @@ struct ConnectionOwner: Equatable, Sendable {
             processName: entry.name, path: entry.path, interpreter: entry.interpreter, app: app,
             signature: entry.codeSignature(executable: executable),
             interpreterSignature: entry.interpreter == nil ? nil : executable,
-            appSignature: app?.signature(reading: signature))
+            appSignature: app?.signature(reading: signature),
+            identity: entry.identity(executable: executable))
     }
 }
 
@@ -169,6 +173,13 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
     /// that took the name shares the row, so the newest connection's signature alone would
     /// pass that process too.
     var isApplesProgram: Bool { connections.allSatisfy(\.owner.isApplesProgram) }
+
+    /// What tells the row's program from another's of its name, when its connections are all
+    /// one program's: a process that took the name shares the row.
+    var identity: String? {
+        let identities = Set(connections.map(\.owner.groupIdentity))
+        return identities.count == 1 ? identities.first ?? nil : nil
+    }
 
     var newCount: Int { connections.filter(\.isNew).count }
     var remoteCount: Int { connections.filter { $0.connection.scope == .remote }.count }

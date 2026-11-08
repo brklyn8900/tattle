@@ -83,6 +83,10 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
+    /// What tells this item's code from another's of its label (`CodeIdentity`): its program's
+    /// signature, else its command line.
+    var identity: String? { CodeIdentity.of(signature, path: program) ?? runs.map(CodeIdentity.command) }
+
     /// Deterministic facts sent with an explain request and shown in the detail view.
     var facts: [Fact] {
         var facts: [Fact] = []

@@ -39,6 +39,9 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     var risk: Level?
     var confidence: Level?
     var source: Source
+    /// What tells the code this rule was given for from another's of its name
+    /// (`CodeIdentity`). Empty when the rule is about no one program.
+    var identity: String
     /// Set when the user has read the explanation against the facts and confirmed it.
     var confirmed: Date?
     var created: Date
@@ -46,7 +49,7 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     init(
         id: Int64? = nil, kind: Kind, match: Match = .exact, pattern: String,
         owner: String? = nil, purpose: String, category: String? = nil,
-        risk: Level? = nil, confidence: Level? = nil, source: Source,
+        risk: Level? = nil, confidence: Level? = nil, source: Source, identity: String = "",
         confirmed: Date? = nil, created: Date = Date()
     ) {
         self.id = id
@@ -59,6 +62,7 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
         self.risk = risk
         self.confidence = confidence
         self.source = source
+        self.identity = identity
         self.confirmed = confirmed
         self.created = created
     }
@@ -66,10 +70,28 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     /// Precedence rank: lower wins. Confirmation promotes any source to `user`.
     var rank: Int { confirmed == nil ? source.rank : Source.user.rank }
 
-    /// A shipped rule about one of Apple's programs by its name, which any program can take.
-    /// A port-wide rule (`*:udp/5353`) describes the port, whoever listens.
-    var describesApplesProgram: Bool {
-        source == .builtin && owner == "Apple" && (kind == .process || (kind == .port && !pattern.hasPrefix("*")))
+    /// A rule about a program by its name, which any program can take. A port-wide rule
+    /// (`*:udp/5353`) describes the port, whoever listens.
+    private var describesProgram: Bool { kind == .process || (kind == .port && !pattern.hasPrefix("*")) }
+
+    /// A shipped rule about one of Apple's programs: `ApplesProgram` says which is one.
+    var describesApplesProgram: Bool { source == .builtin && owner == "Apple" && describesProgram }
+
+    /// A model's answer was given for one program's code, and a shipped rule with another
+    /// publisher's name on it vouches for that publisher's. A host is its own name.
+    var needsIdentity: Bool {
+        switch source {
+        case .llm: kind != .host
+        case .builtin: owner != nil && !describesApplesProgram && describesProgram
+        default: false
+        }
+    }
+
+    /// Whether this rule may explain the item: a name alone does not make it the program the
+    /// rule is about, confirmed or not.
+    func answers(_ request: ExplainRequest) -> Bool {
+        if describesApplesProgram { return request.isApplesProgram }
+        return !needsIdentity || (!identity.isEmpty && identity == request.identity)
     }
 
     /// True once an unconfirmed LLM rule has outlived its lifetime.

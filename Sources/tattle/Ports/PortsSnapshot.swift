@@ -60,6 +60,15 @@ struct PortItem: Equatable, Sendable, Identifiable {
 
     var isApplesProgram: Bool { ApplesProgram.isNamed(processName, path: process?.path, signature: signature) }
 
+    /// What tells the listener's code from another's of its name (`CodeIdentity`). This tab
+    /// reads no arguments, so an interpreter or a developer tool has nothing to tell it by.
+    var identity: String? {
+        guard let path = process?.path else { return nil }
+        let code = LaunchedCode.running(executable: path, arguments: nil, identity: LaunchedCode.Identity(path: path, signature: signature))
+        guard case .program = code else { return nil }
+        return CodeIdentity.of(signature, path: path)
+    }
+
     /// Knowledge-base key: the process and the port, so "ControlCenter:tcp/*" can be a rule.
     var explainKey: String { "\(processName):\(proto.rawValue)/\(port)" }
 

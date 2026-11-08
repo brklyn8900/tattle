@@ -122,7 +122,7 @@ private struct StartupDetail: View {
                 Text(item.name).font(.headline)
                 FactsGrid(facts: item.facts)
                 Divider()
-                ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts), state: state)
+                ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity), state: state)
                 Divider()
                 HStack {
                     if let plist = item.plistURL {

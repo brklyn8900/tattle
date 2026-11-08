@@ -264,7 +264,8 @@ final class ExplainerTests: XCTestCase {
         let explainer = explainer(provider)
         let request = ExplainRequest(kind: .process, key: "Acme",
                                      facts: [Fact(name: "Path", value: "/Users/username/Applications/Acme.app/Contents/MacOS/Acme"),
-                                             Fact(name: "Host", value: "Users-Computer")])
+                                             Fact(name: "Host", value: "Users-Computer")],
+                                     identity: "team:ABCDE12345:com.acme.app")
         let rule = try await explainer.ask(request)
 
         XCTAssertEqual(rule.source, .llm)
@@ -344,7 +345,62 @@ final class ExplainerTests: XCTestCase {
         XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApplesProgram: true)?.purpose.prefix(8), "The macO")
         XCTAssertEqual(try lookup(.port, "mDNSResponder:udp/5353", isApplesProgram: false)?.purpose.prefix(7), "Bonjour",
                        "the port-wide rule, not the resolver's")
-        XCTAssertEqual(try lookup(.process, "claude", isApplesProgram: false)?.owner, "Anthropic")
+    }
+
+    /// Anyone can name a process "claude": the shipped rule is about Anthropic's program.
+    func testTheShippedRuleAboutAnotherPublishersProgramNeedsThatProgram() throws {
+        let repoSeeds = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Resources/knowledge")
+        SeedLoader(rules: store, settings: SettingsStore(database: store.database)).load(from: repoSeeds)
+        let explainer = explainer(FakeProvider(output: ""))
+        func lookup(_ identity: String?) throws -> Rule? {
+            try explainer.lookup(ExplainRequest(kind: .process, key: "claude", identity: identity))
+        }
+        XCTAssertEqual(try lookup("team:Q6L2SF6YDW:com.anthropic.claude-code")?.owner, "Anthropic")
+        XCTAssertNil(try lookup("path:/tmp/x/claude"), "unsigned, under the name")
+        XCTAssertNil(try lookup("team:ABCDE12345:com.anthropic.claude-code"), "another team, under the identifier")
+        XCTAssertNil(try lookup(nil), "a script or unnamed code under the name")
+        for rule in try store.rules() where rule.needsIdentity {
+            XCTAssertFalse(rule.identity.isEmpty, "\(rule.pattern) would answer for nothing")
+        }
+    }
+
+    /// An answer is about the program it was given for: a process that takes the name must
+    /// not read as "Google's updater, confirmed by you".
+    func testAModelAnswerIsShownOnlyForTheCodeItWasGivenFor() async throws {
+        let provider = FakeProvider(output: #"{"purpose":"Google's updater.","risk":"low","confidence":"high"}"#)
+        let explainer = explainer(provider)
+        let google = ExplainRequest(kind: .process, key: "updater", identity: "team:EQHXZ8M8AV:com.google.Keystone")
+        let impostor = ExplainRequest(kind: .process, key: "updater", identity: "path:/Users/x/Library/.hidden/updater")
+        let rule = try await explainer.ask(google)
+        XCTAssertEqual(try explainer.lookup(google)?.id, rule.id)
+        XCTAssertNil(try explainer.lookup(impostor))
+        XCTAssertNil(try explainer.lookup(ExplainRequest(kind: .process, key: "updater")), "code nothing identifies")
+
+        try store.confirm(id: rule.id!)
+        XCTAssertNil(try explainer.lookup(impostor), "a confirmed answer is still about the code it was confirmed for")
+
+        let other = try await explainer.ask(impostor)
+        XCTAssertNotEqual(other.id, rule.id, "a confirmed answer does not stop another program of the name being asked about")
+        XCTAssertEqual(try explainer.lookup(impostor)?.id, other.id)
+        XCTAssertEqual(try explainer.lookup(google)?.id, rule.id, "and is left in place")
+        XCTAssertNotNil(try explainer.lookup(google)?.confirmed)
+    }
+
+    func testAnAnswerAboutCodeNothingIdentifiesIsShownButNotKept() async throws {
+        let rule = try await explainer(FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#))
+            .ask(ExplainRequest(kind: .process, key: "node"))
+        XCTAssertEqual(rule.purpose, "x")
+        XCTAssertNil(rule.id, "nothing could tell a later item by this name from this one")
+        XCTAssertEqual(try store.rules(), [])
+    }
+
+    func testAHostAnswerIsAboutTheHostWhoeverConnects() async throws {
+        let explainer = explainer(FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#))
+        let rule = try await explainer.ask(ExplainRequest(kind: .host, key: "a.example"))
+        XCTAssertNotNil(rule.id)
+        XCTAssertEqual(try explainer.lookup(ExplainRequest(kind: .host, key: "a.example"))?.id, rule.id)
     }
 
     func testTheItemKeyIsNotRewrittenByName() async throws {

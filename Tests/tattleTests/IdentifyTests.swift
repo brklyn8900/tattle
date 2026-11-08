@@ -168,4 +168,38 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertGreaterThan(state.services.count, 50)
         XCTAssertTrue(state.services.values.contains { $0.pid != nil }, "something is running")
     }
+
+    func testIdentityOfAPublishersProgramIsItsTeamAndIdentifierWhereverItIs() {
+        let signed = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.tool", teamIdentifier: "ABCDE12345")
+        XCTAssertEqual(CodeIdentity.of(signed, path: "/a/1.0/tool"), CodeIdentity.of(signed, path: "/b/2.0/tool"))
+        XCTAssertNotEqual(CodeIdentity.of(signed, path: "/a"), CodeIdentity.of(CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.other", teamIdentifier: "ABCDE12345"), path: "/a"))
+    }
+
+    func testIdentityOfApplesProgramIsItsIdentifierOnlyWhereMacOSInstallsIt() {
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.mail")
+        XCTAssertEqual(CodeIdentity.of(apple, path: "/System/Applications/Mail.app"), CodeIdentity.of(apple, path: "/System/Applications/Mail.app/Contents/MacOS/Mail"))
+        XCTAssertNotEqual(CodeIdentity.of(apple, path: "/tmp/Mail"), CodeIdentity.of(apple, path: "/usr/bin/Mail"), "a copy keeps Apple's signature")
+        XCTAssertNotEqual(CodeIdentity.of(apple, path: "/tmp/a/Mail"), CodeIdentity.of(apple, path: "/tmp/b/Mail"))
+    }
+
+    func testIdentityWithoutATeamIsThePath() {
+        for signer: CodeSignature.Signer in [.unsigned, .adHoc, .invalid("x"), .notIssuedByApple] {
+            let signature = CodeSignature(signer: signer, identifier: "tool-1234")
+            XCTAssertEqual(CodeIdentity.of(signature, path: "/x/tool"), "path:/x/tool", "\(signer)")
+            XCTAssertNil(CodeIdentity.of(signature, path: nil), "\(signer)")
+        }
+    }
+
+    func testIdentityIsNotAScriptsOrUnnamedCodesInterpreter() {
+        XCTAssertNil(CodeIdentity.of(CodeSignature(signer: .script), path: "/bin/sh"))
+        XCTAssertNil(CodeIdentity.of(CodeSignature(signer: .unnamed), path: "/bin/sh"))
+        XCTAssertNil(CodeIdentity.of(CodeSignature(signer: .launchItem(applesProgram: "sh")), path: "/bin/sh"))
+        XCTAssertNil(CodeIdentity.of(nil, path: "/bin/sh"))
+    }
+
+    func testACommandLinesIdentityKeepsNoneOfItsWords() {
+        let identity = CodeIdentity.command("/x/agent --token s3cret")
+        XCTAssertFalse(identity.contains("s3cret"))
+        XCTAssertNotEqual(identity, CodeIdentity.command("/x/agent --token other"))
+    }
 }
