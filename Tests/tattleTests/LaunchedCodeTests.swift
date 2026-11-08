@@ -50,6 +50,30 @@ final class LaunchedCodeTests: XCTestCase {
         }
     }
 
+    func testEachInterpreterReadsItsOptionsByItsOwnManualPage() {
+        let scripts: [(String, [String], String)] = [
+            ("/bin/zsh", ["-O", "/x/run.sh", "/bin/ls"], "/x/run.sh"),
+            ("/bin/bash", ["-O", "extglob", "/x/run.sh"], "/x/run.sh"),
+            ("/usr/bin/perl", ["-l012", "/x/a.pl"], "/x/a.pl"),
+            ("/usr/bin/perl", ["-0x1F", "/x/a.pl"], "/x/a.pl"),
+        ]
+        for (program, arguments, script) in scripts {
+            XCTAssertEqual(signer(program, arguments), .developerID(name: script), "\(program) \(arguments)")
+        }
+        let inline: [(String, [String])] = [
+            ("/usr/bin/perl", ["-lne", "/x/code", "/bin/ls"]),
+            ("/usr/bin/perl", ["-0pe", "/x/code", "/bin/ls"]),
+            ("/usr/bin/python3", ["+run.py", "/bin/ls"]),
+            ("/usr/bin/perl", ["+run.pl", "/bin/ls"]),
+        ]
+        for (program, arguments) in inline {
+            XCTAssertEqual(signer(program, arguments), .script, "\(program) \(arguments)")
+        }
+        let oneLiner = ProcessEntry.name(path: "/usr/bin/perl", arguments: ["perl", "-le", "print 1/2"], command: "perl")
+        XCTAssertEqual(oneLiner.name, "perl")
+        XCTAssertEqual(oneLiner.interpreter, "perl")
+    }
+
     func testAScriptThatReadsAsApplesIsAnArgumentMistakenForIt() {
         // Apple's scripts carry no signature, and no interpreter runs a signed binary as its
         // script: an Apple binary in the script's place was read there by mistake.

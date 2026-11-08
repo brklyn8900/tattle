@@ -123,14 +123,22 @@ enum LaunchedCode: Equatable, Sendable {
         case value
         /// The option takes a value only in the same word ("-i.bak"), if at all.
         case attachedValue
+        /// The option takes octal digits in the same word ("-l012"), and the letters after
+        /// them are options again ("-lne").
+        case octal
+        /// As `octal`, or "x" and hexadecimal digits ("-0777", "-0x1F").
+        case octalOrHex
     }
 
     private enum OperandsBeforeCommand { case none, one, assignments }
 
     private struct Grammar {
         var options: [String: Takes]
-        /// Single letters group into one word ("-ec"), and "+o" is "-o" turned off.
+        /// Single letters group into one word ("-ec").
         var grouped = true
+        /// A word that starts with "+" is options turned off ("+o posix"), as in shells.
+        /// Elsewhere it is a file name.
+        var plusOptions = false
         /// The first operand is a script file, not code (awk) or a class (java).
         var operandIsScript = true
         /// Options may follow operands, as in `open`.
@@ -164,7 +172,7 @@ enum LaunchedCode: Equatable, Sendable {
             case .file: return value(attached: attached).map(Found.file) ?? Found.nothing
             case .program: return value(attached: attached).map(Found.program) ?? Found.nothing
             case .value: _ = value(attached: attached); return nil
-            case .attachedValue: return nil
+            case .attachedValue, .octal, .octalOrHex: return nil
             }
         }
         while index < arguments.count {
@@ -176,7 +184,7 @@ enum LaunchedCode: Equatable, Sendable {
                 break
             }
             if argument == "-" { return .standardInput }
-            let isOption = argument.count > 1 && (argument.hasPrefix("-") || (grammar.grouped && argument.hasPrefix("+")))
+            let isOption = argument.count > 1 && (argument.hasPrefix("-") || (grammar.plusOptions && argument.hasPrefix("+")))
             guard isOption else {
                 if operand == nil { operand = index - 1 }
                 if grammar.optionsAfterOperands { continue } else { break }
@@ -190,6 +198,12 @@ enum LaunchedCode: Equatable, Sendable {
             var letters = argument.dropFirst()
             while let letter = letters.popFirst() {
                 guard let takes = grammar.options["-\(letter)"] else { continue }
+                if takes == .octal || takes == .octalOrHex {
+                    letters = takes == .octalOrHex && letters.first == "x"
+                        ? letters.dropFirst().drop(while: \.isHexDigit)
+                        : letters.drop { ("0"..."7").contains($0) }
+                    continue
+                }
                 if let found = taking(takes, attached: letters.isEmpty ? nil : letters) { return found }
                 if takes == .value || takes == .attachedValue { break }
             }
@@ -197,18 +211,20 @@ enum LaunchedCode: Equatable, Sendable {
         return operand.map(Found.operand) ?? Found.nothing
     }
 
-    private static let shell = Grammar(options: [
-        "-c": .code, "-s": .standardInput, "-o": .value, "-O": .value,
-        "--rcfile": .value, "--init-file": .value, "--emulate": .value,
-    ])
+    /// bash's `-O` takes a shell option; zsh's is a flag of its own (CORRECT_ALL).
+    private static let bash = Grammar(options: [
+        "-c": .code, "-s": .standardInput, "-o": .value, "-O": .value, "--rcfile": .value, "--init-file": .value,
+    ], plusOptions: true)
+    private static let zsh = Grammar(options: ["-c": .code, "-s": .standardInput, "-o": .value, "--emulate": .value], plusOptions: true)
+    private static let shell = Grammar(options: ["-c": .code, "-s": .standardInput, "-o": .value], plusOptions: true)
 
     /// Interpreters: the code is a script file, inline, or standard input, never their own.
     private static let interpreters: [String: Grammar] = [
-        "sh": shell, "bash": shell, "zsh": shell, "ksh": shell, "csh": shell, "tcsh": shell, "dash": shell,
+        "sh": bash, "bash": bash, "zsh": zsh, "ksh": shell, "csh": shell, "tcsh": shell, "dash": shell,
         "python": Grammar(options: ["-c": .code, "-m": .code, "-W": .value, "-X": .value, "--check-hash-based-pycs": .value]),
         "perl": Grammar(options: [
             "-e": .code, "-E": .code, "-I": .value, "-M": .value, "-m": .value,
-            "-i": .attachedValue, "-l": .attachedValue, "-0": .attachedValue, "-C": .attachedValue,
+            "-i": .attachedValue, "-l": .octal, "-0": .octalOrHex, "-C": .attachedValue,
             "-d": .attachedValue, "-D": .attachedValue, "-x": .attachedValue, "-V": .attachedValue,
         ]),
         "ruby": Grammar(options: [
