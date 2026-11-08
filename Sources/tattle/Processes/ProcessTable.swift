@@ -14,9 +14,9 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     var name: String
     var path: String?
     /// The interpreter's file name when the process runs code that is not its executable's
-    /// (a script file, inline code, standard input under launchd, or code its unreadable
-    /// arguments would name), so a row can say "node script" and sign it as a script, with
-    /// the interpreter's signature as a fact of its own.
+    /// (a script file, inline code, standard input under launchd, a compiler's plugin, or code
+    /// its unreadable arguments would name), so a row can say "node script" and sign it as a
+    /// script, with the interpreter's signature as a fact of its own.
     var interpreter: String?
     /// Command-line arguments, readable for the user's own processes only.
     var arguments: [String]?
@@ -42,7 +42,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         var interpreter: String?
         if let path {
-            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) },
+            switch LaunchedCode.running(executable: path, arguments: arguments.map { Array($0.dropFirst()) }, invokedAs: arguments?.first,
                                         identity: LaunchedCode.Identity(path: path, signature: signature)) {
             // "node ." runs the package in its working directory, which the path does not name.
             case .script(let script, let name) where !script.hasSuffix("/") && ![".", ".."].contains(script.split(separator: "/").last ?? "."):

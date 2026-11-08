@@ -34,6 +34,8 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     var program: String?
     /// Arguments after argv[0], the first of `ProgramArguments`.
     var arguments: [String]
+    /// argv[0]: the first of `ProgramArguments`, which need not name `Program`.
+    var invokedAs: String? = nil
     /// The PATH the plist sets for the job (`EnvironmentVariables`); nil when the job runs
     /// with launchd's own.
     var environmentPath: String? = nil
@@ -72,6 +74,7 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
 
         return LaunchdItem(
             label: label, scope: scope, plistURL: url, program: program, arguments: arguments,
+            invokedAs: programArguments.first ?? program,
             environmentPath: (plist["EnvironmentVariables"] as? [String: Any])?["PATH"] as? String,
             triggers: Trigger.triggers(in: plist),
             disabled: plist["Disabled"] as? Bool ?? false,

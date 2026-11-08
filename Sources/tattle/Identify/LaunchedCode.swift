@@ -13,7 +13,8 @@ enum LaunchedCode: Equatable, Sendable {
     /// An interpreter running a script file, at the path the command line gives.
     case script(path: String, interpreter: String)
     /// An interpreter running code the command line does not name as a file: inline (`-c`,
-    /// `-e`), a module or class by name, or in arguments that cannot be read.
+    /// `-e`), a module or class by name, or in arguments that cannot be read; or a compiler
+    /// running a plugin.
     case unnamed(interpreter: String)
     /// An interpreter reading its code from standard input: a pipe, a file launchd opens
     /// for it, or someone typing.
@@ -50,10 +51,15 @@ enum LaunchedCode: Equatable, Sendable {
 
     /// What a running process runs: its executable's code, unless the executable is an
     /// interpreter. A wrapper has by then replaced itself with the program or started it as
-    /// a process of its own. `arguments` follow argv[0], nil when they cannot be read.
-    static func running(executable: String, arguments: [String]?, identity: Identity) -> LaunchedCode {
+    /// a process of its own. `arguments` follow argv[0], nil when they cannot be read;
+    /// `invokedAs` is argv[0], when it is known.
+    static func running(executable: String, arguments: [String]?, invokedAs: String? = nil, identity: Identity) -> LaunchedCode {
+        if let tool = swiftTool(identity.name, invokedAs: invokedAs.flatMap { $0.isEmpty ? nil : $0 } ?? executable) {
+            guard let arguments else { return .unnamed(interpreter: URL(fileURLWithPath: executable).lastPathComponent) }
+            return swift(executable: executable, tool: tool, arguments: arguments)
+        }
         guard let grammar = grammar(of: identity.name, in: interpreters) else { return .program(executable) }
-        return interpreted(executable: executable, arguments: arguments, grammar)
+        return interpreted(by: URL(fileURLWithPath: executable).lastPathComponent, arguments: arguments, grammar)
     }
 
     /// What a command line starts: through any wrappers (`nohup`, `caffeinate`, `env`) to
@@ -65,10 +71,13 @@ enum LaunchedCode: Equatable, Sendable {
     /// reads as a script whoever starts it.
     ///
     /// launchd finds a program named without a path on `standardPath`; a wrapper finds one on
-    /// the job's PATH, `environmentPath` when the plist sets it.
-    static func started(program: String, arguments: [String], environmentPath: String? = nil, identify: (String) -> Identity) -> LaunchedCode {
+    /// the job's PATH, `environmentPath` when the plist sets it. `invokedAs` is argv[0], which
+    /// a plist's `ProgramArguments` can name apart from its `Program`.
+    static func started(
+        program: String, arguments: [String], invokedAs: String? = nil, environmentPath: String? = nil, identify: (String) -> Identity
+    ) -> LaunchedCode {
         guard let program = located(program, on: standardPath) else { return .undetermined }
-        return started(program, arguments, identify, searchPath: environmentPath ?? standardPath)
+        return started(program, arguments, invokedAs: invokedAs, identify, searchPath: environmentPath ?? standardPath)
     }
 
     /// launchd's `_PATH_STDPATH`, which is also the PATH a job runs with unless its plist
@@ -90,10 +99,14 @@ enum LaunchedCode: Equatable, Sendable {
         return nil
     }
 
-    /// `searchPath` is where a wrapper finds a program named without a path.
-    private static func started(_ program: String, _ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode {
+    /// `searchPath` is where a wrapper finds a program named without a path. A wrapper runs
+    /// a program under the name its command line gives it, so only launchd sets `invokedAs`
+    /// apart from the program.
+    private static func started(
+        _ program: String, _ arguments: [String], invokedAs: String? = nil, _ identify: (String) -> Identity, searchPath: String
+    ) -> LaunchedCode {
         let identity = identify(program)
-        let code = followed(program, arguments, identity, identify, searchPath: searchPath)
+        let code = followed(program, arguments, invokedAs, identity, identify, searchPath: searchPath)
         switch code {
         case .script, .unnamed, .standardInput: return code
         case .program, .undetermined: return identity.isApples ? code : .program(program)
@@ -102,17 +115,18 @@ enum LaunchedCode: Equatable, Sendable {
 
     /// What `program` starts, read by the name `identity` gives it.
     private static func followed(
-        _ program: String, _ arguments: [String], _ identity: Identity, _ identify: (String) -> Identity, searchPath: String
+        _ program: String, _ arguments: [String], _ invokedAs: String?, _ identity: Identity, _ identify: (String) -> Identity,
+        searchPath: String
     ) -> LaunchedCode {
         if let grammar = grammar(of: identity.name, in: launchers) {
-            return interpreted(executable: program, arguments: arguments, grammar)
+            return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
         }
         // xargs adds words from its standard input to the command it runs.
         if identity.name == "xargs" { return .undetermined }
         if identity.name == "open" { return opened(arguments, identify, searchPath: searchPath) }
         if identity.name == "find", let code = found(arguments, identify, searchPath: searchPath) { return code }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
-            return running(executable: program, arguments: arguments, identity: identity)
+            return running(executable: program, arguments: arguments, invokedAs: invokedAs, identity: identity)
         }
         switch scan(arguments, grammar) {
         case .operand(var index):
@@ -171,18 +185,10 @@ enum LaunchedCode: Equatable, Sendable {
         return started(opened, [], identify, searchPath: searchPath)
     }
 
-    /// What the interpreter at `executable` runs with `arguments`.
-    private static func interpreted(executable: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
-        let name = URL(fileURLWithPath: executable).lastPathComponent
+    /// What the interpreter `name` runs with `arguments`.
+    private static func interpreted(by name: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
         guard let arguments else { return .unnamed(interpreter: name) }
-        let found = scan(arguments, grammar)
-        if let mode = grammar.ownCodeMode, arguments.first == mode {
-            switch found {
-            case .operand, .nothing: return .program(executable)
-            case .code, .standardInput, .file: break
-            }
-        }
-        switch found {
+        switch scan(arguments, grammar) {
         case .file(let path): return .script(path: path, interpreter: name)
         case .operand(let index) where grammar.operandIsScript && !arguments[index].isEmpty:
             return .script(path: arguments[index], interpreter: name)
@@ -193,6 +199,93 @@ enum LaunchedCode: Equatable, Sendable {
         case .nothing: return grammar.readsStandardInput ? .standardInput(interpreter: name) : .unnamed(interpreter: name)
         }
     }
+
+    // MARK: - Swift
+
+    /// Apple's swift-frontend is several tools in one file: the toolchain's `swift`, `swiftc`
+    /// and `swift-symbolgraph-extract` are links to it, and it picks the tool by argv[0],
+    /// without its extension, which a launch item names apart from the file it runs. Apple's
+    /// stubs `/usr/bin/swift` and `swiftc` pick the tool by their own name.
+    private static func swiftTool(_ name: String, invokedAs: String) -> String? {
+        switch name.lowercased() {
+        case "swift-frontend": URL(fileURLWithPath: invokedAs).deletingPathExtension().lastPathComponent
+        case "swift", "swiftc": name.lowercased()
+        default: nil
+        }
+    }
+
+    /// What swift-frontend runs as `tool`. With `-frontend` first, or as itself, it is the
+    /// frontend, which runs a script in immediate mode, `-interpret` anywhere in the line;
+    /// otherwise it is the driver a first word `--driver-mode=` or `tool` names, and only the
+    /// `swift` driver runs scripts. Any of them runs the compiler plugins its options name.
+    private static func swift(executable: String, tool: String, arguments: [String]) -> LaunchedCode {
+        let name = URL(fileURLWithPath: executable).lastPathComponent
+        var arguments = arguments
+        var tool = tool
+        let isFrontend: Bool
+        if arguments.first == "-frontend" {
+            arguments.removeFirst()
+            isFrontend = true
+        } else if let first = arguments.first, first.hasPrefix("--driver-mode=") {
+            tool = String(first.dropFirst("--driver-mode=".count))
+            arguments.removeFirst()
+            isFrontend = false
+        } else {
+            isFrontend = tool == "swift-frontend"
+        }
+        if isFrontend, arguments.contains("-interpret") {
+            switch scan(arguments, swiftOptions) {
+            case .operand(let index) where !arguments[index].isEmpty: return .script(path: arguments[index], interpreter: name)
+            case .standardInput: return .standardInput(interpreter: name)
+            case .operand, .code, .file, .nothing: return .unnamed(interpreter: name)
+            }
+        }
+        if !isFrontend, tool == "swift" { return interpreted(by: name, arguments: arguments, swiftOptions) }
+        return loadsPlugin(arguments, from: executable) ? .unnamed(interpreter: name) : .program(executable)
+    }
+
+    /// Whether `arguments` load a compiler plugin from outside the app or toolchain the
+    /// compiler at `executable` is in. The driver gives every job its own toolchain's and
+    /// SDK's plugins; any other is someone's code the compiler runs: a macro, an LLVM pass.
+    private static func loadsPlugin(_ arguments: [String], from executable: String) -> Bool {
+        let home = swiftHome(executable)
+        var index = 0
+        while index < arguments.count {
+            let word = arguments[index].split(separator: "=", maxSplits: 1)
+            index += 1
+            guard let option = word.first.map(String.init), pluginOptions.contains(option) else { continue }
+            let value: String
+            if word.count > 1 {
+                value = String(word[1])
+            } else {
+                if index < arguments.count, arguments[index] == "-Xfrontend" { index += 1 }  // as swiftc passes it on
+                guard index < arguments.count else { return false }
+                value = arguments[index]
+                index += 1
+            }
+            guard let home, !value.split(separator: "/").contains("..") else { return true }
+            // "<path>#<path>", and for two of them a last part of module names.
+            let parts = value.split(separator: "#", omittingEmptySubsequences: false)
+            let paths = pluginOptionsNamingModules.contains(option) && parts.count > 1 ? parts.dropLast() : parts[...]
+            if !paths.allSatisfy({ $0.isEmpty || $0.hasPrefix(home + "/") }) { return true }
+        }
+        return false
+    }
+
+    /// Where the compiler's own plugins are: the app it is in (Xcode), else the toolchain over
+    /// its `usr/bin`. Nil for a stub in `/usr/bin`, which does not say which toolchain it runs.
+    private static func swiftHome(_ executable: String) -> String? {
+        let components = executable.split(separator: "/", omittingEmptySubsequences: false)
+        if let app = components.firstIndex(where: { $0.hasSuffix(".app") }) { return components[...app].joined(separator: "/") }
+        guard let bin = executable.range(of: "/usr/bin/", options: .backwards), bin.lowerBound > executable.startIndex else { return nil }
+        return String(executable[..<bin.lowerBound])
+    }
+
+    private static let pluginOptions: Set<String> = [
+        "-load-plugin-library", "-load-plugin-executable", "-load-resolved-plugin", "-plugin-path", "-external-plugin-path",
+        "-in-process-plugin-server-path", "-load-pass-plugin", "-cas-plugin-path",
+    ]
+    private static let pluginOptionsNamingModules: Set<String> = ["-load-plugin-executable", "-load-resolved-plugin"]
 
     /// "python3.14", "perl5.34" and "node25" are their interpreters too, and so is the
     /// "Python" in a Python framework's app.
@@ -240,9 +333,6 @@ enum LaunchedCode: Equatable, Sendable {
         /// What comes before the command a wrapper runs: `script`'s transcript file, `login`'s
         /// user, `env`'s assignments.
         var operandsBeforeCommand = OperandsBeforeCommand.none
-        /// A first word that makes the program run its own code unless an option names the
-        /// code: swift's `-frontend` compiles, unless `-interpret` names the script.
-        var ownCodeMode: String? = nil
     }
 
     private enum Found {
@@ -310,17 +400,17 @@ enum LaunchedCode: Equatable, Sendable {
     ], plusOptions: true)
     private static let zsh = Grammar(options: ["-c": .code, "-s": .standardInput, "-o": .value, "--emulate": .value], plusOptions: true)
     private static let shell = Grammar(options: ["-c": .code, "-s": .standardInput, "-o": .value], plusOptions: true)
-    /// The toolchain's `swift` is its frontend under another name, and runs a script by
-    /// replacing itself with the frontend: `swift-frontend -frontend -interpret <script>`.
-    private static let swift = Grammar(options: [
-        "-e": .code, "-interpret": .file, "-D": .value, "-F": .value, "-I": .value, "-L": .value, "-j": .value,
+    /// The swift driver's options, and the frontend's around a script it runs.
+    private static let swiftOptions = Grammar(options: [
+        "-e": .code, "-D": .value, "-F": .value, "-I": .value, "-L": .value, "-j": .value,
         "-module-name": .value, "-sdk": .value, "-target": .value, "-Xcc": .value, "-Xlinker": .value,
         "-Xfrontend": .value, "-swift-version": .value, "-enable-upcoming-feature": .value,
         "-plugin-path": .value, "-load-plugin-library": .value, "-load-plugin-executable": .value,
-    ], grouped: false, ownCodeMode: "-frontend")
+        "-load-resolved-plugin": .value, "-external-plugin-path": .value, "-in-process-plugin-server-path": .value,
+        "-cas-plugin-path": .value,
+    ], grouped: false)
 
-    /// Interpreters: the code is a script file, inline, or standard input, never their own
-    /// outside an `ownCodeMode`.
+    /// Interpreters: the code is a script file, inline, or standard input, never their own.
     private static let interpreters: [String: Grammar] = [
         "sh": bash, "bash": bash, "zsh": zsh, "ksh": shell, "csh": shell, "tcsh": shell, "dash": shell,
         "python": Grammar(options: ["-c": .code, "-m": .code, "-W": .value, "-X": .value, "--check-hash-based-pycs": .value]),
@@ -351,7 +441,6 @@ enum LaunchedCode: Equatable, Sendable {
             "-encoding": .value, "-colormap": .value, "-display": .value, "-geometry": .value,
             "-name": .value, "-use": .value, "-visual": .value,
         ], grouped: false),
-        "swift": swift, "swift-frontend": swift,
         "make": Grammar(options: [
             "-f": .file, "--file": .file, "--makefile": .file, "-C": .value, "--directory": .value,
             "-I": .value, "--include-dir": .value, "-o": .value, "--old-file": .value, "-W": .value, "--what-if": .value,

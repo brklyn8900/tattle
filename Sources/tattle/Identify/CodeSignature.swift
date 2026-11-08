@@ -47,18 +47,21 @@ struct CodeSignature: Equatable, Sendable {
     }
 
     /// The signature of the code a command line runs (`LaunchedCode.started`): the program's,
-    /// through any wrapper; "script" when an interpreter runs code, whatever file the command
-    /// line names as the script; nil when the command line does not locate the program it runs.
+    /// through any of Apple's wrappers, or the first program on the way that is not Apple's;
+    /// "script" when an interpreter runs code, whatever file the command line names as the
+    /// script; nil when Apple's programs lead to one the command line does not locate.
     ///
     /// A script file's signature is not read: a script rarely carries one, and no interpreter
     /// runs a signed binary as its script, so a signed file in the script's place is an
     /// argument read there by mistake.
     static func read(
-        program: String, arguments: [String], environmentPath: String? = nil,
+        program: String, arguments: [String], invokedAs: String? = nil, environmentPath: String? = nil,
         reading: (String) -> CodeSignature? = { read(path: $0) }
     ) -> CodeSignature? {
         let identify = { LaunchedCode.Identity(path: $0, signature: reading($0)) }
-        switch LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify) {
+        let code = LaunchedCode.started(
+            program: program, arguments: arguments, invokedAs: invokedAs, environmentPath: environmentPath, identify: identify)
+        switch code {
         case .program(let path): return reading(path)
         case .script, .unnamed, .standardInput: return CodeSignature(signer: .script)
         case .undetermined: return nil
