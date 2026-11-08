@@ -185,6 +185,26 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.item(pid: 701)?.app?.path, "/Applications/Xcode.app", "Xcode's own tools are Xcode's")
     }
 
+    func testAScriptLaunchServicesRegistersIsNotPartOfItsInterpretersFrameworkApp() {
+        // A script that opens a window (tkinter) registers with Launch Services, which then
+        // reports the app its interpreter runs from.
+        let bundle = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app"
+        let python = "\(bundle)/Contents/MacOS/Python"
+        let window = ProcessEntry.name(path: python, arguments: [python, "/x/window.py"], command: "Python")
+        // An app whose executable is a script runs as its interpreter.
+        let tool = ProcessEntry.name(path: "/bin/bash", arguments: ["/bin/bash", "/Applications/Tool.app/Contents/MacOS/tool"], command: "bash")
+        let entries = [
+            ProcessEntry(pid: 1, parentPid: 0, uid: 0, name: "launchd", path: "/sbin/launchd", started: Date()),
+            ProcessEntry(pid: 700, parentPid: 1, uid: 501, name: window.name, path: python, interpreter: window.interpreter, started: Date()),
+            ProcessEntry(pid: 701, parentPid: 1, uid: 501, name: tool.name, path: "/bin/bash", interpreter: tool.interpreter, started: Date()),
+        ]
+        let opened: [Int32: String] = [700: bundle, 701: "/Applications/Tool.app"]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in CodeSignature(signer: .apple) },
+                                             runningApp: { opened[$0] }, responsible: { $0 })
+        XCTAssertNil(snapshot.item(pid: 700)?.app, "the Python.app in Python's framework is no one's app")
+        XCTAssertEqual(snapshot.item(pid: 701)?.app?.path, "/Applications/Tool.app", "an app is its app whatever its executable is")
+    }
+
     func testAnInterpretersTeamIsNamedAsTheInterpreters() {
         let node = "/opt/node/bin/node"
         let named = ProcessEntry.name(path: node, arguments: ["node", "/x/a.js"], command: "node")

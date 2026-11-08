@@ -12,14 +12,26 @@ struct AppBundle: Hashable, Sendable {
     var isSystem: Bool { path.hasPrefix("/System/Library/") || path.hasPrefix("/Library/Apple/") }
 
     /// The outermost .app on a path: a helper app nested inside Slack.app belongs to Slack.
-    /// An .app inside a framework is the framework's helper, not an app anyone opened: the
-    /// Python.app that runs Python's scripts, Tk's Wish.app.
     static func containing(_ path: String) -> AppBundle? {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         guard let index = components.firstIndex(where: { $0.hasSuffix(".app") && $0.count > 4 }),
-              index < components.count - 1,
-              !components[..<index].contains(where: { $0.hasSuffix(".framework") }) else { return nil }
+              index < components.count - 1, !isFrameworkHelper(in: components[..<index]) else { return nil }
         return AppBundle(path: components[...index].joined(separator: "/"))
+    }
+
+    /// The bundle Launch Services reports a process was opened from, when it is an app.
+    /// Launch Services registers some command-line processes too (node servers that open a
+    /// browser, say) and then reports the bare executable, and a script that opens a window
+    /// (tkinter) under its interpreter's framework app.
+    static func opened(_ path: String) -> AppBundle? {
+        guard path.hasSuffix(".app"), !isFrameworkHelper(in: path.split(separator: "/").dropLast()) else { return nil }
+        return AppBundle(path: path)
+    }
+
+    /// An .app inside a framework is the framework's helper, not an app anyone opened: the
+    /// Python.app that runs Python's scripts, Tk's Wish.app.
+    private static func isFrameworkHelper(in ancestors: some Sequence<Substring>) -> Bool {
+        ancestors.contains { $0.hasSuffix(".framework") }
     }
 }
 
@@ -286,10 +298,10 @@ struct ProcessSnapshot: Equatable, Sendable {
     }
 
     /// The app a process belongs to: the bundle on its own path unless it runs a script,
-    /// else the one Launch Services opened it from, else the nearest ancestor's, else, for a service that
-    /// launchd started on an app's behalf (Safari's networking service, say), the app
-    /// macOS holds responsible for it. Memoized, since whole trees share an answer. The
-    /// Network tab uses it too, to put a helper's connection under its app.
+    /// else the one Launch Services opened it from, else the nearest ancestor's, else, for a
+    /// service that launchd started on an app's behalf (Safari's networking service, say),
+    /// the app macOS holds responsible for it. Memoized, since whole trees share an answer.
+    /// The Network tab uses it too, to put a helper's connection under its app.
     static func app(
         of pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), memo: inout [Int32: AppBundle?]
@@ -297,12 +309,10 @@ struct ProcessSnapshot: Equatable, Sendable {
         if let known = memo[pid] { return known }
         memo[pid] = .some(nil)  // breaks a cycle in a corrupt table
         guard let entry = byPid[pid] else { return nil }
-        // Launch Services registers some command-line processes too (node servers that
-        // open a browser, say) and then reports the bare executable as their bundle;
-        // only a real .app counts. An interpreter inside an app (Xcode's Python, make and
-        // swift) says nothing about whose script it runs.
+        // An interpreter inside an app (Xcode's Python, make and swift) says nothing about
+        // whose script it runs.
         var result = (entry.interpreter == nil ? entry.path.flatMap(AppBundle.containing) : nil)
-            ?? runningApp(pid).flatMap { $0.hasSuffix(".app") ? AppBundle(path: $0) : nil }
+            ?? runningApp(pid).flatMap(AppBundle.opened)
         if result == nil, entry.parentPid > 1, entry.parentPid != pid {
             result = app(of: entry.parentPid, in: byPid, runningApp: runningApp, responsible: responsible, memo: &memo)
         }
