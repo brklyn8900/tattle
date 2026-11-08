@@ -34,6 +34,13 @@ struct PortItem: Equatable, Sendable, Identifiable {
             case .address(let address): address
             }
         }
+
+        /// What the model is told instead of this Mac's own public address, which identifies
+        /// it. Nil otherwise: the redaction already replaces a private address.
+        var promptText: String? {
+            guard case .address(let address) = self, Redactor.redactAddresses(address) == address else { return nil }
+            return "<public-ip>"
+        }
     }
 
     var id: String
@@ -75,7 +82,7 @@ struct PortItem: Equatable, Sendable, Identifiable {
     var facts: [Fact] {
         var facts = [
             Fact(name: "Port", value: "\(String(port)) \(proto.rawValue.uppercased())"),
-            Fact(name: "Bound to", value: binding.text + " (\(families))"),
+            Fact(name: "Bound to", value: binding.text + " (\(families))", promptValue: binding.promptText.map { $0 + " (\(families))" }),
             Fact(name: "Process", value: processName + " (pid \(pid))"),
         ]
         if let path = process?.path { facts.append(Fact(name: "Path", value: path)) }

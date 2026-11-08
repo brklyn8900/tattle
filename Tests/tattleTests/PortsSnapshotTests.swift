@@ -71,6 +71,24 @@ final class PortsSnapshotTests: XCTestCase {
         assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: true)
     }
 
+    /// A socket bound to this Mac's own public address would send that address: the panel
+    /// shows it, the model is told only that it is public.
+    func testABoundPublicAddressStaysOutOfThePrompt() throws {
+        func boundTo(_ address: String, v6: Bool) throws -> Fact? {
+            let snapshot = PortsSnapshot.build(
+                entries: [entry(.tcp, address, 5000, pid: 634, v6: v6)], services: services,
+                identity: { _ in ProcessIdentity(pid: 634, name: "Mine", path: "/x/Mine") }, signature: { _ in nil })
+            return try XCTUnwrap(snapshot.items.first).facts.first { $0.name == "Bound to" }
+        }
+        let global = try XCTUnwrap(try boundTo("2a03:2880:f12f::1", v6: true))
+        XCTAssertEqual(global.value, "2a03:2880:f12f::1 (IPv6)")
+        XCTAssertEqual(global.promptValue, "<public-ip> (IPv6)")
+        let v4 = try XCTUnwrap(try boundTo("17.253.144.10", v6: false))
+        XCTAssertEqual(v4.promptValue, "<public-ip> (IPv4)")
+        XCTAssertNil(try boundTo("192.168.1.5", v6: false)?.promptValue, "the redaction already replaces a private address")
+        XCTAssertNil(try boundTo("0.0.0.0", v6: false)?.promptValue)
+    }
+
     func testServiceNames() {
         XCTAssertEqual(services.name(port: 22, proto: .tcp), "ssh")
         XCTAssertEqual(services.name(port: 7000, proto: .tcp), "afs3-fileserver")
