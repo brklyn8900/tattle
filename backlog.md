@@ -39,6 +39,13 @@
   multiplies one tick by up to 1,000. A monotonic clock fixes it.
 - On an Intel Mac with a T2 chip, the link to that chip (`en5` on testmac) counts in the rate:
   about 3 kB/s each way at rest.
+- The Claude Code preset's `--system-prompt ""` relies on how the CLI treats an empty string.
+  CLI 2.1.319 honors it, measured from one request; the CLI's version is not pinned and no
+  repeatable check reads the request. A short non-empty prompt removes the dependency
+  (`Provider.swift`).
+- `posix_spawn_file_actions_addchdir_np` is deprecated in macOS 26 for
+  `posix_spawn_file_actions_addchdir`, which needs macOS 26 where Tattle supports 14, so the
+  new call goes behind an availability check (`Provider.swift`).
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
