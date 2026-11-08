@@ -631,6 +631,16 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 
+    /// An explain call keeps nothing and starts nothing of the user's account: no transcript,
+    /// no connectors, and none of Claude Code's own system prompt, which carries the home path.
+    func testClaudePresetKeepsNothingAndLoadsNothingOfTheAccount() throws {
+        let claude = try XCTUnwrap(ShellProvider.presets.first { $0.id == "claude" }).command
+        for flag in ["--no-session-persistence", "--strict-mcp-config", "--system-prompt \"\"", "--tools \"\"",
+                     "--setting-sources project,local"] {
+            XCTAssertTrue(claude.contains(flag), flag)
+        }
+    }
+
     /// The command must not hold the permissions the user gave Tattle, so macOS has to
     /// charge it to itself and not to the process that started it (ADR-0004).
     func testTheCommandAnswersForItself() async throws {

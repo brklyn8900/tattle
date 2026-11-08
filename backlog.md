@@ -56,7 +56,7 @@ once every line is ticked)
   fix-4-broker-counters.
 - [x] 6 (E1, E3): Explain's command runs without Tattle's privacy grants; the login PATH is
   documented. fix-5-explain.
-- [ ] 7 (E2): the Claude Code preset keeps no transcript and loads no account connectors.
+- [x] 7 (E2): the Claude Code preset keeps no transcript and loads no account connectors.
   fix-5-explain.
 - [ ] 10 (E7a-h, apostrophes): redaction covers what the README promises. fix-6-redaction.
 - [ ] 11 (S2): a running job reads as running. fix-7-facts.

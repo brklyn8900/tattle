@@ -89,6 +89,9 @@ schema.
 
 Before sending, Tattle replaces your home path, your username, private and local IP
 addresses, and the Mac's names with placeholders. **Last prompt sent** shows the exact text.
+The Claude Code preset keeps no transcript of the call and starts none of your account's
+connectors, but Claude Code adds the email address it is signed in with to the request, and
+Tattle cannot remove it.
 The command runs in your login shell, in an empty temporary folder, and is stopped after
 120 seconds. Processes it leaves running are killed when it exits.
 

@@ -51,7 +51,7 @@ final class AppSettings {
 
     init(store: SettingsStore) throws {
         self.store = store
-        providerCommand = try store.string(Key.providerCommand) ?? ""
+        providerCommand = ShellProvider.current(forSaved: try store.string(Key.providerCommand) ?? "")
         promptInstructions = try store.string(Key.promptInstructions) ?? Prompt.defaultInstructions
         retentionDays = try store.string(Key.retentionDays).flatMap(Int.init) ?? Self.defaultRetentionDays
         showThroughputInMenuBar = try store.string(Key.menuBarThroughput).flatMap(Bool.init) ?? true

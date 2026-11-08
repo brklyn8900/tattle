@@ -39,4 +39,20 @@ final class AppSettingsTests: XCTestCase {
         reloaded.resetPromptInstructions()
         XCTAssertEqual(try AppSettings(store: SettingsStore(database: database)).promptInstructions, Prompt.defaultInstructions)
     }
+
+    /// A preset is saved as its text. Saved by an earlier version, it would go on running
+    /// that version's flags, so it is read as the preset's current command.
+    func testAPresetSavedByAnEarlierVersionRunsTheCurrentCommand() throws {
+        let database = try AppDatabase.inMemory()
+        try SettingsStore(database: database).set("provider.command", #"claude -p --setting-sources project,local --tools "" --permission-prompts none --output-format json --json-schema {schema}"#)
+        let current = try XCTUnwrap(ShellProvider.presets.first { $0.id == "claude" }).command
+        XCTAssertEqual(try AppSettings(store: SettingsStore(database: database)).providerCommand, current)
+    }
+
+    func testACommandTheUserEditedStaysTheirs() throws {
+        let database = try AppDatabase.inMemory()
+        let edited = #"claude -p --model haiku --tools "" --output-format json --json-schema {schema}"#
+        try SettingsStore(database: database).set("provider.command", edited)
+        XCTAssertEqual(try AppSettings(store: SettingsStore(database: database)).providerCommand, edited)
+    }
 }

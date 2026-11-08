@@ -34,8 +34,11 @@ struct ShellProvider: ExplainProvider {
                // Not --bare: that mode reads no OAuth credentials, only an API key. User
                // settings are skipped so the user's hooks and plugins do not run for an
                // explain call; measured, that is a fifteenth of the cost and a third of
-               // the time.
-               command: "claude -p --setting-sources project,local --tools \"\" --permission-prompts none --output-format json --json-schema {schema}"),
+               // the time. A call leaves no transcript and starts none of the account's
+               // connectors. The empty system prompt replaces Claude Code's own, which
+               // carries the home path. The CLI still adds the account's email address to
+               // the request, and no flag removes it.
+               command: "claude -p --setting-sources project,local --no-session-persistence --strict-mcp-config --system-prompt \"\" --tools \"\" --permission-prompts none --output-format json --json-schema {schema}"),
         Preset(id: "codex", name: "Codex",
                // Every tool off, as --tools "" does for Claude: the shell and view_image read
                // the disk, web search and apps reach out. The user's config could add MCP servers.
@@ -43,6 +46,17 @@ struct ShellProvider: ExplainProvider {
         Preset(id: "ollama", name: "Ollama",
                command: "ollama run llama3.2 --format json"),
     ]
+
+    private static let retiredCommands = [
+        "claude -p --setting-sources project,local --tools \"\" --permission-prompts none --output-format json --json-schema {schema}": "claude",
+    ]
+
+    /// A preset is saved as its text, so a command saved by an earlier version would go on
+    /// running that version's flags. It is read as the preset it was; any other command is
+    /// the user's own.
+    static func current(forSaved command: String) -> String {
+        retiredCommands[command].flatMap { id in presets.first { $0.id == id }?.command } ?? command
+    }
 
     func explain(_ prompt: String) async throws -> String {
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
