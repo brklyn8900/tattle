@@ -1,7 +1,8 @@
 import Foundation
 
 /// What launchd currently says about its jobs, read through `launchctl print` for the
-/// user's GUI domain and the system domain. Both work without privileges.
+/// user's GUI domain and the system domain. Both work without privileges. A label names a
+/// job within one domain, so the two are kept apart.
 struct LaunchctlState: Equatable, Sendable {
     struct Service: Equatable, Sendable {
         /// Running pid, nil when not running.
@@ -10,20 +11,25 @@ struct LaunchctlState: Equatable, Sendable {
         var lastExitStatus: Int32?
     }
 
-    /// Label to state, for every loaded job in both domains.
-    var services: [String: Service]
-    /// Labels with a launchd override, and whether it is disabled.
-    var overrides: [String: Bool]
+    struct Domain: Equatable, Sendable {
+        /// Label to state, for every job loaded in the domain.
+        var services: [String: Service] = [:]
+        /// Labels with a launchd override, and whether it is disabled.
+        var overrides: [String: Bool] = [:]
+    }
+
+    var user = Domain()
+    var system = Domain()
 
     static func read() -> LaunchctlState {
-        let uid = getuid()
-        var state = LaunchctlState(services: [:], overrides: [:])
-        for domain in ["gui/\(uid)", "system"] {
-            state.services.merge(parseServices(run(["print", domain]))) { _, new in new }
-            state.overrides.merge(parseOverrides(run(["print-disabled", domain]))) { _, new in new }
+        func domain(_ name: String) -> Domain {
+            Domain(services: parseServices(run(["print", name])), overrides: parseOverrides(run(["print-disabled", name])))
         }
-        return state
+        return LaunchctlState(user: domain(Launchctl.userDomain), system: domain("system"))
     }
+
+    /// Where a job in `scope` is loaded: agents in both folders in the user's domain.
+    func domain(for scope: LaunchdItem.Scope) -> Domain { scope == .daemon ? system : user }
 
     /// The `services = { pid status label }` block of `launchctl print <domain>`.
     static func parseServices(_ output: String) -> [String: Service] {

@@ -66,7 +66,7 @@ once every line is ticked)
 - [x] 7 (E2): the Claude Code preset keeps no transcript and loads no account connectors.
   fix-5-explain.
 - [x] 10 (E7a-h, apostrophes): redaction covers what the README promises. fix-6-redaction.
-- [ ] 11 (S2): a running job reads as running. fix-7-facts.
+- [x] 11 (S2): a running job reads as running. fix-7-facts.
 - [ ] 12 (S1): unreadable plists are shown, not dropped. fix-7-facts.
 - [ ] 13 (N1): inbound connections read as inbound. fix-7-facts.
 - [ ] 14 (PR1): "Quit <App>" acts on the app. fix-7-facts.

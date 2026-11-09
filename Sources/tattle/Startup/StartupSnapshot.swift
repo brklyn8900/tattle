@@ -215,14 +215,17 @@ struct StartupSnapshot: Equatable, Sendable {
 
     private static func launchdState(_ job: LaunchdItem, state: LaunchctlState) -> StartupItem.State {
         if job.isPlaceholder { return .placeholder }
-        if job.disabled || state.overrides[job.label] == true { return .disabled }
-        guard let service = state.services[job.label] else { return .notLoaded }
-        if let pid = service.pid { return .running(pid: pid) }
-        return .idle(lastExitStatus: service.lastExitStatus)
+        let domain = state.domain(for: job.scope)
+        // A loaded job runs whatever the plist says, and a disable only stops the next load.
+        if let service = domain.services[job.label] {
+            if let pid = service.pid { return .running(pid: pid) }
+            return .idle(lastExitStatus: service.lastExitStatus)
+        }
+        return domain.overrides[job.label] ?? job.disabled ? .disabled : .notLoaded
     }
 
     private static func loginItemState(_ item: LoginItem, state: LaunchctlState) -> StartupItem.State {
-        if let label = item.bundleIdentifier, let service = state.services[label], let pid = service.pid {
+        if let label = item.bundleIdentifier, let service = state.domain(for: item.kind == .daemon ? .daemon : .userAgent).services[label], let pid = service.pid {
             return .running(pid: pid)
         }
         return item.allowed ? .enabled : .off

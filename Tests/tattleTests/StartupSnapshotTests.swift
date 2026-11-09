@@ -34,10 +34,9 @@ final class StartupSnapshotTests: XCTestCase {
             login("2.com.example.logic", name: "Logic", kind: .app, url: "file:///Applications/Logic.app/", bundle: "com.example.logic", enabled: false, allowed: true),
             login("4096.com.example.podcasts", name: "Podcasts refresh", kind: .backgroundRefresh, container: "2.com.example.logic", enabled: true, allowed: false),
         ]
-        let state = LaunchctlState(
-            services: ["com.acme.updater": .init(pid: 42, lastExitStatus: nil), "com.other.daemon": .init(pid: nil, lastExitStatus: 1),
-                       "com.example.magnet": .init(pid: 7, lastExitStatus: nil)],
-            overrides: [:])
+        var state = LaunchctlState()
+        state.user.services = ["com.acme.updater": .init(pid: 42, lastExitStatus: nil), "com.example.magnet": .init(pid: 7, lastExitStatus: nil)]
+        state.system.services = ["com.other.daemon": .init(pid: nil, lastExitStatus: 1)]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: loginItems, state: state, signature: { path in
             path == "/usr/bin/x" ? CodeSignature(signer: .developerID(name: "Acme"), teamIdentifier: "TEAM1") : nil
         })
@@ -97,7 +96,7 @@ final class StartupSnapshotTests: XCTestCase {
     func testStartupFactKeepsTheCertificateNameOutOfItsPromptValue() throws {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
-            loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
+            loginItems: [], state: LaunchctlState(),
             signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") })
         assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: false)
     }
@@ -111,7 +110,7 @@ final class StartupSnapshotTests: XCTestCase {
                 login("1.daemon", name: "registered daemon", kind: .daemon, executable: "/bin/ls"),
                 login("1.helper", name: "Apple's helper", kind: .loginItemHelper, executable: "/System/Applications/Passwords.app/Contents/MacOS/x"),
             ],
-            state: LaunchctlState(services: [:], overrides: [:]), signature: apple)
+            state: LaunchctlState(), signature: apple)
 
         let item = try XCTUnwrap(snapshot.items.first { $0.id == "local.sqlite" })
         XCTAssertEqual(item.signature?.signer, .launchItem(applesProgram: "sqlite3"))
@@ -131,7 +130,7 @@ final class StartupSnapshotTests: XCTestCase {
         rooted.rootDirectory = "/x"
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [rooted], appleCount: 0, skipped: [:]),
-            loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
+            loginItems: [], state: LaunchctlState(),
             signature: { _ in CodeSignature(signer: .apple) })
         let item = try XCTUnwrap(snapshot.items.first)
         XCTAssertEqual(item.signature?.signer, .launchItem(applesProgram: nil))
@@ -151,7 +150,7 @@ final class StartupSnapshotTests: XCTestCase {
                 login("1.extension", name: "extension", kind: .appExtension, executable: "\(xcode)/Library/X.appex"),
                 login("1.publisher", name: "publisher", kind: .appExtension, executable: "\(tools)/Library/Y.appex"),
             ],
-            state: LaunchctlState(services: [:], overrides: [:]),
+            state: LaunchctlState(),
             signature: { $0.hasSuffix("Y.appex") ? CodeSignature(signer: .developerID(name: "Acme")) : CodeSignature(signer: .apple) })
         for name in ["app", "helper", "agent", "extension"] {
             XCTAssertEqual(snapshot.items.first { $0.name == name }?.signature?.signer, .unnamed, name)
@@ -170,7 +169,7 @@ final class StartupSnapshotTests: XCTestCase {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [], appleCount: 0, skipped: [:]),
             loginItems: [login("1.agent", name: "agent", kind: .agent, executable: link.path)],
-            state: LaunchctlState(services: [:], overrides: [:]),
+            state: LaunchctlState(),
             signature: { _ in CodeSignature(signer: .apple) })
         XCTAssertEqual(snapshot.items.first?.signature?.signer, .unnamed)
     }
@@ -178,7 +177,7 @@ final class StartupSnapshotTests: XCTestCase {
     func testALaunchItemRunningAnotherPublishersProgramKeepsItsSigner() throws {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, skipped: [:]),
-            loginItems: [], state: LaunchctlState(services: [:], overrides: [:]),
+            loginItems: [], state: LaunchctlState(),
             signature: { _ in CodeSignature(signer: .developerID(name: "Acme")) })
         let item = try XCTUnwrap(snapshot.items.first)
         XCTAssertEqual(item.signature?.signer, .developerID(name: "Acme"))
@@ -187,9 +186,50 @@ final class StartupSnapshotTests: XCTestCase {
 
     func testLaunchctlOverrideAndNotLoaded() {
         let launchd = LaunchdReader.Result(items: [job("a"), job("b")], appleCount: 0, skipped: [:])
-        let state = LaunchctlState(services: [:], overrides: ["a": true])
+        var state = LaunchctlState()
+        state.user.overrides = ["a": true]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil })
         XCTAssertEqual(snapshot.items.map(\.state), [.disabled, .notLoaded])
+    }
+
+    /// launchd follows its override over the plist's `Disabled`, and a job it has loaded runs
+    /// whatever either says. `com.apple.ftp-proxy` has `Disabled` true, an `enabled` override
+    /// and is loaded.
+    func testWhatLaunchdHasLoadedWinsOverDisabled() {
+        let launchd = LaunchdReader.Result(items: [
+            job("plist-off-running", disabled: true), job("plist-off-idle", disabled: true),
+            job("override-off-running"), job("override-on-unloaded", disabled: true),
+            job("override-off-unloaded"), job("plist-off-unloaded", disabled: true),
+        ], appleCount: 0, skipped: [:])
+        var state = LaunchctlState()
+        state.user.services = ["plist-off-running": .init(pid: 9, lastExitStatus: nil), "plist-off-idle": .init(pid: nil, lastExitStatus: 0),
+                               "override-off-running": .init(pid: 7, lastExitStatus: nil)]
+        state.user.overrides = ["plist-off-running": false, "override-off-running": true, "override-on-unloaded": false, "override-off-unloaded": true]
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil })
+        XCTAssertEqual(snapshot.items.map(\.state), [
+            .running(pid: 9), .idle(lastExitStatus: 0), .running(pid: 7), .notLoaded, .disabled, .disabled,
+        ])
+    }
+
+    /// An agent and a daemon can share a label: each is a job of its own domain, and the
+    /// state of one says nothing of the other.
+    func testEachDomainAnswersForItsOwnJobs() {
+        let launchd = LaunchdReader.Result(items: [
+            job("com.shared"), job("com.shared", scope: .globalAgent, plist: "/Library/LaunchAgents/other.plist"),
+            job("com.shared", scope: .daemon, plist: "/Library/LaunchDaemons/com.shared.plist"),
+            job("com.off", scope: .daemon, plist: "/Library/LaunchDaemons/com.off.plist"),
+        ], appleCount: 0, skipped: [:])
+        var state = LaunchctlState()
+        state.user.services = ["com.shared": .init(pid: 5, lastExitStatus: nil), "com.helper": .init(pid: 11, lastExitStatus: nil)]
+        state.user.overrides = ["com.off": true]
+        state.system.overrides = ["com.shared": true]
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [
+            login("16.com.helper", name: "Helper", kind: .daemon, url: "file:///x/com.helper.plist", bundle: "com.helper", allowed: true),
+            login("8.com.helper", name: "Helper agent", kind: .agent, url: "file:///x/com.helper.agent.plist", bundle: "com.helper", allowed: true),
+        ], state: state, signature: { _ in nil })
+        XCTAssertEqual(snapshot.items.prefix(4).map(\.state), [.running(pid: 5), .running(pid: 5), .disabled, .notLoaded])
+        XCTAssertEqual(snapshot.items.first { $0.name == "Helper agent" }?.state, .running(pid: 11))
+        XCTAssertEqual(snapshot.items.first { $0.name == "Helper" }?.state, .enabled, "the daemon's domain has no such job running")
     }
 
     func testThisMachineBuilds() throws {
@@ -213,7 +253,7 @@ final class StartupSnapshotTests: XCTestCase {
         var item = job("a", program: program)
         item.arguments = arguments
         let snapshot = StartupSnapshot.build(launchd: LaunchdReader.Result(items: [item], appleCount: 0, skipped: [:]), loginItems: [],
-                                             state: LaunchctlState(services: [:], overrides: [:]), signature: reading)
+                                             state: LaunchctlState(), signature: reading)
         return try XCTUnwrap(snapshot.items.first).identity
     }
 
@@ -265,7 +305,7 @@ final class StartupSnapshotTests: XCTestCase {
     func testARegisteredItemRunningOneOfApplesProgramsIsNotPinnedToOneBuild() throws {
         func identity(_ item: LoginItem, _ hash: String) throws -> CodeIdentity? {
             let snapshot = StartupSnapshot.build(launchd: LaunchdReader.Result(items: [], appleCount: 0, skipped: [:]), loginItems: [item],
-                                                 state: LaunchctlState(services: [:], overrides: [:]),
+                                                 state: LaunchctlState(),
                                                  signature: { _ in CodeSignature(signer: .apple, identifier: "com.apple.x", codeHash: hash) })
             return try XCTUnwrap(snapshot.items.first).identity
         }
