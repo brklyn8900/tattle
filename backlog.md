@@ -96,7 +96,7 @@ once every line is ticked)
 - [x] 14 (PR1): "Quit <App>" acts on the app. fix-7-facts.
 - [x] 15 (PR2): third-party root code is not labelled as the system. fix-7-facts.
 - [x] 17 and decisions 4-6: docs match the code. fix-8-docs.
-- [ ] 18 (D6): the author's name only in author-credit fields. fix-8-docs.
+- [x] 18 (D6): the author's name only in author-credit fields. fix-8-docs.
 
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
 and (d) are done)

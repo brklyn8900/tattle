@@ -4,7 +4,7 @@ What Tattle is for, who it serves, and how it behaves. How it is built is in
 [design.md](design.md).
 
 Status: kept current. It changes only with a decision: an [ADR](adr/) in the same commit, or
-the user's instruction.
+the author's instruction.
 
 ## Overview
 

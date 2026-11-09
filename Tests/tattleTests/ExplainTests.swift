@@ -186,7 +186,7 @@ final class RedactorTests: XCTestCase {
 
     func testTailscaleNamesTheMacFromItsComputerName() {
         let studio = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
-            computerName: "Studio Mac", localHostName: "Elads-Mac-mini", hostName: nil, domains: ["tail.ts.net"]))
+            computerName: "Studio Mac", localHostName: "Users-Computer", hostName: nil, domains: ["tail.ts.net"]))
         XCTAssertEqual(studio.redact("studio-mac.tail.ts.net and studio-mac", as: .host), "<machine> and studio-mac")
     }
 

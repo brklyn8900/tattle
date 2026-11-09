@@ -90,7 +90,7 @@ Preconditions:
     Command Line Tools: `/usr/bin/swiftc -sdk <sdk> -c <dir>/input.swift -o
     <dir>/input.o`, loaded (Processes' compile job), `/usr/bin/swiftc -o <dir>/out
     <dir>/a.swift`, the toolchain's `swift-frontend -frontend -c <dir>/a.swift -Xllvm
-    -load=<dir>/evil.dylib`, and `/usr/bin/git -C <dir> status`. With Xcode, on the user's
+    -load=<dir>/evil.dylib`, and `/usr/bin/git -C <dir> status`. With Xcode, on the development
     Mac, where macOS names each of these rows `Xcode`: Xcode's toolchain's `swiftc`, the
     same compile job through it, loaded, `xcodebuild -version` from its developer folder,
     and its `lldb-rpc-server` (in `Contents/SharedFrameworks`); Xcode's own
@@ -124,7 +124,7 @@ Preconditions:
 - **xcrun.** On testmac, not loaded: `<dir>/lldb /bin/ls -b -s <dir>/cmds`, where `lldb` is a
   symlink to `/usr/bin/xcrun`, and `/usr/bin/xcrun ls`: `unnamed code`. `/usr/bin/xcrun swift
   <dir>/a.swift`: `script, not signed`. Delete the plists and the folder afterwards.
-- **A registered item among the developer tools.** On the user's Mac:
+- **A registered item among the developer tools.** On the development Mac:
   `ProvisoningProfileQuicklookExtension.appex` (in `Xcode.app/Contents/PlugIns`) and
   `uuid.mdimporter` (in `Xcode.app/Contents/Library/Spotlight`), both signed by Apple inside
   an App Store Xcode, read `unnamed code`.
@@ -157,10 +157,10 @@ Preconditions:
 
 ## Gotchas
 
-- `Load` and `Unload` change the user's real launchd state: only with his yes, or on an agent
+- `Load` and `Unload` change the user's real launchd state: only with their yes, or on an agent
   the run created and removes again.
 - The dev copy has its own Full Disk Access grant, separate from the release app's;
-  granted on the user's Mac 2026-10-25 (run `2026-10-25T223546` listed the login items). On
+  granted on the development Mac 2026-10-25 (run `2026-10-25T223546` listed the login items). On
   any other Mac (testmac) it has none until granted there.
 - `Login Items Settings` and `Open Full Disk Access Settings` open System Settings, which
   takes the screen; avoid in unattended runs.
@@ -187,7 +187,7 @@ Preconditions:
 - Apple's developer tools, the `-Xfrontend -interpret` script and `open`'s long options
   proven 2026-11-08 on testmac, run `2026-11-08T011100` (commit `7d50eec`). Run
   `2026-11-08T010801` is the same on `1ab9f0b`: every row `Apple` but `/usr/bin/swift
-  <dir>/loop.swift`'s. The Xcode rows proven on the user's Mac, run `2026-11-08T010935`
+  <dir>/loop.swift`'s. The Xcode rows proven on the development Mac, run `2026-11-08T010935`
   (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) the four that are not Xcode itself
   read `Apple`. The copies of `clang`, `ld` and `swift-frontend` proven on testmac, run
   `2026-11-08T014224` (`a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) all four read
@@ -196,7 +196,7 @@ Preconditions:
   only.
 - The launch item rule and xcrun proven 2026-11-08 on testmac, run `2026-11-08T090736` (commit
   `b5e5e2c`). In run `2026-11-08T090623` (`0a31fdc`) the `sqlite3`, `ls` and two xcrun rows
-  read `Apple`. The registered items proven on the user's Mac, run `2026-11-08T090639`
+  read `Apple`. The registered items proven on the development Mac, run `2026-11-08T090639`
   (`b5e5e2c`); in run `2026-11-08T090557` (`0a31fdc`) they read `Apple`. The `open -ga` row
   is unit-tested at this reading, not run again. `RootDirectory` proven on testmac, run
   `2026-11-08T092645` (`be0e8f0`); in run `2026-11-08T092551` (`c701e4f`) its detail had

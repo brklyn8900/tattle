@@ -25,7 +25,7 @@ Use the dev copy otherwise: it runs beside the release build without stopping it
 
 Which machine a run goes on: the session's memory.
 
-A proof that needs a signed build runs on the user's Mac: testmac has no signing identity.
+A proof that needs a signed build runs on the development Mac: testmac has no signing identity.
 
 - Bring testmac's checkout to the commit under test first (tattle `memory.md`, Machines).
 - The accessibility tool needs testmac's GUI session, not an ssh one. Put the `$V` commands
@@ -114,8 +114,8 @@ To give the Network tab a connection with a known outcome:
 Each opens one TCP connection with `nc`, held 90 s (`--hold <s>` to change), from a local
 port it prints with the matching `db` query (`--port <n>` reuses one, with the address
 the run last used from it, for a second connection on the same four-tuple; wait 30 s after
-the first closes, its TIME_WAIT). the user
-approved these hosts and these bytes on 2026-10-25. Do not point it at another host or send other bytes without asking him.
+the first closes, its TIME_WAIT). The user
+approved these hosts and these bytes on 2026-10-25. Do not point it at another host or send other bytes without asking them.
 
 ## Evidence
 
@@ -125,7 +125,7 @@ Each run writes to `build/verify/runs/<run-id>/`, which cleanup never deletes:
   line. `copy` holds `dev` or `release` for the helper.
 - `commands.txt`: every helper command with its time, which ties actions to states.
 - `$V save <name>`: `<name>.txt` (labels), `<name>.ax.txt` (tree) and `<name>.png`
-  (screenshot of the panel window). the user set the dev copy's item to always show in the
+  (screenshot of the panel window). The user set the dev copy's item to always show in the
   menu bar (2026-10-25), so the panel opens on screen. If that setting is lost and the
   menu bar is too full, macOS puts the item and its panel off every display; `shot` then
   moves the panel onto the main display for the capture and says so. The `.png` needs
@@ -157,11 +157,11 @@ Proof standards:
 
 - **Administrator password.** Installing or removing packet access opens macOS's
   administrator dialog. Press the button, then stop: tell the user the dialog is up and what
-  it will do, and wait for him to type the password into the dialog himself (on testmac,
+  it will do, and wait for them to type the password into the dialog themselves (on testmac,
   over Screen Sharing). Never type, script or ask for the password in the terminal.
 - **Changes outside the run's copy.** Startup's `Load`, `Unload` and `Remove`, and
   Processes' `Quit` and `Force Quit`, act on the user's real system. Use them only on
-  something the run created, or with his yes.
+  something the run created, or with their yes.
 - **Outward traffic** other than `connect`'s approved example.com cases.
 
 ## Cleanup
@@ -179,8 +179,8 @@ build/Tattle.app` starts it again.
 ## Gotchas
 
 - Opening the panel makes the run's copy the active app and takes focus from whatever the user is
-  using; the panel closes when anything else takes focus. Say so before a long drive if he
-  is at the Mac. Reopen with `$V ax open` and check where it is with `$V ax text`.
+  using; the panel closes when anything else takes focus. Say so before a long drive if they
+  are at the Mac. Reopen with `$V ax open` and check where it is with `$V ax text`.
 - The panel keeps its navigation while closed; `$V tab` backs out first.
 - The sniffer skips local-network destinations (`Sources/tattle/Sniffer/FlowNamer.swift`),
   so a connection to the router or another LAN device never gets a name or a reason.

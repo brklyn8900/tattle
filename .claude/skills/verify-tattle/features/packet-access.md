@@ -31,7 +31,7 @@ the same view or from the Startup tab. Design: `docs/adr/0003-bpf-descriptor-bro
 Preconditions:
 
 - Open run; doctor all `ok`.
-- the user is at the Mac to type his password. Removing the broker stops names in every copy
+- The user is at the Mac to type their password. Removing the broker stops names in every copy
   running: say so when asking.
 
 - **Before.** `$V tab Network`, `$V save pa-before`; `ls -l
@@ -41,7 +41,7 @@ Preconditions:
   `$V ax wait "Capturing on"` or `"Not capturing"`, `$V save pa-view`. The plist text is in
   `pa-view.txt`.
 - **Remove.** `$V ax press Remove`. Stop: tell the user the administrator dialog is up and
-  that it removes the broker for both copies; wait for his reply. Then: `$V log "removing
+  that it removes the broker for both copies; wait for their reply. Then: `$V log "removing
   the packet-access broker|broker removal failed"`; the plist file is gone; `launchctl
   print` fails; `$V tab Network` shows `Allow packet access` and `Destinations are
   addresses: names need packet access, which Tattle does not have yet`; `$V save

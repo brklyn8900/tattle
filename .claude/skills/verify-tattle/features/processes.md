@@ -55,7 +55,7 @@ Preconditions:
   unnamed code`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
   developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
   must not hold it: the row and the detail read the same. testmac had only the Command Line
-  Tools then, so this case ran on the user's Mac, with a probe the run loads and removes. A
+  Tools then, so this case ran on the development Mac, with a probe the run loads and removes. A
   script that opens a window, `<dir>/window.py` (a `tkinter.Tk()` and its `mainloop()`),
   is registered by Launch Services under the framework's `Python.app` (`lsappinfo list`
   shows it): its row reads `window.py, 1 process · Python script`, and the detail has no
@@ -72,7 +72,7 @@ Preconditions:
   as `swift-frontend -frontend -c -primary-file <dir>/input.swift ... -sdk <sdk> ...`: its
   row reads `swift-frontend, 1 process · swift-frontend, unnamed code`, not a member of
   `macOS`, as any of Apple's developer tools does unless it runs a script. Through Xcode's
-  toolchain's `swiftc` (the user's Mac) the detail has `Runs with swift-frontend (<Xcode's
+  toolchain's `swiftc` (the development Mac) the detail has `Runs with swift-frontend (<Xcode's
   toolchain>/usr/bin/swift-frontend)`, `Signed by unnamed code`, `Interpreter signed by
   Apple`, `Parent launchd (pid 1)`, and no `Part of`.
 - **A copy of a developer tool.** As above, with a copy of the Command Line Tools'
@@ -80,7 +80,7 @@ Preconditions:
   `mkfifo`. The copy keeps its signing identifier, `com.apple.clang`, which reads as one of
   Apple's developer tools wherever it is: its row reads `clang, 2 processes · clang,
   unnamed code` (the driver and its `-cc1`), not a member of `macOS`.
-- **An app among the developer tools.** With Xcode (the user's Mac), its `Xcode Service.app`,
+- **An app among the developer tools.** With Xcode (the development Mac), its `Xcode Service.app`,
   under `Contents/Developer/Library/Xcode/Agents/`, while it runs: its row reads `Xcode
   Service, 1 process · unnamed code`, not its bundle's signer. The detail has `Signed by
   unnamed code`, `Interpreter signed by Apple`, `Interpreter team 59GAB85EFG`.
@@ -90,7 +90,7 @@ Preconditions:
   code`, not a member of `Xcode`. The detail has `Signed by unnamed code`, `Interpreter
   signed by Apple`, `Parent time (pid N)`. A shell at a terminal is still not one: a person
   may be typing.
-- **An Apple-signed Xcode.** On testmac, whose Xcode is signed by Apple (the user's is the App
+- **An Apple-signed Xcode.** On testmac, whose Xcode is signed by Apple (the development Mac's is the App
   Store's and reads that): `open -ga Xcode`. Its row reads `Xcode, N processes · unnamed
   code`, its detail `Signed by unnamed code`.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
@@ -152,10 +152,10 @@ Preconditions:
   run `2026-11-07T224519` (commit `9a0f53e`). Run `2026-11-07T224338` is the same journeys
   on `2ec0b40`, before them: no swift row (its process counted in `macOS`, 553 against 552
   after), the node row named `.`, and node's team as `Team`.
-- The Python row with Xcode as the developer folder proven 2026-11-07 on the user's Mac, run
+- The Python row with Xcode as the developer folder proven 2026-11-07 on the development Mac, run
   `2026-11-07T224359` (commit `9a0f53e`); in run `2026-11-07T224701` (`2ec0b40`) it was a
   member of `Xcode, 7 processes · App Store`, its detail `Part of Xcode`.
-- The Tk window proven 2026-11-07 on the user's Mac, run `2026-11-07T235514` (commit
+- The Tk window proven 2026-11-07 on the development Mac, run `2026-11-07T235514` (commit
   `2aa83fc`); in run `2026-11-07T235435` (`818f035`) it was the row `Python, 1 process ·
   Apple`, its detail `Part of Python`.
 - The frontend with `-interpret` after its script and the swift-frontend tool proven
@@ -164,12 +164,12 @@ Preconditions:
   and the digester a row of its own, `Swift, 1 process · swift-frontend script`.
 - The compile job proven 2026-11-08 on testmac, its row, run `2026-11-08T011100` (commit
   `7d50eec`); in run `2026-11-08T010801` (`1ab9f0b`) it read `swift-frontend, 1 process ·
-  swift-frontend script`. Through Xcode's toolchain on the user's Mac, row and detail, run
+  swift-frontend script`. Through Xcode's toolchain on the development Mac, row and detail, run
   `2026-11-08T010935` (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) it had no row of
   its own. Inline code and Python's `-c` as `unnamed code` are unit-tested only.
 - The copy of clang proven 2026-11-08 on testmac, its row, run `2026-11-08T014224` (commit
   `a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) it had no row of its own. Its detail
-  was not saved. Xcode Service's row proven 2026-11-08 on the user's Mac, run
+  was not saved. Xcode Service's row proven 2026-11-08 on the development Mac, run
   `2026-11-08T013950` (`a8e6f29`); in run `2026-11-08T013910` (`e06b5dd`) it read `Xcode
   Service, 1 process · Apple`, its detail already `Signed by unnamed code`.
 - Standard input and the Apple-signed Xcode proven 2026-11-08 on testmac, run
@@ -186,7 +186,7 @@ Preconditions:
   `build/verify/runs/testmac-2026-11-08/`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
-- On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,
+- On the development Mac the panel closed partway through two runs (`2026-11-07T224046`,
   `2026-11-07T224152`) when something else took focus; retrying each reading got through.
 - testmac's display sleeps after a minute idle, which closes the panel and sets the
   session's `CGSSessionScreenIsLocked` with no password lock; hold `caffeinate -di` for
