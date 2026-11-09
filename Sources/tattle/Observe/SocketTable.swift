@@ -1,7 +1,6 @@
 import CSocketTable
 import Foundation
 
-/// One entry of the kernel's TCP or UDP socket table.
 struct SocketEntry: Equatable, Sendable {
     enum Proto: String, Sendable { case tcp, udp }
 
@@ -24,7 +23,6 @@ struct SocketEntry: Equatable, Sendable {
     static let tcpListen: Int32 = 1
     static let tcpEstablished: Int32 = 4
 
-    /// A TCP listener, or a bound UDP socket with no peer.
     var isListening: Bool {
         switch proto {
         case .tcp: tcpState == Self.tcpListen

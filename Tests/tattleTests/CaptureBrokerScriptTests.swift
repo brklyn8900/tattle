@@ -199,7 +199,6 @@ final class CaptureBrokerScriptTests: XCTestCase {
         XCTAssertEqual(contents(layout.helperPath), genuine)
     }
 
-    /// A swap after root verified its copy changes nothing root uses.
     func testASwapAfterVerificationDoesNotReachRoot() throws {
         let impostor = try signedImpostor()
         try "/bin/cp \(CaptureBroker.shell(impostor.path)) \(CaptureBroker.shell(bundledHelper.path))\n"

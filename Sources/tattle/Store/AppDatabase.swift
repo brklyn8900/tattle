@@ -6,7 +6,6 @@ import GRDB
 struct AppDatabase: Sendable {
     let writer: any DatabaseWriter
 
-    /// Opens (or creates) the database at `url`, running pending migrations.
     init(at url: URL) throws {
         // A previous instance may still be exiting with the file open; wait rather than
         // fail the write at once.

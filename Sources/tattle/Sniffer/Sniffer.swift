@@ -21,7 +21,6 @@ final class Sniffer: @unchecked Sendable {
         var hardwareAddress: @Sendable (String) -> [UInt8]? = { PacketCapture.hardwareAddress(of: $0) }
         /// Every address, or one interface's.
         var addresses: @Sendable (String?) -> Set<IPAddress> = { localAddresses(of: $0) }
-        /// The DNS servers this Mac sends queries to.
         var resolvers: @Sendable () -> Set<IPAddress> = { systemResolvers() }
         var interfaceCheckEvery: TimeInterval = 5
     }

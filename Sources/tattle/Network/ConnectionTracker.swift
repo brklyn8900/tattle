@@ -154,7 +154,6 @@ struct ConnectionTracker: Sendable {
     private(set) var live: [String: Connection] = [:]
     private(set) var hasPolled = false
 
-    /// Connections still open, newest first.
     var open: [Connection] { live.values.sorted { $0.firstSeen > $1.firstSeen } }
 
     /// Folds one reading of the table in. On the first reading every connection is

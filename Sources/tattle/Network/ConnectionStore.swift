@@ -171,7 +171,6 @@ struct ConnectionStore: Sendable {
         }
     }
 
-    /// Deletes connections that ended before `cutoff`. Returns how many went.
     @discardableResult
     func prune(endedBefore cutoff: Date) throws -> Int {
         try database.writer.write { db in

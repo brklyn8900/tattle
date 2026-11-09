@@ -55,7 +55,6 @@ struct CaptureFilter: Equatable, Sendable {
         a.jumpIfEqual(0x40, v4, else: nil)
         a.jumpIfEqual(0x60, v6, else: drop)
 
-        // IPv4
         a.mark(v4)
         let v4out = a.label(), v4in = a.label()
         a.loadHalf(at: L + 6)
@@ -88,7 +87,6 @@ struct CaptureFilter: Equatable, Sendable {
         a.loadHalfIndexed(at: L)  // UDP source port
         a.jumpIfEqual(53, accept, else: drop)
 
-        // IPv6
         a.mark(v6)
         let v6out = a.label(), v6in = a.label()
         emitDirection(&a, direction, linkLength: L, family: .v6, outbound: v6out, inbound: v6in)

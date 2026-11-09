@@ -6,7 +6,6 @@ struct CodeSignature: Equatable, Sendable {
     enum Signer: Equatable, Sendable {
         /// Apple's own code, as macOS is: signed by Apple itself (`anchor apple`).
         case apple
-        /// Distributed through the Mac App Store.
         case appStore
         /// Developer ID: the name on the certificate is the publisher.
         case developerID(name: String)

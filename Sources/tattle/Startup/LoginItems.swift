@@ -10,9 +10,7 @@ struct LoginItem: Equatable, Sendable, Identifiable {
         case loginItemHelper
         /// A launch agent, registered by its app or found as a plist.
         case agent
-        /// A launch daemon.
         case daemon
-        /// Background App Refresh for an app.
         case backgroundRefresh
         /// Runs when Spotlight indexes the app's file types.
         case spotlightImporter

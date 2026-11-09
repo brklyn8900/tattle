@@ -6,7 +6,6 @@ enum CaptureError: Error, Equatable {
     /// `/dev/bpf*` could not be opened: root-only until the broker (ADR-0003) exists.
     case open(errno: Int32)
     case prepare(errno: Int32)
-    /// The kernel refused the filter program.
     case filterRejected(errno: Int32)
     case read(errno: Int32)
     case noInterface

@@ -2,7 +2,6 @@ import Foundation
 import GRDB
 import os
 
-/// Reads and writes knowledge-base rules.
 struct RuleStore: Sendable {
     let database: AppDatabase
 
@@ -31,7 +30,6 @@ struct RuleStore: Sendable {
         }
     }
 
-    /// The confirmed rule that saving `rule` would replace, if any.
     func confirmedRule(replacedBy rule: Rule) throws -> Rule? {
         try database.writer.read { try Self.confirmed(rule, in: $0) }
     }

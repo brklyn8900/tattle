@@ -3,7 +3,6 @@ import Foundation
 /// What the sniffer found out about where a connection goes.
 struct ConnectionName: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
-        /// The name is where the connection goes.
         case destination
         /// The name is a relay's ingress; the destination is hidden inside (ADR-0001).
         case relay
@@ -95,7 +94,6 @@ struct PendingNames: Equatable, Sendable {
         return outcomes
     }
 
-    /// Forgets names older than `keepFor`, except those of flows still open.
     mutating func prune(now: Date, keeping open: Set<String>) {
         names = names.filter { open.contains($0.key) || now.timeIntervalSince($0.value.at) < Self.keepFor }
         opened = opened.filter { open.contains($0.key) || now.timeIntervalSince($0.value) < Self.keepFor }

@@ -191,7 +191,6 @@ final class CaptureBrokerTests: XCTestCase {
         return Caller(url: url, requirement: "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\"")
     }
 
-    /// Starts `caller` asking the broker at `service` for `interface`.
     private func start(_ caller: Caller, service: CaptureBroker.Service, interface: String = "en0", delay: Int? = nil) throws -> (Process, Pipe) {
         let process = Process()
         process.executableURL = caller.url

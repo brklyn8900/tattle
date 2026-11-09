@@ -87,7 +87,6 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// Where Load and Unload act.
     var launchDomain = LaunchDomain.gui
 
-    /// The program and its arguments.
     var runs: String? { program.map { ([$0] + arguments).joined(separator: " ") } }
 
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
@@ -154,7 +153,6 @@ struct StartupItem: Equatable, Sendable, Identifiable {
 struct StartupSnapshot: Equatable, Sendable {
     var items: [StartupItem]
     var appleCount: Int
-    /// Why the login-items database could not be read, if it could not.
     var loginItemsError: String?
     var takenAt: Date
 

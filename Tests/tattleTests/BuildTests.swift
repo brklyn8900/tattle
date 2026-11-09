@@ -4,7 +4,6 @@ import XCTest
 final class BuildTests: XCTestCase {
     private var repository: URL { URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() }
 
-    /// The recipe `make app` would run with the given variables.
     private func recipe(_ variables: [String]) throws -> [String] {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/make")

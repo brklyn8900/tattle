@@ -119,7 +119,6 @@ struct FlowNamer: Sendable {
     /// A flow not seen for this long is forgotten; a later packet with the same
     /// addresses is a new connection.
     static let idleAfter = 120.0
-    /// How long a DNS answer is remembered.
     static let dnsRemembered = 3600.0
     /// The most DNS answers remembered; the oldest goes first.
     static let dnsCapacity = 4096

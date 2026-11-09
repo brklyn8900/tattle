@@ -3,7 +3,6 @@ import XCTest
 @testable import tattle
 
 final class SnifferTests: XCTestCase {
-    /// Waits at most `seconds` for `condition`, polling.
     private func eventually(within seconds: TimeInterval = 3, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while !condition() && Date() < deadline { usleep(20_000) }
@@ -123,7 +122,6 @@ final class SnifferTests: XCTestCase {
         var opens: Int { begun.withLock { $0 } }
         func open() throws -> any CaptureSource {
             let number = begun.withLock { n -> Int in n += 1; return n }
-            // The first open is the slow one; later ones answer at once.
             if number == 1 { _ = gate.wait(timeout: .now() + 20) }
             return FakeCapture(linkType: PacketCapture.linkEthernet)
         }

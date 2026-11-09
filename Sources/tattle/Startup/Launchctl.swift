@@ -5,7 +5,6 @@ import Foundation
 /// within one domain, so they are kept apart.
 struct LaunchctlState: Equatable, Sendable {
     struct Service: Equatable, Sendable {
-        /// Running pid, nil when not running.
         var pid: Int32?
         /// Exit status of the last run, nil if it never ran.
         var lastExitStatus: Int32?

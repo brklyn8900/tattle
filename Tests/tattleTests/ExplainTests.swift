@@ -143,7 +143,6 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(mail.redact("mail", as: .host), "<user>")
     }
 
-    /// A bare name that is known does not stop a peer's name from being replaced whole.
     func testATailnetNameIsReplacedWholeWhenOnlyItsFirstLabelIsKnown() {
         let nas = Redactor(home: "", username: "", machineNames: ["nas"])
         XCTAssertEqual(nas.redact("nas.tail1234.ts.net", as: .host), "<tailnet-device>")

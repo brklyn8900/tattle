@@ -262,7 +262,6 @@ enum LaunchedCode: Equatable, Sendable {
     ]
     private static let openLongValues = ["stderr", "env", "arch"]
 
-    /// What the interpreter `name` runs with `arguments`.
     private static func interpreted(by name: String, arguments: [String]?, _ grammar: Grammar) -> LaunchedCode {
         guard let arguments else { return .unnamed(interpreter: name) }
         switch scan(arguments, grammar) {
@@ -326,7 +325,6 @@ enum LaunchedCode: Equatable, Sendable {
         /// What runs is a module, a package's script or a server the option asks for, by name:
         /// code the command line does not hold.
         case named
-        /// The code comes from standard input.
         case standardInput
         /// The option's value is the file the code is in.
         case file
@@ -370,7 +368,6 @@ enum LaunchedCode: Equatable, Sendable {
     private static func scan(_ arguments: [String], _ grammar: Grammar) -> Found {
         var operand: Int?
         var index = 0
-        // A value in the same word, else the next word.
         func value(attached: Substring?) -> String? {
             if let attached { return String(attached) }
             guard index < arguments.count else { return nil }

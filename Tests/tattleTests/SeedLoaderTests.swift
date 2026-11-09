@@ -6,7 +6,6 @@ final class SeedLoaderTests: XCTestCase {
     private var settings: SettingsStore!
     private var loader: SeedLoader!
 
-    /// The seed files checked into the repo.
     private let repoSeeds = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .appending(path: "Resources/knowledge")

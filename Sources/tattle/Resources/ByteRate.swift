@@ -1,6 +1,5 @@
 import Foundation
 
-/// Formats a bytes-per-second rate.
 enum ByteRate {
     /// Menu bar form, decimal units, at most four characters: 0, 512, 12K, 1.2M, 3.4G.
     static func compact(_ bytesPerSecond: Double) -> String {

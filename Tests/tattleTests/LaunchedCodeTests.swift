@@ -418,7 +418,6 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertEqual(signer("/usr/bin/xcrun", ["--sdk", "macosx", "/x/tool"], identifiers: identifiers), .unnamed)
         // Under another name it is that tool, and the arguments are the tool's.
         XCTAssertEqual(signer("/Users/x/lldb", ["/bin/ls", "-b", "-s", "/x/cmds"], identifiers: identifiers), .unnamed)
-        // A script it runs is a script.
         XCTAssertEqual(signer("/usr/bin/xcrun", ["swift", "/x/a.swift"], identifiers: identifiers), .script)
         XCTAssertEqual(signer("/Users/x/swift", ["/x/a.swift"], identifiers: identifiers), .script)
     }

@@ -22,7 +22,6 @@ struct ConnectionOwner: Equatable, Sendable {
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
-    /// The row is the app when there is one, else the process.
     var groupSignature: CodeSignature? { app == nil ? signature : appSignature }
     /// None for a file in the app's bundle that its signer did not sign.
     var groupIdentity: CodeIdentity? {
@@ -192,7 +191,6 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         return facts
     }
 
-    /// Who made the connection.
     private var ownerFacts: [Fact] {
         var facts = [Fact(name: "Process", value: "\(owner.processName) (pid \(connection.pid))")]
         if let interpreter = owner.interpreter, let path = owner.path { facts.append(Fact(name: "Runs with", value: "\(interpreter) (\(path))")) }

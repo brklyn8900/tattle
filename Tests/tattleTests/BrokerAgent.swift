@@ -17,7 +17,6 @@ struct BrokerAgent {
     /// The program's stderr, where the broker's log lines also go.
     var log: String { (try? String(contentsOf: directory.appending(path: "stderr.log"), encoding: .utf8)) ?? "" }
 
-    /// A label for this run that no agent holds yet.
     static func uniqueLabel() -> String {
         count += 1
         return "\(labelPrefix)\(getpid()).\(count)"
@@ -80,7 +79,6 @@ struct BrokerAgent {
         return (process.terminationStatus, (try? String(contentsOf: file, encoding: .utf8)) ?? "")
     }
 
-    /// The job's pid while it runs.
     var pid: Int32? {
         LaunchctlState.parseServices(Self.run(["print", Self.domain]).output)[label]?.pid
     }

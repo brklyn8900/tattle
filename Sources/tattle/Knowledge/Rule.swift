@@ -26,7 +26,6 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
         case low, medium, high
     }
 
-    /// Unconfirmed LLM answers are dropped after this long.
     static let unconfirmedLLMLifetime: TimeInterval = 45 * 24 * 60 * 60
 
     var id: Int64?
@@ -95,7 +94,6 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
         return !needsIdentity || (!self.identity.isEmpty && self.identity == identity)
     }
 
-    /// True once an unconfirmed LLM rule has outlived its lifetime.
     func isExpired(at now: Date) -> Bool {
         source == .llm && confirmed == nil
             && now.timeIntervalSince(created) > Self.unconfirmedLLMLifetime
