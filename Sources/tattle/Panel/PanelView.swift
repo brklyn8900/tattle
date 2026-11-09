@@ -72,7 +72,7 @@ private struct WindowOnScreenReader: NSViewRepresentable {
 
     final class ReaderView: NSView {
         var onChange: @MainActor (Bool) -> Void
-        private var observer: NSObjectProtocol?
+        private var observers: [NSObjectProtocol] = []
 
         init(onChange: @escaping @MainActor (Bool) -> Void) {
             self.onChange = onChange
@@ -84,19 +84,31 @@ private struct WindowOnScreenReader: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-            observer = nil
+            let center = NotificationCenter.default
+            for observer in observers { center.removeObserver(observer) }
+            observers = []
             guard let window else { return }
-            observer = NotificationCenter.default.addObserver(
-                forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reportOcclusion() }
-            }
+            observers = [
+                center.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.reportOcclusion() }
+                },
+                center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.reportIfOnScreen() }
+                },
+            ]
+            reportIfOnScreen()
         }
 
         private func reportOcclusion() {
             guard let window else { return }
             onChange(window.occlusionState.contains(.visible))
+        }
+
+        /// Recovers a change that went unreported, so the panel cannot stay frozen on screen.
+        /// Only ever reports on screen: on an ordinary open the window still reads as occluded
+        /// at both of these moments, and the occlusion notification follows.
+        private func reportIfOnScreen() {
+            if window?.occlusionState.contains(.visible) == true { onChange(true) }
         }
     }
 }
