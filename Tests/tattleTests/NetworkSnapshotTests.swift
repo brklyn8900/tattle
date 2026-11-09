@@ -59,7 +59,7 @@ final class NetworkSnapshotTests: XCTestCase {
 
     func testOwnerResolution() {
         var read: [String] = []
-        let helper = ConnectionOwner.resolve(pid: 101, in: processes, runningApp: { _ in nil }) { path in
+        let helper = ConnectionOwner.resolve(pid: 101, in: { processes[$0] }, runningApp: { _ in nil }) { path in
             read.append(path)
             return CodeSignature(signer: .developerID(name: "Slack Technologies"), teamIdentifier: "BQR82RBBHL")
         }
@@ -68,21 +68,21 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(helper.groupID, "/Applications/Slack.app")
         XCTAssertEqual(Set(read), [processes[101]!.path!, "/Applications/Slack.app"], "the helper's own file, and the app apart")
 
-        let daemon = ConnectionOwner.resolve(pid: 300, in: processes, runningApp: { _ in nil }) { _ in CodeSignature(signer: .apple) }
+        let daemon = ConnectionOwner.resolve(pid: 300, in: { processes[$0] }, runningApp: { _ in nil }) { _ in CodeSignature(signer: .apple) }
         XCTAssertEqual(daemon.displayName, "trustd")
         XCTAssertEqual(daemon.groupID, "process:trustd")
-        XCTAssertEqual(ConnectionOwner.resolve(pid: 999, in: processes, runningApp: { _ in nil }, signature: { _ in nil }).processName, "pid 999")
+        XCTAssertEqual(ConnectionOwner.resolve(pid: 999, in: { processes[$0] }, runningApp: { _ in nil }, signature: { _ in nil }).processName, "pid 999")
 
         // Safari's networking runs in a service launchd starts for it: not a child, but
         // macOS knows whose it is.
-        let service = ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil },
+        let service = ConnectionOwner.resolve(pid: 400, in: { processes[$0] }, runningApp: { _ in nil },
                                               responsible: { $0 == 400 ? 500 : nil }, signature: { _ in nil })
         XCTAssertEqual(service.displayName, "Safari")
         XCTAssertEqual(service.processName, "com.apple.WebKit.Networking")
         XCTAssertEqual(service.groupID, "/Applications/Safari.app")
-        let orphan = ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { _ in nil })
+        let orphan = ConnectionOwner.resolve(pid: 400, in: { processes[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { _ in nil })
         XCTAssertEqual(orphan.displayName, "com.apple.WebKit.Networking", "no responsible process: the service stands alone")
-        XCTAssertEqual(ConnectionOwner.resolve(pid: 400, in: processes, runningApp: { _ in nil }, responsible: { _ in 400 }, signature: { _ in nil }).displayName,
+        XCTAssertEqual(ConnectionOwner.resolve(pid: 400, in: { processes[$0] }, runningApp: { _ in nil }, responsible: { _ in 400 }, signature: { _ in nil }).displayName,
                        "com.apple.WebKit.Networking", "responsible for itself")
     }
 
@@ -102,7 +102,7 @@ final class NetworkSnapshotTests: XCTestCase {
         ]
         let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         func owner(_ pid: Int32) -> ConnectionOwner {
-            ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] })
+            ConnectionOwner.resolve(pid: pid, in: { byPid[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] })
         }
 
         let curl = owner(701)
@@ -149,7 +149,7 @@ final class NetworkSnapshotTests: XCTestCase {
         func row(_ pids: Int32...) -> ConnectionGroup? {
             NetworkSnapshot(connections: pids.map { pid in
                 LiveConnection(connection: connection(pid, "1.1.1.1"),
-                               owner: ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] }),
+                               owner: ConnectionOwner.resolve(pid: pid, in: { byPid[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] }),
                                isNew: false)
             }, takenAt: t0).groups.first
         }
@@ -177,7 +177,7 @@ final class NetworkSnapshotTests: XCTestCase {
         let list = [entry(810, 1, "\(bundle)/Contents/MacOS/Tool"), entry(811, 1, "\(bundle)/Contents/MacOS/dropper")]
         let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         func owner(_ pid: Int32) -> ConnectionOwner {
-            ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] })
+            ConnectionOwner.resolve(pid: pid, in: { byPid[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] })
         }
         XCTAssertNotNil(owner(810).groupIdentity)
         XCTAssertNil(owner(811).groupIdentity)
@@ -292,6 +292,42 @@ final class NetworkSnapshotTests: XCTestCase {
 
     /// A reading waits off the main actor for a new pid's owner, and the SYN's event can land
     /// in that gap, before the row and its history exist.
+    /// Pids no process can have, so the real lookups behind `fold` find nothing of their own.
+    @MainActor
+    func testAReadingAsksOnlyAboutTheOwnersItMustNameAndTheirLines() async throws {
+        let table: [Int32: ProcessEntry] = [
+            9_000_001: entry(9_000_001, 9_000_002, "/x/helper"),
+            9_000_002: entry(9_000_002, 1, "/Applications/Slack.app/Contents/MacOS/Slack"),
+            9_000_003: entry(9_000_003, 1, "/x/bystander"),
+        ]
+        let asked = AskedPids()
+        let database = try AppDatabase.inMemory()
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
+                                       settings: try AppSettings(store: SettingsStore(database: database)),
+                                       processLookup: { { pid in asked.record(pid); return table[pid] } })
+        func socket(localPort: UInt16) -> SocketEntry {
+            SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: localPort, remoteAddress: "17.1.1.1", remotePort: 443,
+                        tcpState: SocketEntry.tcpEstablished, pid: 9_000_001, effectivePid: 0, uid: 501)
+        }
+
+        await observer.fold(entries: [socket(localPort: 40000)], now: t0)
+        XCTAssertEqual(asked.pids, [9_000_001, 9_000_002], "the owner and the line its app comes from, not the table")
+        let owner = try XCTUnwrap(observer.snapshot?.connections.first?.owner)
+        XCTAssertEqual(owner.processName, "helper")
+        XCTAssertEqual(owner.app?.name, "Slack")
+
+        let before = asked.pids
+        await observer.fold(entries: [socket(localPort: 40000), socket(localPort: 40001)], now: t0 + 2)
+        XCTAssertEqual(asked.pids, before, "an owner already known is not read again")
+    }
+
+    private final class AskedPids: @unchecked Sendable {
+        private let lock = NSLock()
+        private var asked = Set<Int32>()
+        var pids: Set<Int32> { lock.withLock { asked } }
+        func record(_ pid: Int32) { lock.withLock { _ = asked.insert(pid) } }
+    }
+
     @MainActor
     func testAnOpeningSeenWhileAReadingResolvesOwnersReachesTheRowAndItsHistory() async throws {
         let database = try AppDatabase.inMemory()
@@ -301,7 +337,7 @@ final class NetworkSnapshotTests: XCTestCase {
         let now = Date()
         let socket = SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: 40000, remoteAddress: "17.1.1.1", remotePort: 443,
                                  tcpState: SocketEntry.tcpEstablished, pid: getpid(), effectivePid: 0, uid: 501)
-        let reading = Task { await observer.fold(entries: [socket], processes: [], now: now) }
+        let reading = Task { await observer.fold(entries: [socket], now: now) }
         await Task.yield()
         XCTAssertNil(observer.snapshot, "the reading is waiting for the owner")
         observer.confirmOutbound(FlowKey(proto: .tcp, localPort: 40000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443), openedAt: now)
@@ -353,7 +389,7 @@ final class NetworkSnapshotTests: XCTestCase {
     private func owner(_ pid: Int32, _ list: [ProcessEntry], signatures: [String: CodeSignature],
                        runningApp: @escaping (Int32) -> String? = { _ in nil }) -> ConnectionOwner {
         let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
-        return ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: runningApp, responsible: { _ in nil }, signature: { signatures[$0] })
+        return ConnectionOwner.resolve(pid: pid, in: { byPid[$0] }, runningApp: runningApp, responsible: { _ in nil }, signature: { signatures[$0] })
     }
 
     /// A copy of Apple's bash under another name is known as bash only by its signature, so

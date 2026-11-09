@@ -188,6 +188,29 @@ enum ProcessTable {
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
+    /// For a caller that asks about a few processes instead of the table: each is read as `list`
+    /// reads it, once, so an ancestor several owners share costs one read and reads the same
+    /// each time. Nil for one that has exited or is a zombie. Use it from one thread.
+    static func lookup(signature: @escaping (String) -> CodeSignature?) -> (Int32) -> ProcessEntry? {
+        var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
+        var read: [Int32: ProcessEntry?] = [:]
+        return { pid in
+            if let known = read[pid] { return known }
+            let found = kernelRecord(pid).flatMap { entry($0, scratch: &scratch, signature: signature) }
+            read[pid] = .some(found)
+            return found
+        }
+    }
+
+    /// The kernel's record of a process. Nil when it has exited.
+    private static func kernelRecord(_ pid: Int32) -> kinfo_proc? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var length = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0, length > 0 else { return nil }
+        return info
+    }
+
     private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (String) -> CodeSignature?) -> ProcessEntry? {
         guard Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         let pid = info.kp_proc.p_pid
@@ -264,10 +287,7 @@ enum ProcessTable {
     /// The kernel's name for a process: the file name of the program it last started, cut to
     /// `MAXCOMLEN` bytes. Nil when it has exited.
     static func commandName(_ pid: Int32) -> String? {
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        var info = kinfo_proc()
-        var length = MemoryLayout<kinfo_proc>.stride
-        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0, length > 0, Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
+        guard let info = kernelRecord(pid), Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         return commandName(of: info)
     }
 

@@ -95,6 +95,15 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(started("~"), "~")
     }
 
+    func testLookingUpOneProcessFindsItAsTheListHasIt() throws {
+        let listed = try ProcessTable.list(signature: { _ in nil })
+        let lookup = ProcessTable.lookup(signature: { _ in nil })
+        for pid in [getpid(), 1, 0] {
+            XCTAssertEqual(lookup(pid), try XCTUnwrap(listed.first { $0.pid == pid }), "pid \(pid)")
+        }
+        XCTAssertNil(lookup(Int32.max), "no such process")
+    }
+
     func testTheKernelNamesAProcessAfterItsFile() throws {
         let path = try XCTUnwrap(ProcessTable.pidPath(getpid()))
         XCTAssertEqual(ProcessTable.commandName(getpid()), ProcessTable.commandName(ofExecutable: path))

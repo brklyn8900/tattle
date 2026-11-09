@@ -42,7 +42,7 @@ final class ApplesProgramTests: XCTestCase {
         let byPid = Dictionary(machine.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         func group(_ pids: [Int32]) throws -> ConnectionGroup {
             let connections = pids.enumerated().map { index, pid in
-                let owner = ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: appleSigned)
+                let owner = ConnectionOwner.resolve(pid: pid, in: { byPid[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, signature: appleSigned)
                 return LiveConnection(connection: connection(pid, at: -Double(index)), owner: owner, isNew: false)
             }
             let groups = NetworkSnapshot(connections: connections, takenAt: started).groups
@@ -87,7 +87,7 @@ final class ApplesProgramTests: XCTestCase {
         let signed = CodeSignature(signer: .apple, identifier: "com.apple.mail")
         let entry = ProcessEntry(pid: 70, parentPid: 1, uid: 501, name: "Mail", path: "\(mail)/Contents/MacOS/Mail", started: started)
         let processes = ProcessSnapshot.build(entries: [entry], previous: nil, signature: { _ in signed }, responsible: { _ in nil }, takenAt: started)
-        let owner = ConnectionOwner.resolve(pid: 70, in: [70: entry], runningApp: { _ in nil }, responsible: { _ in nil }, signature: { _ in signed })
+        let owner = ConnectionOwner.resolve(pid: 70, in: { $0 == 70 ? entry : nil }, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { _ in signed })
         let network = NetworkSnapshot(connections: [LiveConnection(connection: connection(70, at: 0), owner: owner, isNew: false)], takenAt: started)
         XCTAssertEqual(processes.group(id: mail)?.identity, "apple:com.apple.mail:")
         XCTAssertEqual(try XCTUnwrap(network.groups.first).identity, processes.group(id: mail)?.identity)
@@ -95,7 +95,7 @@ final class ApplesProgramTests: XCTestCase {
         // Two programs that took one name share a Network row, and neither speaks for it.
         func named(_ pid: Int32, _ path: String) -> LiveConnection {
             let entry = ProcessEntry(pid: pid, parentPid: 1, uid: 501, name: "updater", path: path, started: started)
-            let owner = ConnectionOwner.resolve(pid: pid, in: [pid: entry], runningApp: { _ in nil }, responsible: { _ in nil },
+            let owner = ConnectionOwner.resolve(pid: pid, in: { $0 == pid ? entry : nil }, runningApp: { _ in nil }, responsible: { _ in nil },
                                                 signature: { _ in CodeSignature(signer: .unsigned) })
             return LiveConnection(connection: connection(pid, at: 0), owner: owner, isNew: false)
         }

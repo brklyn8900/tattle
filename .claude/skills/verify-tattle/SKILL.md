@@ -187,7 +187,7 @@ build/Tattle.app` starts it again.
   so a connection to the router or another LAN device never gets a name or a reason.
 - A connection is filed under its responsible app: `nc` started from this terminal is
   filed under `iTerm`, with `nc` in the connection row's subtitle. A process that exits
-  before Tattle reads the process list shows as `pid <n>`.
+  before Tattle reads it shows as `pid <n>`.
 - Packet access (the broker) is one launch daemon shared by the dev and release copies;
   removing it stops names in every copy running.
 - Each copy has its own permission grants. Without Full Disk Access the Startup tab

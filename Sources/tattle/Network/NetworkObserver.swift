@@ -34,9 +34,11 @@ final class NetworkObserver {
     private var task: Task<Void, Never>?
     private var sniffer: Sniffer?
     private var isPolling = false
-    /// A reading asked for while one was running, and whether it must be eager.
-    private var pollRequested: Bool?
+    /// A reading was asked for while one was running.
+    private var pollRequested = false
     private var promptPollScheduled = false
+    /// Makes the lookup that one batch of owners is read through.
+    private let processLookup: @Sendable () -> (Int32) -> ProcessEntry?
 
     /// Rule sources whose category may decide a connection's kind.
     private static let kindSources = SeedLoader.seedSources.union([.user])
@@ -44,10 +46,12 @@ final class NetworkObserver {
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
 
-    init(store: ConnectionStore, rules: RuleStore, settings: AppSettings) {
+    init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
+         processLookup: @escaping @Sendable () -> (Int32) -> ProcessEntry? = { ProcessTable.lookup(signature: { _ in nil }) }) {
         self.store = store
         self.rules = rules
         self.settings = settings
+        self.processLookup = processLookup
     }
 
     func start(every interval: Duration = .seconds(2)) {
@@ -192,7 +196,7 @@ final class NetworkObserver {
             try? await Task.sleep(for: Self.promptPollDelay)
             guard let self else { return }
             promptPollScheduled = false
-            await poll(eager: true)
+            await poll()
         }
     }
 
@@ -200,57 +204,51 @@ final class NetworkObserver {
 
     /// One reading of the socket table. Readings never overlap: a reading that would
     /// have, runs after the current one, so an older table is never folded in after a
-    /// newer one and closes connections that are still there. An eager reading takes
-    /// the process list in the same moment as the socket table, for a connection whose
-    /// process may be gone by the time the owner is looked up.
-    private func poll(eager: Bool = false) async {
+    /// newer one and closes connections that are still there.
+    private func poll() async {
         guard !isPolling else {
-            pollRequested = (pollRequested ?? false) || eager
+            pollRequested = true
             return
         }
         isPolling = true
-        await read(eager: eager)
+        await read()
         isPolling = false
-        if let again = pollRequested {
-            pollRequested = nil
-            await poll(eager: again)
+        if pollRequested {
+            pollRequested = false
+            await poll()
         }
     }
 
-    private func read(eager: Bool) async {
+    private func read() async {
         let now = Date()
         let entries: [SocketEntry]
-        var processes: [ProcessEntry]?
         do {
-            (entries, processes) = try await Task.detached(priority: .utility) {
-                // Processes are listed without their signatures, since reading every one would
-                // hold up the first poll; each owner's are read when it is resolved, once.
-                (try SocketTable.read(), eager ? try? ProcessTable.list(signature: { _ in nil }) : nil)
-            }.value
+            entries = try await Task.detached(priority: .utility) { try SocketTable.read() }.value
         } catch {
             self.error = String(describing: error)
             return
         }
-        await fold(entries: entries, processes: processes, now: now)
+        await fold(entries: entries, now: now)
     }
 
     /// Takes one reading of the table into the tracker, the history and the snapshot.
-    func fold(entries: [SocketEntry], processes: [ProcessEntry]?, now: Date) async {
+    func fold(entries: [SocketEntry], now: Date) async {
         let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 
-        // Owners are resolved once per pid and executable, from one process list per poll, off
-        // the main thread; a pid whose connections all closed is forgotten so a reused pid is
-        // resolved afresh.
+        // Owners are resolved once per pid and executable, off the main thread, right after the
+        // reading names them: the process may be gone soon after. Only the owner and the line
+        // its app comes from are read. A pid whose connections all closed is forgotten so a
+        // reused pid is resolved afresh.
         let unknown = ConnectionOwner.unresolved(opened: Set(changes.opened.map(\.pid)), known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
         if !unknown.isEmpty {
             let signatures = signatures
-            let resolved = await Task.detached(priority: .utility) { [processes] () -> [Int32: ConnectionOwner] in
-                guard let list = processes ?? (try? ProcessTable.list(signature: { _ in nil })) else { return [:] }
-                let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+            let processLookup = processLookup
+            let resolved = await Task.detached(priority: .utility) { () -> [Int32: ConnectionOwner] in
+                let processes = processLookup()
                 var result: [Int32: ConnectionOwner] = [:]
                 for pid in unknown {
                     result[pid] = ConnectionOwner.resolve(
-                        pid: pid, in: byPid,
+                        pid: pid, in: processes,
                         runningApp: { NSRunningApplication(processIdentifier: $0)?.bundleURL?.path },
                         signature: signatures.signature(at:))
                 }
