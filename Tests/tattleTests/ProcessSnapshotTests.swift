@@ -85,20 +85,6 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: path)?.leader?.pid, 9000)
     }
 
-    /// Launch Services names Safari by /Applications/Safari.app, a link into the cryptex its
-    /// executable runs from.
-    func testAnAppsLeaderIsFoundThroughALinkToItsBundle() throws {
-        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appending(path: UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let real = root.appending(path: "cryptex/Safari.app"), link = root.appending(path: "Safari.app")
-        try FileManager.default.createDirectory(at: real.appending(path: "Contents/MacOS"), withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
-        let main = entry(9000, 1, real.path + "/Contents/MacOS/Safari")
-        let snapshot = ProcessSnapshot.build(entries: [main], previous: nil, signature: signedByAcme,
-                                             runningApp: { _ in link.path }, responsible: { _ in nil }, takenAt: epoch)
-        XCTAssertEqual(snapshot.group(id: real.path)?.leader?.pid, 9000)
-    }
-
     /// A program started from a shell has a parent, and a worker with a lower pid after a wrap.
     func testAProgramsLeaderIsTheTopOfItsTree() {
         let snapshot = ProcessSnapshot.build(

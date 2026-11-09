@@ -165,9 +165,8 @@ Preconditions:
   `Xcode, 7 processes · Apple`, Python among its members, and no `Python` row.
 - Quit on an app with a helper and another account's process proven 2026-11-08 on testmac,
   run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
-  `build/verify/runs/testmac-2026-11-08/`. Two copies of an app, an app reached through a
-  link to its bundle (Safari's cryptex) and a program whose worker has the lower pid rest on
-  unit tests in `ProcessSnapshotTests`.
+  `build/verify/runs/testmac-2026-11-08/`. Two copies of an app and a program whose worker has the lower pid rest on unit tests in
+  `ProcessSnapshotTests`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,

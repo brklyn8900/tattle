@@ -35,13 +35,6 @@ struct AppBundle: Hashable, Sendable {
         return bundle?.owns(executable) != true
     }
 
-    /// Whether `opened`, the bundle Launch Services reports for a process, is this one. It
-    /// names Safari by /Applications/Safari.app, a link into the cryptex Safari runs from.
-    func isOpened(from opened: String?) -> Bool {
-        guard let opened else { return false }
-        return opened == path || URL(fileURLWithPath: opened).resolvingSymlinksInPath().path == URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-    }
-
     /// The bundle Launch Services reports a process was opened from, when it is an app.
     /// Launch Services registers some command-line processes too (node servers that open a
     /// browser, say) and then reports the bare executable, and a script that opens a window
@@ -334,7 +327,7 @@ struct ProcessSnapshot: Equatable, Sendable {
             }) {
                 groups[index].identity = nil
             }
-            groups[index].leaderPid = groups[index].members.filter { bundle.isOpened(from: runningApp($0.pid)) }
+            groups[index].leaderPid = groups[index].members.filter { runningApp($0.pid) == bundle.path }
                 .min { ($0.started, $0.pid) < ($1.started, $1.pid) }?.pid
         }
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
