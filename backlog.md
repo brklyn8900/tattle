@@ -197,3 +197,10 @@ what stays)
 - Only straight and curly apostrophes count as one: a name stored with `’` misses `‘` and `ʼ`,
   and an NFC name misses its NFD spelling. No fact source producing these was found
   (`Redactor.swift`).
+- A login after a hosting name goes out: `io.github.username.tool`, `com.github.username.tool`
+  (`Redactor.swift`).
+- Only `com`, `org`, `net` and `io` count as domain endings, so the author's part goes out
+  after any other: `dev.username.tool`, `app.username.helper`, `edu.username.x`, `uk.co.username.x`
+  (`Redactor.swift`).
+- A startup item labelled with the login reads `<user>` in its key, while its plist keeps the
+  name: `/Library/LaunchAgents/username.plist` (`Redactor.swift`).
