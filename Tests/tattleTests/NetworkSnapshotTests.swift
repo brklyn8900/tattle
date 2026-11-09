@@ -235,7 +235,8 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(values["To port"], "22")
         XCTAssertNil(values["Destination"], "the model is not told the peer is where this Mac went")
         XCTAssertNil(values["First contact"])
-        XCTAssertTrue(Set(facts.filter(\.inPrompt).map(\.name)).isSuperset(of: ["From", "To port"]))
+        XCTAssertTrue(Set(facts.filter(\.inPrompt).map(\.name)).isDisjoint(with: ["From", "To port"]),
+                      "an answer is kept for the host and shown on connections either way")
 
         let out = LiveConnection(connection: connection(100, "17.1.1.1"), owner: owner, isNew: false)
         XCTAssertEqual(out.headline, "sshd to 17.1.1.1:443")

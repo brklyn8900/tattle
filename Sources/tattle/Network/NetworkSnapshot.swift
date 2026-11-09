@@ -141,11 +141,12 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
     func facts(now: Date) -> [Fact] {
         var facts: [Fact] = []
         switch connection.direction {
+        // What the model hears of this connection's direction it would say of the host, and
+        // its answer is shown on every connection to the host.
         case .inbound:
-            facts.append(Fact(name: "From", value: destination))
-            facts.append(Fact(name: "To port", value: String(connection.localPort)))
+            facts.append(Fact(name: "From", value: destination, inPrompt: false))
+            facts.append(Fact(name: "To port", value: String(connection.localPort), inPrompt: false))
         case .unknown:
-            // Which side connected is not known, and what a model hears it says of the host.
             facts.append(Fact(name: "Peer", value: destination, inPrompt: false))
             facts.append(Fact(name: "Local port", value: String(connection.localPort), inPrompt: false))
         case .outbound:
