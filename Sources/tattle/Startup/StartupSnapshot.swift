@@ -39,6 +39,8 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         case enabled, off
         /// A plist Tattle could not read: launchd may still run the job.
         case unreadable(reason: String)
+        /// A folder Tattle could not list: launchd may still run the jobs in it.
+        case unlisted(reason: String)
 
         var text: String {
             switch self {
@@ -51,6 +53,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
             case .enabled: "on"
             case .off: "off"
             case .unreadable: "could not be read"
+            case .unlisted: "could not be listed"
             }
         }
 
@@ -88,11 +91,19 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
+    var isUnlistedFolder: Bool {
+        if case .unlisted = state { return true }
+        return false
+    }
+
     /// Of a file Tattle could not read it knows only the name, unless macOS's record says
     /// what runs: otherwise there is nothing to ask a model.
     var canExplain: Bool {
-        if case .unreadable = state { return program != nil }
-        return true
+        switch state {
+        case .unreadable: program != nil
+        case .unlisted: false
+        default: true
+        }
     }
 
     /// What tells this item's code from another's of its label (`CodeIdentity`): its
@@ -119,7 +130,10 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         }
         facts.append(Fact(name: "When", value: trigger))
         facts.append(Fact(name: "State", value: state.text))
-        if case .unreadable(let reason) = state { facts.append(Fact(name: "Reason", value: reason)) }
+        switch state {
+        case .unreadable(let reason), .unlisted(let reason): facts.append(Fact(name: "Reason", value: reason))
+        default: break
+        }
         if let signature {
             facts.append(.signedBy(signature))
             if case .launchItem(let program?) = signature.signer { facts.append(Fact(name: "Runs Apple's", value: program)) }
@@ -129,7 +143,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         }
         if let developer { facts.append(Fact(name: "Developer", value: developer)) }
         if let parent { facts.append(Fact(name: "Part of", value: parent)) }
-        if let plistURL { facts.append(Fact(name: "Plist", value: plistURL.path)) }
+        if let plistURL { facts.append(Fact(name: isUnlistedFolder ? "Folder" : "Plist", value: plistURL.path)) }
         return facts
     }
 }
@@ -199,14 +213,14 @@ struct StartupSnapshot: Equatable, Sendable {
                 name: registered?.name ?? plist.url.deletingPathExtension().lastPathComponent,
                 program: path,
                 trigger: "unknown",
-                state: .unreadable(reason: plist.reason),
+                state: plist.isFolder ? .unlisted(reason: plist.reason) : .unreadable(reason: plist.reason),
                 signature: signed,
                 codeVersion: path.map { .of(program: $0, signature: signed) } ?? .unknown,
                 developer: registered?.developerName,
                 teamIdentifier: registered?.teamIdentifier,
                 plistURL: plist.url,
                 isLoginItem: registered != nil,
-                launchdScope: plist.scope))
+                launchdScope: plist.isFolder ? nil : plist.scope))
         }
 
         for item in loginItems where (item.isStartupItem || item.isExtension) && !joined.contains(item.identifier) {

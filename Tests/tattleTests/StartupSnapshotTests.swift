@@ -251,6 +251,23 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertNil(row.identity)
     }
 
+    /// Whatever is in a folder that cannot be listed is unknown: the group says so.
+    func testAFolderThatCannotBeListedIsARowOfItsGroup() throws {
+        let url = URL(fileURLWithPath: "/Library/LaunchDaemons")
+        let launchd = LaunchdReader.Result(items: [], appleCount: 0, unreadable: [.init(url: url, scope: .daemon, reason: "why", isFolder: true)])
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: LaunchctlState(), signature: { _ in nil })
+        let row = try XCTUnwrap(snapshot.items(in: .daemons).first)
+        XCTAssertEqual(row.name, "LaunchDaemons")
+        XCTAssertEqual(row.state.text, "could not be listed")
+        XCTAssertEqual(row.plistURL, url)
+        XCTAssertNil(row.launchdScope, "a folder has no job to load or unload")
+        XCTAssertFalse(row.canExplain)
+        let facts = Dictionary(uniqueKeysWithValues: row.facts.map { ($0.name, $0.value) })
+        XCTAssertEqual(facts["Reason"], "why")
+        XCTAssertEqual(facts["Folder"], url.path)
+        XCTAssertNil(facts["Plist"])
+    }
+
     /// With Full Disk Access macOS has a record for every plist in these folders. The row is
     /// still the unreadable plist's, in its group, and takes what the record knows.
     func testAnUnreadablePlistMacOSRegisteredStaysInItsGroupWithWhatTheRecordKnows() throws {

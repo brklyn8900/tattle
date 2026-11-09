@@ -106,6 +106,7 @@ final class LaunchdTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
         for i in 0..<3 { try plist("<key>Label</key><string>apple\(i)</string>").write(to: apple.appending(path: "apple\(i).plist")) }
 
+        // A missing folder has no jobs in it, which is normal: a user may have no agents.
         let reader = LaunchdReader(folders: [.userAgent: user, .daemon: daemons, .globalAgent: root.appending(path: "missing")], appleFolders: [apple])
         let result = reader.read()
         XCTAssertEqual(result.items.map(\.label), ["com.a", "com.d"])
@@ -116,6 +117,21 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(result.unreadable.map(\.reason), [
             "it is not a launchd job", "it is not a valid property list", "Tattle has no permission to read this file",
         ])
+    }
+
+    /// launchd runs as root and reads a folder Tattle cannot list: its jobs run unseen.
+    func testAFolderThatCannotBeListedIsReported() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.appending(path: "daemons").path)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let daemons = root.appending(path: "daemons")
+        try FileManager.default.createDirectory(at: daemons, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: daemons.path)
+        let result = LaunchdReader(folders: [.daemon: daemons, .userAgent: root.appending(path: "missing")], appleFolders: [daemons]).read()
+        XCTAssertEqual(result.unreadable, [.init(url: daemons, scope: .daemon, reason: "Tattle has no permission to list this folder", isFolder: true)])
+        XCTAssertEqual(result.appleCount, 0)
     }
 
     func testThisMachineParsesCleanly() {

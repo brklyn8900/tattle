@@ -22,6 +22,8 @@ struct LaunchdReader: Sendable {
         var url: URL
         var scope: LaunchdItem.Scope
         var reason: String
+        /// The folder itself could not be listed, so nothing in it is known.
+        var isFolder = false
     }
 
     func read() -> Result {
@@ -29,7 +31,16 @@ struct LaunchdReader: Sendable {
         var unreadable: [Unreadable] = []
         for scope in LaunchdItem.Scope.allCases {
             guard let folder = folders[scope] else { continue }
-            for url in plists(in: folder) {
+            let urls: [URL]
+            do {
+                urls = try plists(in: folder)
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                continue  // a user may have no agents folder
+            } catch {
+                unreadable.append(Unreadable(url: folder, scope: scope, reason: Self.folderReason(error), isFolder: true))
+                continue
+            }
+            for url in urls {
                 do {
                     items.append(try LaunchdItem.parse(try Data(contentsOf: url), url: url, scope: scope))
                 } catch {
@@ -37,8 +48,13 @@ struct LaunchdReader: Sendable {
                 }
             }
         }
-        let appleCount = appleFolders.reduce(0) { $0 + plists(in: $1).count }
+        let appleCount = appleFolders.reduce(0) { $0 + ((try? plists(in: $1))?.count ?? 0) }
         return Result(items: items, appleCount: appleCount, unreadable: unreadable)
+    }
+
+    private static func folderReason(_ error: Error) -> String {
+        if let error = error as? CocoaError, error.code == .fileReadNoPermission { return "Tattle has no permission to list this folder" }
+        return error.localizedDescription
     }
 
     private static func reason(_ error: Error) -> String {
@@ -51,8 +67,8 @@ struct LaunchdReader: Sendable {
         }
     }
 
-    private func plists(in folder: URL) -> [URL] {
-        let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+    private func plists(in folder: URL) throws -> [URL] {
+        let urls = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
         return urls.filter { $0.pathExtension == "plist" }.sorted { $0.path < $1.path }
     }
 }
