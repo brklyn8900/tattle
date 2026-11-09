@@ -415,6 +415,23 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try key("test", .process, "foo.test.js"), "foo.test.js")
         XCTAssertEqual(try key("username", .process, "username.py"), "username.py", "a file named for the login is not caught")
         XCTAssertEqual(try key("username", .launchItem, "com.username"), "com.username", "two labels have no author's part")
+        XCTAssertEqual(try key("test", .process, "db.test.js"), "db.test.js")
+        XCTAssertEqual(try key("server", .process, "dev.server.js"), "dev.server.js")
+        XCTAssertEqual(try key("js", .process, "ui.js.map"), "ui.js.map")
+        XCTAssertEqual(try key("e", .process, "to.e.x"), "to.e.x")
+        XCTAssertEqual(try key("username", .launchItem, "dev.username.tool"), "dev.username.tool", "only com, org, net and io are endings")
+        XCTAssertEqual(try key("server", .process, "/srv/app/io.server.js"), "/srv/app/io.server.js", "a script's extension is no label after the author")
+        XCTAssertEqual(try key("username", .process, "com.username.sh"), "com.username.sh")
+    }
+
+    /// Each ending names an author, and a script named for one still has a label after it.
+    func testEachDomainEndingAndAScriptAfterTheAuthorsPart() throws {
+        let username = Redactor(home: "/Users/username", username: "username", machineNames: [])
+        for ending in ["com", "org", "net", "io"] {
+            XCTAssertEqual(username.redact("\(ending).username.helper", as: .launchItem), "\(ending).<user>.helper")
+        }
+        XCTAssertEqual(username.redact("com.username.tool.sh", as: .program), "com.<user>.tool.sh")
+        XCTAssertEqual(username.redact("com.username.sh.helper", as: .program), "com.<user>.sh.helper", "not the last label")
     }
 
     func testPanelOnlyFactsAndPromptValues() throws {

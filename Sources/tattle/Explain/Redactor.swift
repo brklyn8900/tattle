@@ -157,13 +157,16 @@ struct Redactor: Sendable {
         return out
     }
 
-    /// The author's part of a reverse-DNS name that is not a host: the label straight after its
-    /// domain ending, with more labels following, as in "com.username.helper". Any other label is
-    /// a product or an extension, so "at.obdev.x", "server.js" and "com.apple.mail.x" stay
-    /// whole for a user called at, js or mail.
+    /// The author's part of a reverse-DNS name that is not a host: the label straight after a
+    /// leading com, org, net or io, with another label following, as in "com.username.helper". Any
+    /// other label is a product or an extension, so "at.obdev.x", "server.js" and
+    /// "com.apple.mail.x" stay whole for a user called at, js or mail. A script's extension as
+    /// the last label does not count as the one following: "io.server.js" is a file.
     private static func authorPart(_ name: String) -> String {
-        "(?<=(?<![\\w.-])(?:[a-z]{2}|com|org|net|info|biz|dev|xyz|name|local)\\.)" + name + "(?=\\.[\\w-])"
+        "(?<=(?<![\\w.-])(?:com|org|net|io)\\.)" + name + "(?=\\.[\\w-])(?!\\." + scriptExtension + "(?![\\w.-]))"
     }
+
+    private static let scriptExtension = "(?:sh|bash|zsh|ksh|csh|tcsh|command|py|pl|rb|php|js|mjs|cjs|ts|lua|tcl|exp|awk|scpt|applescript)"
 
     /// Another account's folder names that account, and a disk's name is the user's own words.
     /// /Users/Shared is no account. A mounted disk is found by its whole name; any other path
