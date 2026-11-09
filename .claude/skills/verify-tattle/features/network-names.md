@@ -159,12 +159,15 @@ Preconditions:
   `2026-11-08T210232` (commit `c969c4d`); copy in the development Mac's
   `build/verify/runs/testmac-2026-11-08/`. `from the internet` needs a public peer, so it rests
   on the unit test (`testAnInboundConnectionReadsAsInbound`).
-- Direction proven 2026-11-08 on the development Mac with the broker, runs
-  `2026-11-08T222028` (a seen opening, `Ghostty to example.com`, `direction` `outbound`) and
-  `2026-11-08T222255` (commit `97096f3`, both): `Herdr Core with 160.79.104.10:443`, and
-  `rapportd from 192.168.1.20:54553`, `To port 49701`, among 128 of its accepted sockets. A
-  first contact on a proven row, listeners by family, and a seen opening arriving after the
-  row rest on unit tests. The `nc` pair over Tailscale does not connect on the development Mac.
+- Direction proven 2026-11-08 on the development Mac with the broker. Run `2026-11-08T222028`
+  (commit `97096f3`): a seen opening, `Ghostty to example.com`, `direction` `outbound`. Run
+  `2026-11-08T223300` (commit `edc856c`), a fresh launch: all 64 internet rows were already
+  open and read outbound from their local ports, none unknown. `Herdr Core to
+  160.79.104.10:443`, `First contact no`; `Google Chrome to 18.97.36.51:443`, `First contact
+  yes`; `identityservicesd with [fe80:17::f86b:c51e:57bf:33c]:1024`, on a port below the range;
+  `rapportd from 192.168.1.20:55421`, on a high port, among 128 sockets its listener claims.
+  Listeners by family and a seen opening arriving after the row rest on unit tests. The `nc`
+  pair over Tailscale does not connect on the development Mac.
 - The two unnamed rows look alike in the list; tell them apart by the `Process nc (pid
   ...)` fact against the pids `connect` printed.
 - The panel lists open connections only, and a closed connection's detail keeps the state
