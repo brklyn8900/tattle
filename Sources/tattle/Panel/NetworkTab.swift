@@ -117,7 +117,7 @@ private struct ConnectionRow: View {
                     if live.isFromDNS {
                         Text("from DNS").font(.caption).foregroundStyle(.secondary)
                     }
-                    if live.connection.isInbound {
+                    if live.connection.direction == .inbound {
                         Text("incoming").font(.caption).foregroundStyle(.secondary)
                     }
                     if live.isNew {

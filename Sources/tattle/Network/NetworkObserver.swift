@@ -124,13 +124,28 @@ final class NetworkObserver {
     // MARK: Sniffer events
 
     private func handle(_ events: [FlowEvent]) {
-        for (flow, outcome, openedAt) in names.apply(events, at: Date(), kind: { kind(of: $0, source: $1) }) {
+        let now = Date()
+        for (flow, outcome, openedAt) in names.apply(events, at: now, kind: { kind(of: $0, source: $1) }) {
             if let reason = outcome.reason {
                 Log.sniffer.debug("no name for \(flow.text, privacy: .public): \(String(describing: reason), privacy: .public)")
             }
             attach(outcome, to: flow, openedAt: openedAt)
         }
+        for event in events where event.kind == .opened { confirmOutbound(event.key, openedAt: now) }
         if events.contains(where: { $0.kind == .opened }) { schedulePromptPoll() }
+    }
+
+    /// A seen opening settles the direction of a connection the socket table already showed.
+    private func confirmOutbound(_ flow: FlowKey, openedAt: Date) {
+        for connection in tracker.confirmOutbound(flow: flow, openedAt: openedAt) {
+            let isNew = LiveConnection.isFirstContact(connection, known: &known)
+            if var snapshot, snapshot.confirmOutbound(id: connection.id, isNew: isNew) { self.snapshot = snapshot }
+            do {
+                try store.setOutbound(key: connection.id)
+            } catch {
+                Log.app.error("connection direction write failed: \(error, privacy: .public)")
+            }
+        }
     }
 
     /// A name from a DNS reply is only a guess about the address and is attacker-influenced,
@@ -214,7 +229,7 @@ final class NetworkObserver {
             self.error = String(describing: error)
             return
         }
-        let changes = tracker.update(entries: entries, at: now)
+        let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 
         // Owners are resolved once per pid and executable, from one process list per poll, off
         // the main thread; a pid whose connections all closed is forgotten so a reused pid is

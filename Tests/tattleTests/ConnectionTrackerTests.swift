@@ -85,7 +85,7 @@ final class ConnectionTrackerTests: XCTestCase {
             SocketEntry(proto: .udp, isIPv6: false, localAddress: "0.0.0.0", localPort: 5353, remoteAddress: "0.0.0.0", remotePort: 0, tcpState: nil, pid: 1, effectivePid: 0, uid: 0),
         ], at: t0)
         func inbound(_ key: String, file: StaticString = #filePath, line: UInt = #line) throws -> Bool {
-            try XCTUnwrap(tracker.live[key], file: file, line: line).isInbound
+            try XCTUnwrap(tracker.live[key], file: file, line: line).direction == .inbound
         }
         XCTAssertTrue(try inbound("500:tcp/22>203.0.113.5:51514"), "on a port listening on every interface")
         XCTAssertFalse(try inbound("600:tcp/50000>17.1.1.1:443"))
@@ -109,7 +109,7 @@ final class ConnectionTrackerTests: XCTestCase {
             tcp(504, 23, "2606:4700::3", 443, v6: true),
         ], at: t0)
         func inbound(_ key: String, file: StaticString = #filePath, line: UInt = #line) throws -> Bool {
-            try XCTUnwrap(tracker.live[key], file: file, line: line).isInbound
+            try XCTUnwrap(tracker.live[key], file: file, line: line).direction == .inbound
         }
         XCTAssertFalse(try inbound("500:tcp/22>2606:4700::1:443"), "an IPv6 socket on an IPv4-only listener's port")
         XCTAssertFalse(try inbound("501:tcp/23>17.1.1.1:443"), "an IPv4 socket on an IPv6-only listener's port")
@@ -122,7 +122,34 @@ final class ConnectionTrackerTests: XCTestCase {
         var tracker = ConnectionTracker()
         _ = tracker.update(entries: [listener(1, 22), tcp(500, 22, "203.0.113.5", 51514)], at: t0)
         _ = tracker.update(entries: [tcp(500, 22, "203.0.113.5", 51514)], at: t0 + 2)
-        XCTAssertTrue(try XCTUnwrap(tracker.live["500:tcp/22>203.0.113.5:51514"]).isInbound)
+        XCTAssertEqual(try XCTUnwrap(tracker.live["500:tcp/22>203.0.113.5:51514"]).direction, .inbound)
+    }
+
+    /// Nothing in the socket table says which side called.
+    func testASocketNothingProvesClaimsNoDirection() {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [tcp(1, 50000, "17.1.1.1"), udp(2, 60000, "8.8.8.8", 53), tcp(3, 22, "17.1.1.2")], at: t0)
+        XCTAssertEqual(tracker.open.map(\.direction), [.unknown, .unknown, .unknown])
+    }
+
+    func testASeenOpeningMakesAConnectionOutboundOverAListener() {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [listener(1, 22), tcp(500, 22, "17.1.1.1")], at: t0, outboundSeen: { $0 == "tcp/22>17.1.1.1:443" })
+        XCTAssertEqual(tracker.live["500:tcp/22>17.1.1.1:443"]?.direction, .outbound)
+    }
+
+    /// The SYN's event can arrive after the poll that first showed the socket.
+    func testASeenOpeningSettlesARowAlreadyShown() {
+        var tracker = ConnectionTracker()
+        let entries = [listener(1, 22), tcp(500, 22, "17.1.1.1"), tcp(600, 50000, "17.1.1.2")]
+        _ = tracker.update(entries: entries, at: t0)
+        func flow(_ port: UInt16, _ last: UInt8) -> FlowKey { FlowKey(proto: .tcp, localPort: port, remote: IPAddress(bytes: [17, 1, 1, last]), remotePort: 443) }
+        XCTAssertEqual(tracker.confirmOutbound(flow: flow(22, 1), openedAt: t0 + 1).map(\.id), ["500:tcp/22>17.1.1.1:443"])
+        XCTAssertEqual(tracker.live["500:tcp/22>17.1.1.1:443"]?.direction, .outbound)
+        XCTAssertTrue(tracker.confirmOutbound(flow: flow(22, 1), openedAt: t0 + 1).isEmpty, "already settled")
+        XCTAssertTrue(tracker.confirmOutbound(flow: flow(50000, 2), openedAt: t0 + 60).isEmpty, "an older connection on the four-tuple")
+        _ = tracker.update(entries: entries, at: t0 + 2)
+        XCTAssertEqual(tracker.live["500:tcp/22>17.1.1.1:443"]?.direction, .outbound, "a later reading keeps it")
     }
 
     func testDuplicateRecordsCountOnce() {

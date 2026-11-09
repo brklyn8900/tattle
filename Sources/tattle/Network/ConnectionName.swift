@@ -64,6 +64,12 @@ struct PendingNames: Equatable, Sendable {
 
     func outcome(for flowKey: String) -> NameOutcome? { names[flowKey]?.outcome }
 
+    /// Whether this Mac was just seen opening the flow, its outbound SYN or QUIC Initial.
+    /// Anything older was an earlier connection on the same four-tuple.
+    func openingSeen(_ flowKey: String, at now: Date) -> Bool {
+        opened[flowKey].map { now.timeIntervalSince($0) < ConnectionStore.openedSlack } ?? false
+    }
+
     /// Takes in the sniffer's events and returns the outcomes among them, in order, with when
     /// their flow opened, for the caller to put on rows and history. `kind` says what a name
     /// from a given source is. An opened flow drops what its key held: that was an earlier

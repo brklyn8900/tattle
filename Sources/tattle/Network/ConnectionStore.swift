@@ -25,7 +25,7 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
     var lastSeen: Date
     var ended: Date?
     var preExisting: Bool
-    var isInbound: Bool
+    var direction: Connection.Direction
     var name: String?
     var nameSource: String?
 
@@ -48,7 +48,7 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
         lastSeen = connection.lastSeen
         ended = connection.ended
         preExisting = connection.preExisting
-        isInbound = connection.isInbound
+        direction = connection.direction
     }
 }
 
@@ -143,6 +143,13 @@ struct ConnectionStore: Sendable {
         }
     }
 
+    /// Marks the open row for `key` as this Mac reaching out, once its opening is seen.
+    func setOutbound(key: String) throws {
+        try database.writer.write { db in
+            try db.execute(sql: "UPDATE connection SET direction = 'outbound' WHERE key = ? AND ended IS NULL", arguments: [key])
+        }
+    }
+
     /// Refreshes last-seen for connections still open, so a long one keeps its duration
     /// if the app stops uncleanly.
     func touch(keys: [String], at date: Date) throws {
@@ -176,7 +183,7 @@ struct ConnectionStore: Sendable {
     /// Every address this Mac has reached: what "first contact" is measured against.
     func knownAddresses() throws -> Set<String> {
         try database.writer.read { db in
-            Set(try String.fetchAll(db, sql: "SELECT DISTINCT remoteAddress FROM connection WHERE NOT isInbound"))
+            Set(try String.fetchAll(db, sql: "SELECT DISTINCT remoteAddress FROM connection WHERE direction = 'outbound'"))
         }
     }
 

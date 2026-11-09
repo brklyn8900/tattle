@@ -7,7 +7,18 @@ final class ConnectionNameTests: XCTestCase {
     private func connection(_ remote: String, port: UInt16 = 443, v6: Bool = false, proto: SocketEntry.Proto = .tcp) -> Connection {
         Connection(id: "100:\(proto.rawValue)/50000>\(remote):\(port)", proto: proto, pid: 100, uid: 501, localPort: 50000,
                    remoteAddress: remote, remotePort: port, isIPv6: v6, scope: .remote, tcpState: proto == .tcp ? 4 : nil,
-                   firstSeen: t0, lastSeen: t0, ended: nil, preExisting: false)
+                   firstSeen: t0, lastSeen: t0, ended: nil, preExisting: false, direction: .outbound)
+    }
+
+    /// A row first seen just after the flow opened is that connection; an old opening is
+    /// an earlier connection on the same four-tuple.
+    func testPendingNamesSaysWhetherAnOpeningWasJustSeen() {
+        var table = PendingNames()
+        let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        XCTAssertFalse(table.openingSeen(key.text, at: t0))
+        _ = table.apply([FlowEvent(key: key, kind: .opened)], at: t0, kind: { _, _ in .destination })
+        XCTAssertTrue(table.openingSeen(key.text, at: t0 + 2))
+        XCTAssertFalse(table.openingSeen(key.text, at: t0 + 10))
     }
 
     func testFlowKeyMatchesWhatTheSnifferSees() {

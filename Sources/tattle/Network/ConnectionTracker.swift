@@ -2,6 +2,16 @@ import Foundation
 
 /// One connection: a socket with a peer, as seen in the socket table over time.
 struct Connection: Equatable, Sendable, Identifiable {
+    /// Which side opened the connection, as far as anything proves it.
+    enum Direction: String, Sendable, Codable {
+        /// This Mac's SYN or QUIC Initial was seen leaving.
+        case outbound
+        /// The socket sits on a listener's endpoint: it was accepted.
+        case inbound
+        /// Neither is proven: nothing is claimed about which side connected.
+        case unknown
+    }
+
     enum Scope: String, Sendable {
         /// A public address: the internet.
         case remote
@@ -28,8 +38,7 @@ struct Connection: Equatable, Sendable, Identifiable {
     var ended: Date?
     /// Already in the table when Tattle started looking, so first seen is not when it began.
     var preExisting: Bool
-    /// The peer connected to this Mac: the socket was accepted from a listener.
-    var isInbound = false
+    var direction = Direction.unknown
 
     var isOpen: Bool { ended == nil }
 
@@ -147,8 +156,10 @@ struct ConnectionTracker: Sendable {
     var open: [Connection] { live.values.sorted { $0.firstSeen > $1.firstSeen } }
 
     /// Folds one reading of the table in. On the first reading every connection is
-    /// pre-existing: it was there before Tattle looked.
-    mutating func update(entries: [SocketEntry], at now: Date = Date()) -> Changes {
+    /// pre-existing: it was there before Tattle looked. `outboundSeen` says whether this Mac
+    /// was just seen opening a flow, which settles a new connection's direction over any
+    /// listener on its port.
+    mutating func update(entries: [SocketEntry], at now: Date = Date(), outboundSeen: (String) -> Bool = { _ in false }) -> Changes {
         var changes = Changes()
         var seen = Set<String>()
         let listeners = TCPListeners(entries)
@@ -161,11 +172,12 @@ struct ConnectionTracker: Sendable {
                 existing.tcpState = entry.tcpState
                 live[key] = existing
             } else {
-                let connection = Connection(
+                var connection = Connection(
                     id: key, proto: entry.proto, pid: entry.pid, uid: entry.uid,
                     localPort: entry.localPort, remoteAddress: entry.remoteAddress, remotePort: entry.remotePort,
                     isIPv6: entry.isIPv6, scope: scope, tcpState: entry.tcpState,
-                    firstSeen: now, lastSeen: now, ended: nil, preExisting: !hasPolled, isInbound: listeners.accepted(entry))
+                    firstSeen: now, lastSeen: now, ended: nil, preExisting: !hasPolled)
+                connection.direction = outboundSeen(connection.flowKey) ? .outbound : listeners.accepted(entry) ? .inbound : .unknown
                 live[key] = connection
                 changes.opened.append(connection)
             }
@@ -177,5 +189,19 @@ struct ConnectionTracker: Sendable {
         }
         hasPolled = true
         return changes
+    }
+
+    /// Settles as outbound the live connection a seen opening belongs to, whatever a listener
+    /// on its port said: the event can arrive after the poll that first showed the socket.
+    /// Returns the connections it changed.
+    mutating func confirmOutbound(flow: FlowKey, openedAt: Date) -> [Connection] {
+        var changed: [Connection] = []
+        for (key, var connection) in live where connection.flowKey == flow.text && connection.direction != .outbound
+            && ConnectionStore.isConnection(of: flow, firstSeen: connection.firstSeen, isOpen: connection.isOpen, openedAt: openedAt) {
+            connection.direction = .outbound
+            live[key] = connection
+            changed.append(connection)
+        }
+        return changed
     }
 }

@@ -123,20 +123,32 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
     var explainKey: String { name?.name ?? connection.remoteAddress }
 
     /// The detail's heading.
-    var headline: String { connection.isInbound ? "\(owner.displayName) from \(destination)" : "\(owner.displayName) to \(title)" }
+    var headline: String {
+        switch connection.direction {
+        case .outbound: "\(owner.displayName) to \(title)"
+        case .inbound: "\(owner.displayName) from \(destination)"
+        case .unknown: "\(owner.displayName) with \(destination)"
+        }
+    }
 
     /// Whether the address is one this Mac has not reached before, and remembers that it has.
-    /// A peer that connected in is not one it reached.
+    /// Only a connection proven to be this Mac's counts: a peer that connected in, or one no
+    /// one can say about, is not an address it reached.
     static func isFirstContact(_ connection: Connection, known: inout Set<String>) -> Bool {
-        !connection.isInbound && known.insert(connection.remoteAddress).inserted
+        connection.direction == .outbound && known.insert(connection.remoteAddress).inserted
     }
 
     func facts(now: Date) -> [Fact] {
         var facts: [Fact] = []
-        if connection.isInbound {
+        switch connection.direction {
+        case .inbound:
             facts.append(Fact(name: "From", value: destination))
             facts.append(Fact(name: "To port", value: String(connection.localPort)))
-        } else {
+        case .unknown:
+            // Which side connected is not known, and what a model hears it says of the host.
+            facts.append(Fact(name: "Peer", value: destination, inPrompt: false))
+            facts.append(Fact(name: "Local port", value: String(connection.localPort), inPrompt: false))
+        case .outbound:
             switch name?.kind {
             case .destination:
                 facts.append(Fact(name: "Destination", value: name!.name))
@@ -170,7 +182,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
             facts.append(Fact(name: "Since", value: Self.ago(connection.firstSeen, now: now)))
         }
         if let ended = connection.ended { facts.append(Fact(name: "Ended", value: Self.ago(ended, now: now))) }
-        if !connection.isInbound { facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before")) }
+        if connection.direction == .outbound { facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before")) }
         if let name {
             facts.append(Fact(name: "Name from", value: name.source.text))
         } else if let unnamedReason {
@@ -238,10 +250,13 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
 
     /// The row's subtitle, by where its connections go or come from.
     var reachSummary: [String] {
-        let incoming = connections.filter { $0.connection.scope == .remote && $0.connection.isInbound }.count
+        func remote(_ direction: Connection.Direction) -> Int {
+            connections.filter { $0.connection.scope == .remote && $0.connection.direction == direction }.count
+        }
         var parts: [String] = []
-        if remoteCount > incoming { parts.append("\(remoteCount - incoming) to the internet") }
-        if incoming > 0 { parts.append("\(incoming) from the internet") }
+        if remote(.outbound) > 0 { parts.append("\(remote(.outbound)) to the internet") }
+        if remote(.inbound) > 0 { parts.append("\(remote(.inbound)) from the internet") }
+        if remote(.unknown) > 0 { parts.append("\(remote(.unknown)) with the internet") }
         if localCount > 0 { parts.append("\(localCount) on this network") }
         return parts
     }
@@ -286,6 +301,15 @@ struct NetworkSnapshot: Equatable, Sendable {
     var hiddenCount: Int { connections.filter { $0.name?.kind == .hidden }.count }
 
     func connection(id: String) -> LiveConnection? { connections.first { $0.id == id } }
+
+    /// Settles a row as this Mac reaching out, once its opening is seen. Returns false when
+    /// no row is that connection.
+    mutating func confirmOutbound(id: String, isNew: Bool) -> Bool {
+        guard let index = connections.firstIndex(where: { $0.id == id }) else { return false }
+        connections[index].connection.direction = .outbound
+        connections[index].isNew = isNew
+        return true
+    }
     func group(id: String) -> ConnectionGroup? { groups.first { $0.id == id } }
 
     /// Puts the sniffer's outcome on the flow's row. Returns false when no row is the flow's

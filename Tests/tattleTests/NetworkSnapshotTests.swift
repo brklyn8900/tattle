@@ -9,10 +9,10 @@ final class NetworkSnapshotTests: XCTestCase {
         ProcessEntry(pid: pid, parentPid: ppid, uid: 501, name: URL(fileURLWithPath: path).lastPathComponent, path: path, started: t0)
     }
 
-    private func connection(_ pid: Int32, _ remote: String, port: UInt16 = 443, at: TimeInterval = 0, scope: Connection.Scope = .remote, preExisting: Bool = false) -> Connection {
+    private func connection(_ pid: Int32, _ remote: String, port: UInt16 = 443, at: TimeInterval = 0, scope: Connection.Scope = .remote, preExisting: Bool = false, direction: Connection.Direction = .outbound) -> Connection {
         Connection(id: "\(pid):tcp/5\(Int(at))>\(remote):\(port)", proto: .tcp, pid: pid, uid: 501, localPort: 50000,
                    remoteAddress: remote, remotePort: port, isIPv6: false, scope: scope, tcpState: 4,
-                   firstSeen: t0 + at, lastSeen: t0 + at, ended: nil, preExisting: preExisting)
+                   firstSeen: t0 + at, lastSeen: t0 + at, ended: nil, preExisting: preExisting, direction: direction)
     }
 
     private let processes: [Int32: ProcessEntry] = {
@@ -225,7 +225,7 @@ final class NetworkSnapshotTests: XCTestCase {
     func testAnInboundConnectionReadsAsInbound() throws {
         var accepted = connection(100, "203.0.113.5", port: 51514)
         accepted.localPort = 22
-        accepted.isInbound = true
+        accepted.direction = .inbound
         let owner = ConnectionOwner(processName: "sshd")
         let row = LiveConnection(connection: accepted, owner: owner, isNew: false)
         XCTAssertEqual(row.headline, "sshd from 203.0.113.5:51514")
@@ -243,11 +243,43 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(group.reachSummary, ["1 to the internet", "1 from the internet", "1 on this network"])
     }
 
+    /// With nothing to say which side called, a row claims neither, and is no first contact.
+    func testAConnectionNothingProvesClaimsNoDirection() throws {
+        let owner = ConnectionOwner(processName: "tool")
+        let row = LiveConnection(connection: connection(100, "203.0.113.5", direction: .unknown), owner: owner, isNew: false)
+        XCTAssertEqual(row.headline, "tool with 203.0.113.5:443")
+        let facts = row.facts(now: t0)
+        let values = Dictionary(facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
+        XCTAssertEqual(values["Peer"], "203.0.113.5:443")
+        XCTAssertEqual(values["Local port"], "50000")
+        for claim in ["Destination", "From", "To port", "First contact"] { XCTAssertNil(values[claim], claim) }
+        XCTAssertFalse(Set(facts.filter(\.inPrompt).map(\.name)).contains("Peer"))
+
+        let group = ConnectionGroup(id: "tool", name: "tool", connections: [
+            row, LiveConnection(connection: connection(100, "17.1.1.1"), owner: owner, isNew: false),
+            LiveConnection(connection: connection(100, "192.168.1.9", scope: .local, direction: .unknown), owner: owner, isNew: false),
+        ])
+        XCTAssertEqual(group.reachSummary, ["1 to the internet", "1 with the internet", "1 on this network"])
+    }
+
+    /// The SYN's event can arrive after the row: it settles the row and counts as first contact.
+    func testASeenOpeningSettlesARowAlreadyShown() throws {
+        var snapshot = NetworkSnapshot(connections: [
+            LiveConnection(connection: connection(100, "203.0.113.5", direction: .unknown), owner: ConnectionOwner(processName: "tool"), isNew: false),
+        ], takenAt: t0)
+        let id = try XCTUnwrap(snapshot.connections.first?.id)
+        XCTAssertTrue(snapshot.confirmOutbound(id: id, isNew: true))
+        XCTAssertEqual(snapshot.connections.first?.connection.direction, .outbound)
+        XCTAssertEqual(snapshot.connections.first?.isNew, true)
+        XCTAssertFalse(snapshot.confirmOutbound(id: "other", isNew: true))
+    }
+
     func testFirstContactCountsOnlyThisMacReachingOut() {
         var known = Set<String>()
         var accepted = connection(100, "203.0.113.5")
-        accepted.isInbound = true
+        accepted.direction = .inbound
         XCTAssertFalse(LiveConnection.isFirstContact(accepted, known: &known))
+        XCTAssertFalse(LiveConnection.isFirstContact(connection(100, "203.0.113.5", direction: .unknown), known: &known))
         XCTAssertTrue(known.isEmpty, "a later connection out to the peer is still a first contact")
         XCTAssertTrue(LiveConnection.isFirstContact(connection(100, "203.0.113.5"), known: &known))
         XCTAssertFalse(LiveConnection.isFirstContact(connection(100, "203.0.113.5"), known: &known))

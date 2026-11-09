@@ -145,8 +145,10 @@ struct AppDatabase: Sendable {
                     #"claude -p --setting-sources project,local --tools "" --permission-prompts none --output-format json --json-schema {schema}"#,
                 ])
         }
-        migrator.registerMigration("v7-connection-inbound") { db in
-            try db.alter(table: "connection") { $0.add(column: "isInbound", .boolean).notNull().defaults(to: false) }
+        migrator.registerMigration("v7-connection-direction") { db in
+            // Rows from before this were recorded as this Mac reaching out, and first contact
+            // is measured against them.
+            try db.alter(table: "connection") { $0.add(column: "direction", .text).notNull().defaults(to: Connection.Direction.outbound.rawValue) }
         }
         return migrator
     }

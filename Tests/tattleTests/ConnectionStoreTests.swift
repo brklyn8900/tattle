@@ -1,3 +1,4 @@
+import GRDB
 import XCTest
 @testable import tattle
 
@@ -13,17 +14,39 @@ final class ConnectionStoreTests: XCTestCase {
         let at = at ?? t0
         return Connection(id: "\(pid):tcp/50000>\(remote):\(port)", proto: .tcp, pid: pid, uid: 501, localPort: 50000,
                           remoteAddress: remote, remotePort: port, isIPv6: false, scope: .remote, tcpState: 4,
-                          firstSeen: at, lastSeen: at, ended: nil, preExisting: preExisting)
+                          firstSeen: at, lastSeen: at, ended: nil, preExisting: preExisting, direction: .outbound)
     }
 
-    func testKnownAddressesLeaveOutPeersThatConnectedIn() throws {
+    func testKnownAddressesAreOnlyWhatThisMacWasSeenReaching() throws {
         var accepted = connection(100, "203.0.113.5", at: t0)
-        accepted.isInbound = true
+        accepted.direction = .inbound
+        var unproven = connection(300, "203.0.113.6", at: t0)
+        unproven.direction = .unknown
         try store.open(ConnectionRecord(accepted, processName: "sshd"))
+        try store.open(ConnectionRecord(unproven, processName: "tool"))
         try store.open(ConnectionRecord(connection(200, "17.1.1.1"), processName: "Safari"))
         XCTAssertEqual(try store.knownAddresses(), ["17.1.1.1"])
-        XCTAssertEqual(try store.history(processName: "sshd").first?.isInbound, true)
-        XCTAssertEqual(try store.history(processName: "Safari").first?.isInbound, false)
+        XCTAssertEqual(try store.history(processName: "sshd").first?.direction, .inbound)
+        XCTAssertEqual(try store.history(processName: "tool").first?.direction, .unknown)
+        XCTAssertEqual(try store.history(processName: "Safari").first?.direction, .outbound)
+
+        try store.setOutbound(key: unproven.id)
+        XCTAssertEqual(try store.history(processName: "tool").first?.direction, .outbound)
+        XCTAssertEqual(try store.knownAddresses(), ["17.1.1.1", "203.0.113.6"])
+    }
+
+    /// First contact is measured against what was recorded before directions existed.
+    func testConnectionsFromBeforeDirectionsCountAsReached() throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(queue, upTo: "v6-claude-preset-flags")
+        try queue.write {
+            try $0.execute(sql: """
+                INSERT INTO connection (key, proto, pid, uid, processName, localPort, remoteAddress, remotePort, isIPv6, scope, firstSeen, lastSeen, preExisting)
+                VALUES ('k', 'tcp', 1, 501, 'x', 50000, '17.1.1.1', 443, 0, 'remote', ?, ?, 0)
+                """, arguments: [t0, t0])
+        }
+        try AppDatabase.migrator.migrate(queue)
+        XCTAssertEqual(try queue.read { try String.fetchOne($0, sql: "SELECT direction FROM connection") }, "outbound")
     }
 
     func testOpenCloseAndHistory() throws {
