@@ -172,9 +172,13 @@ Resolution order for any item:
    identity; a shipped rule about one of Apple's programs answers only for Apple's program
    of that name. Sources in precedence order: `user`, `builtin`, `iap`, `apple-list`, `tracker-radar`,
    `llm`; a confirmed rule ranks with `user` whatever its source.
-3. **LLM**, on click only. The request carries the item and every fact from step 1, so the
-   model explains known facts instead of guessing. It returns structured JSON in the shape
-   of a rule. The answer is stored as an **exact-item** rule with `source = llm`, shown as
+3. **LLM**, on click only. The request carries the item and the facts from step 1 that say
+   what it is, so the model explains known facts instead of guessing. Some facts stay out. A
+   host's request leaves out the connection's direction and the process that made it,
+   because the answer is shown on every connection to that host. A process's request leaves
+   out its working directory, a startup item's gives only the number of its arguments, and
+   the account a process runs as reads `you` when it is the user's. The model returns
+   structured JSON in the shape of a rule. The answer is stored as an **exact-item** rule with `source = llm`, shown as
    "unconfirmed" until the user has read it, judged it against the facts panel, and
    confirmed it. There is no automatic check; confirmation is the user's. The source stays
    `llm` so provenance is never lost. The model may propose a pattern, but only the user
