@@ -88,9 +88,10 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
-    /// Of a file Tattle could not read it knows only the name: nothing to ask a model.
+    /// Of a file Tattle could not read it knows only the name, unless macOS's record says
+    /// what runs: otherwise there is nothing to ask a model.
     var canExplain: Bool {
-        if case .unreadable = state { return false }
+        if case .unreadable = state { return program != nil }
         return true
     }
 
@@ -186,16 +187,25 @@ struct StartupSnapshot: Equatable, Sendable {
                 launchdScope: job.scope))
         }
 
-        // macOS's own record of a plist gives a row below, with its program and signer.
-        for plist in launchd.unreadable where byPlistPath[plist.url.path] == nil {
+        for plist in launchd.unreadable {
+            // With Full Disk Access macOS has a record of the plist, which knows what runs.
+            let registered = byPlistPath[plist.url.path]
+            if let registered { joined.insert(registered.identifier) }
+            let path = registered?.executablePath.flatMap { $0.hasPrefix("/") ? $0 : nil }
+            let signed = registered.flatMap { item in path.flatMap { registeredSignature(of: item, at: $0, reading: signature) } }
             items.append(StartupItem(
                 id: plist.url.path,
                 group: group(for: plist.scope),
-                name: plist.url.deletingPathExtension().lastPathComponent,
+                name: registered?.name ?? plist.url.deletingPathExtension().lastPathComponent,
+                program: path,
                 trigger: "unknown",
                 state: .unreadable(reason: plist.reason),
+                signature: signed,
+                codeVersion: path.map { .of(program: $0, signature: signed) } ?? .unknown,
+                developer: registered?.developerName,
+                teamIdentifier: registered?.teamIdentifier,
                 plistURL: plist.url,
-                isLoginItem: false,
+                isLoginItem: registered != nil,
                 launchdScope: plist.scope))
         }
 

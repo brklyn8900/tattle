@@ -251,15 +251,38 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertNil(row.identity)
     }
 
-    /// macOS's own record of such a plist already gives a row, with its program and signer.
-    func testAnUnreadablePlistMacOSRegisteredIsListedOnce() {
+    /// With Full Disk Access macOS has a record for every plist in these folders. The row is
+    /// still the unreadable plist's, in its group, and takes what the record knows.
+    func testAnUnreadablePlistMacOSRegisteredStaysInItsGroupWithWhatTheRecordKnows() throws {
         let url = URL(fileURLWithPath: "/Library/LaunchDaemons/com.acme.helper.plist")
         let launchd = LaunchdReader.Result(items: [], appleCount: 0, unreadable: [.init(url: url, scope: .daemon, reason: "x")])
+        let signed = CodeSignature(signer: .developerID(name: "Acme"), teamIdentifier: "TEAM1")
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [
-            login("16.com.acme.helper", name: "Acme Helper", kind: .daemon, url: url.absoluteString, executable: "/usr/bin/x", legacy: true),
+            login("16.com.acme.helper", name: "Acme Helper", kind: .daemon, url: url.absoluteString, executable: "/usr/bin/x",
+                  developer: "Acme Inc", team: "TEAM1", legacy: true),
+        ], state: LaunchctlState(), signature: { $0 == "/usr/bin/x" ? signed : nil })
+        XCTAssertEqual(snapshot.items.count, 1, "the record is not a second row")
+        let row = try XCTUnwrap(snapshot.items(in: .daemons).first)
+        XCTAssertEqual(row.name, "Acme Helper")
+        XCTAssertEqual(row.state, .unreadable(reason: "x"))
+        XCTAssertEqual(row.program, "/usr/bin/x")
+        XCTAssertEqual(row.signature, signed)
+        XCTAssertEqual(row.developer, "Acme Inc")
+        XCTAssertEqual(row.trigger, "unknown", "the plist says when it runs, and it was not read")
+        XCTAssertEqual(row.plistURL, url)
+        XCTAssertEqual(row.launchdScope, .daemon)
+        XCTAssertTrue(row.isLoginItem)
+        XCTAssertTrue(row.canExplain, "the record says what runs")
+    }
+
+    /// A legacy record of a kind Tattle does not list gives no row of its own.
+    func testARecordOfAnUnknownKindDoesNotHideAnUnreadablePlist() {
+        let url = URL(fileURLWithPath: "/Library/LaunchAgents/com.acme.agent.plist")
+        let launchd = LaunchdReader.Result(items: [], appleCount: 0, unreadable: [.init(url: url, scope: .globalAgent, reason: "x")])
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [
+            login("64.com.acme.agent", name: "Acme", kind: .other(type: 0x40), url: url.absoluteString, legacy: true),
         ], state: LaunchctlState(), signature: { _ in nil })
-        XCTAssertEqual(snapshot.items.map(\.name), ["Acme Helper"])
-        XCTAssertEqual(snapshot.items.first?.program, "/usr/bin/x")
+        XCTAssertEqual(snapshot.items(in: .globalAgents).map(\.state), [.unreadable(reason: "x")])
     }
 
     func testThisMachineBuilds() throws {
