@@ -165,8 +165,12 @@ Resolution order for any item:
 2. **Knowledge base**: one SQLite table of rules. A rule has a `kind` (host, process, port,
    launch item), a `match` that is either an exact item or a glob pattern
    (`p*-caldav.icloud.com`, `com.apple.*`), `owner`, `purpose`, `category`, `risk`,
-   `confidence`, `source`, and `confirmed` (a timestamp, null until the user confirms).
-   Sources in precedence order: `user`, `builtin`, `iap`, `apple-list`, `tracker-radar`,
+   `confidence`, `source`, `identity` (what tells the code the rule was given for from other
+   code of that name, empty for a rule about no one program), and `confirmed` (a timestamp,
+   null until the user confirms). A model's answer about anything but a host, and a shipped
+   rule that names a publisher for a process or a port's listener, answers only for its
+   identity; a shipped rule about one of Apple's programs answers only for Apple's program
+   of that name. Sources in precedence order: `user`, `builtin`, `iap`, `apple-list`, `tracker-radar`,
    `llm`; a confirmed rule ranks with `user` whatever its source.
 3. **LLM**, on click only. The request carries the item and every fact from step 1, so the
    model explains known facts instead of guessing. It returns structured JSON in the shape
