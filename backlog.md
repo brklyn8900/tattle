@@ -225,3 +225,11 @@ what stays)
 - `.task(id: request)` re-fires at each refresh of an open detail, and a kept answer's `stat`
   runs on the main actor, so a hung network mount would freeze the panel. Suspected, not
   reproduced (`FileDigests.swift`, `ExplainSection.swift`).
+- Move the Processes loop into its observer, with `beginReadings()` inside it: only the tab's
+  `.task` calls it now, and any other caller that starts a run must remember to
+  (`ProcessesTab.swift`, `ProcessesObserver.swift`).
+- One object for what the panel reads. A raw `state.network.snapshot` or `state.sampler.sample`
+  in a panel view brings back closed-panel updates, and no test fails when it does
+  (`AppState.swift`, `NetworkTab.swift`, `PanelView.swift`).
+- `PortsObserver.refresh` has no overlap guard: a fast close and reopen can run two sweeps,
+  and the older one can land last, for up to five seconds (`PortsObserver.swift`).
