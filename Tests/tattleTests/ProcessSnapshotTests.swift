@@ -85,6 +85,24 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: path)?.leader?.pid, 9000)
     }
 
+    /// An app with no window never registers with Launch Services; its main executable is
+    /// still the app. Of several at that path, the oldest; a helper elsewhere in the bundle is not it.
+    func testAnAppsLeaderIsItsMainExecutableWhenLaunchServicesDoesNotKnowIt() {
+        let app = "/Applications/Core.app", main = app + "/Contents/MacOS/Core"
+        let entries = [
+            entry(50, 1, app + "/Contents/MacOS/helper"),
+            entry(9000, 1, main),
+            entry(60, 9000, main, started: epoch + 5),
+        ]
+        func leader(_ entries: [ProcessEntry]) -> Int32? {
+            ProcessSnapshot.build(entries: entries, previous: nil, signature: signedByAcme, runningApp: { _ in nil },
+                                  mainExecutable: { $0.path == app ? main : nil }, responsible: { _ in nil }, takenAt: epoch)
+                .group(id: app)?.leader?.pid
+        }
+        XCTAssertEqual(leader(entries), 9000)
+        XCTAssertNil(leader([entries[0]]), "only a helper runs")
+    }
+
     /// A program started from a shell has a parent, and a worker with a lower pid after a wrap.
     func testAProgramsLeaderIsTheTopOfItsTree() {
         let snapshot = ProcessSnapshot.build(

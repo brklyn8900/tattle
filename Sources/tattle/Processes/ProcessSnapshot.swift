@@ -222,9 +222,10 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
         return result
     }
 
-    /// The process that stands for the whole group: the app's own, the oldest of several, or
-    /// the program at the top of the row's tree. Nil for macOS, and for an app that is not
-    /// open while its helpers or widgets run: quitting one of those would not quit the app.
+    /// The process that stands for the whole group: the app's own, by Launch Services or the
+    /// bundle's main executable, the oldest of several; or the program at the top of the
+    /// row's tree. Nil for macOS, and for an app that is not open while its helpers or
+    /// widgets run: quitting one of those would not quit the app.
     var leader: ProcessItem? { members.first { $0.pid == leaderPid } }
 
     var facts: [Fact] {
@@ -269,6 +270,7 @@ struct ProcessSnapshot: Equatable, Sendable {
     static func build(
         entries: [ProcessEntry], previous: ProcessSnapshot?,
         signature: (String) -> CodeSignature?, runningApp: (Int32) -> String? = { _ in nil },
+        mainExecutable: (AppBundle) -> String? = { Bundle(path: $0.path)?.executablePath },
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
     ) -> ProcessSnapshot {
         let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -327,7 +329,8 @@ struct ProcessSnapshot: Equatable, Sendable {
             }) {
                 groups[index].identity = nil
             }
-            groups[index].leaderPid = groups[index].members.filter { runningApp($0.pid) == bundle.path }
+            let executable = mainExecutable(bundle)
+            groups[index].leaderPid = groups[index].members.filter { runningApp($0.pid) == bundle.path || ($0.path != nil && $0.path == executable) }
                 .min { ($0.started, $0.pid) < ($1.started, $1.pid) }?.pid
         }
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
