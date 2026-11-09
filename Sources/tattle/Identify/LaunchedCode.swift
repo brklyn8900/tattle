@@ -43,7 +43,7 @@ enum LaunchedCode: Equatable, Sendable {
         /// `realPath` is `path` with its links resolved, which the kernel already does for a
         /// process's executable.
         init(path: String, signature: CodeSignature?, realPath: String? = nil) {
-            let file = URL(fileURLWithPath: path).lastPathComponent
+            let file = (path as NSString).lastPathComponent
             isApples = signature?.signer == .apple
             let identifier = isApples ? signature?.identifier : nil
             if let identifier, !Self.stubs.contains(identifier), let last = identifier.split(separator: ".").last {
@@ -90,7 +90,7 @@ enum LaunchedCode: Equatable, Sendable {
     /// with the program or started it as a process of its own. `arguments` follow argv[0], nil
     /// when they cannot be read.
     static func running(executable: String, arguments: [String]?, identity: Identity) -> LaunchedCode {
-        let name = URL(fileURLWithPath: executable).lastPathComponent
+        let name = (executable as NSString).lastPathComponent
         if swiftTools.contains(identity.name.lowercased()) {
             guard let arguments else { return .unnamed(interpreter: name) }
             if let code = swift(name, arguments: arguments) { return code }

@@ -45,7 +45,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     static func name(
         path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil, startedByLaunchd: Bool = false
     ) -> (name: String, interpreter: String?, runsUnnamedCode: Bool, script: String?) {
-        let executable = path.map { URL(fileURLWithPath: $0).lastPathComponent }
+        let executable = path.map { ($0 as NSString).lastPathComponent }
         var interpreter: String?
         var runsUnnamedCode = false
         if let path {
@@ -66,7 +66,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             // A title with spaces ("npm exec @scope/pkg") is not a path, unless it starts
             // like one ("/Users/u/Library/Application Support/x/server").
             let isTitle = first.contains(" ") && !first.hasPrefix("/")
-            let started = (isTitle ? Substring(first) : Substring(URL(fileURLWithPath: first).lastPathComponent)).drop { $0 == "-" }
+            let started = (isTitle ? Substring(first) : Substring((first as NSString).lastPathComponent)).drop { $0 == "-" }
             if !started.isEmpty { return (String(started), interpreter, runsUnnamedCode, nil) }
         }
         return (executable ?? command, interpreter, runsUnnamedCode, nil)

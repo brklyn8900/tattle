@@ -83,6 +83,18 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(ProcessEntry.scriptName("/Users/u/dev/app/server.js"), "server.js")
     }
 
+    /// The name a process started under is read as text: a URL would resolve these against the
+    /// app's own working directory and home folder and name the process after those.
+    func testTheNameAProcessStartedUnderIsNotAPathToResolve() {
+        func started(_ first: String) -> String {
+            ProcessEntry.name(path: "/x/tool", arguments: [first], command: "tool").name
+        }
+        XCTAssertEqual(started(""), "tool", "a process that cleared its title goes by its file")
+        XCTAssertEqual(started("."), ".")
+        XCTAssertEqual(started(".."), "..")
+        XCTAssertEqual(started("~"), "~")
+    }
+
     func testTheKernelNamesAProcessAfterItsFile() throws {
         let path = try XCTUnwrap(ProcessTable.pidPath(getpid()))
         XCTAssertEqual(ProcessTable.commandName(getpid()), ProcessTable.commandName(ofExecutable: path))
