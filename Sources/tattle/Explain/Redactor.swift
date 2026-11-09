@@ -103,6 +103,12 @@ struct Redactor: Sendable {
     private static let pathName = "[\\w.~@+%-]*[\\w~@+%-]"
     private static let pathEnd = "(?![\\w~@+%-]|\\.[\\w~@+%-])"
 
+    /// A name that is all of a host, for every pass that reads one: no label, "_" or "-" joins
+    /// it on either side. A dot that ends a sentence joins nothing.
+    private static func wholeHost(_ name: String) -> String {
+        "(?<![\\w.-])" + name + "(?![\\w-]|\\.[\\w-])"
+    }
+
     func redact(_ text: String, as context: Context) -> String {
         let captured = context != .instructions
         var out = text
@@ -118,7 +124,7 @@ struct Redactor: Sendable {
         // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account.
         if captured {
             out = out.replacingOccurrences(
-                of: "(?<![\\w.-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net(?![\\w-]|\\.[\\w-])",
+                of: Self.wholeHost("[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net"),
                 with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
         }
         out = redactUsername(out, in: context)
@@ -137,7 +143,7 @@ struct Redactor: Sendable {
         let bounded: (String) -> String
         switch context {
         case .program: return text
-        case .host: bounded = { "(?<![A-Za-z0-9.-])" + $0 + "(?![A-Za-z0-9-]|\\.[A-Za-z0-9-])" }
+        case .host: bounded = Self.wholeHost
         case .launchItem: bounded = Self.authorPart
         case .instructions: bounded = { "(?<![A-Za-z0-9-])(?<![A-Za-z0-9-]\\.)" + $0 + "(?![A-Za-z0-9-])" }
         }
@@ -192,9 +198,7 @@ struct Redactor: Sendable {
         let login = NSRegularExpression.escapedPattern(for: username)
         var out = text
         if username.count >= 3 {
-            let pattern = context == .host
-                ? "(?<![\\w.-])" + login + "(?![\\w-]|\\.[\\w-])"
-                : "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])"
+            let pattern = context == .host ? Self.wholeHost(login) : "(?<![\\w-]\\.)\\b" + login + "\\b(?!\\.[\\w-])"
             out = out.replacingOccurrences(of: pattern, with: "<user>", options: .regularExpression)
         } else if context != .instructions {
             out = out

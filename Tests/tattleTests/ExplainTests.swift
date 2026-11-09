@@ -111,6 +111,7 @@ final class RedactorTests: XCTestCase {
         let dev = Redactor(home: "/Users/username", username: "username", machineNames: ["dev", "dev.local", "dev.lan"])
         XCTAssertEqual(dev.redact("dev.azure.com, dev.example.com, dev.local.example, pages.dev", as: .host), "dev.azure.com, dev.example.com, dev.local.example, pages.dev")
         XCTAssertEqual(dev.redact("dev, dev.local, dev.lan. Then", as: .host), "<machine>, <machine>, <machine>. Then")
+        XCTAssertEqual(dev.redact("dev_db, my_dev, _dev._tcp.local, dev_db.example.com", as: .host), "dev_db, my_dev, _dev._tcp.local, dev_db.example.com")
     }
 
     /// A process's name is its author's: a Mac's name in it is a coincidence.
