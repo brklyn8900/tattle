@@ -46,6 +46,20 @@
 - `posix_spawn_file_actions_addchdir_np` is deprecated in macOS 26 for
   `posix_spawn_file_actions_addchdir`, which needs macOS 26 where Tattle supports 14, so the
   new call goes behind an availability check (`Provider.swift`).
+- A listener run by a JVM or a runtime `LaunchedCode` does not know (`bun`, `deno`, `dotnet`,
+  `lua`) reads as the runtime, so an answer for one jar on a port is shown for another on that
+  JDK. A running JVM is deliberately a program; Startup follows `java` to the jar, Ports,
+  Processes and Network do not (`LaunchedCode.swift`).
+- Quit signals a pid from a snapshot up to 3 s old and rechecks only the uid, so a pid reused
+  in that window gets the signal (`ProcessControl.swift`). `ProcessDetail` already counts a
+  reused pid as gone, by start time.
+- Network's `Runs as` is the uid that created the socket, not the process's: an `sshd-session`
+  running as the user read `root` (`NetworkSnapshot.swift`). Ports reads its process's.
+- Two plists with one label in one domain both read as the job launchd loaded: a plist dropped
+  beside a loaded job takes its state and shows `Unload`. `launchctl print <domain>/<label>`
+  gives the loaded file's path (`StartupSnapshot.swift`).
+- A failed read of the process table fails the whole Ports refresh, and the old list stays on
+  screen with no sign: the tab shows the error only when it has no list (`PortsObserver.swift`).
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
