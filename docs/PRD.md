@@ -88,28 +88,24 @@ neither is shown as the destination.
 Packets come through a broker the user installs from Tattle, through the administrator
 password dialog, after the app explains what the grant does
 ([ADR-0003](adr/0003-bpf-descriptor-broker.md)). Without it the tab works from the socket
-table alone, shows addresses instead of names, and says why.
+table alone, shows addresses instead of names, and says why, unless other software such as
+Wireshark's ChmodBPF has made the capture devices readable; Tattle then opens one itself.
 
 What the sniffer cannot see, stated plainly in the UI: names hidden by Encrypted Client
 Hello (default in Firefox with DNS over HTTPS, in Chrome when Secure DNS returns one), DNS
 done over HTTPS by browsers rather than the system resolver, and Safari traffic routed
-through iCloud Private Relay. Those flows show the IP's owner and are labelled "name
-hidden" or "relayed". macOS daemons use the system resolver, so they stay visible. Browser
-traffic shows every destination the browser contacted, with owner, category, and bytes,
-but not which page caused it: a browser is one process, so a connection reads "Chrome to
-doubleclick (Google, advertising)", not "Chrome, nytimes.com tab, to doubleclick".
-Attributing to a page would need a browser extension; the UI says so rather than
-pretending.
+through iCloud Private Relay. Those flows show the address and are labelled "name hidden"
+or "relayed". macOS daemons use the system resolver, so they stay visible. Browser traffic
+shows every destination the browser contacted, but not which page caused it: a browser is
+one process, so a connection reads "Chrome to doubleclick.net", not "Chrome, nytimes.com
+tab, to doubleclick.net". Attributing to a page would need a browser extension; the UI says
+so rather than pretending.
 
-Identify: forward hostname, IP block owner (ASN data), country, domain category and owning
-company (Tracker Radar), Apple's published host list for Apple services, and the app's own
-`InternetAccessPolicy.plist` on the rare occasions it ships one. Plaintext connections are
-flagged.
+Identify: the name and how it was learned, the address, whether it is on this network or the
+internet, and the process, its app and their signers. What a host is comes from the
+knowledge base.
 
-Views: live connections grouped by app, then by service (forty Akamai hosts for one app
-collapse to "Apple CDN"; service grouping uses only built-in and user rules, never LLM
-answers); history per app and per destination; first contact; what talked while the screen
-was locked.
+Views: live connections grouped by app, with first contact with an address marked "new".
 
 Actions: explain; reveal the app.
 
@@ -135,13 +131,11 @@ Actions: explain; quit the owner.
 
 ### Startup
 
-Launch agents and daemons, cron and `periodic` entries, and login items. Sources:
-[design](design.md#startup). System items under `/System/Library` sit in a collapsed
-"Apple" group.
+Launch agents and daemons, and login items. Sources: [design](design.md#startup). System
+items under `/System/Library` are counted on one "Apple" line, not listed.
 
 Identify: program path and arguments, trigger (at login, on a schedule, on demand, watching
-a path), loaded or not, last run, signer, and the installing app, matched by bundle
-identifier prefix and signer.
+a path), loaded or not, last run, and signer.
 
 The login-items database needs Full Disk Access. Tattle asks for it once, from the Startup
 tab, with a button to the System Settings pane and the reason stated there; there is no
@@ -160,7 +154,7 @@ Actions: explain; load/unload; reveal the plist; open System Settings.
 
 Resolution order for any item:
 
-1. **Facts** the engine already has: signer, owner, category, declared intent. Shown
+1. **Facts** the engine already has, such as the signer and the app responsible. Shown
    regardless.
 2. **Knowledge base**: one SQLite table of rules. A rule has a `kind` (host, process, port,
    launch item), a `match` that is either an exact item or a glob pattern
@@ -181,9 +175,9 @@ Resolution order for any item:
    structured JSON in the shape of a rule. The answer is stored as an **exact-item** rule with `source = llm`, shown as
    "unconfirmed" until the user has read it, judged it against the facts panel, and
    confirmed it. There is no automatic check; confirmation is the user's. The source stays
-   `llm` so provenance is never lost. The model may propose a pattern, but only the user
-   can promote a rule to one, at confirmation. Unconfirmed LLM rules expire after 45 days. LLM rules never drive service grouping. A model
-   choosing `*.akamaiedge.net` as "Apple CDN" would otherwise mislabel every later match.
+   `llm` so provenance is never lost. The schema lets the model propose a pattern, and
+   nothing uses it yet: a rule becomes a pattern only when the user promotes it at
+   confirmation, and no screen offers that. Unconfirmed LLM rules expire after 45 days.
 
 The seed knowledge base ships in the repo as data files, one per source
 ([design](design.md#knowledge-base)). Contributions are pull requests against those files.
@@ -213,7 +207,8 @@ Settings shows:
 - the prompt instructions, editable, with reset to default;
 - the output contract (the JSON schema), read-only, appended to every request, because
   editing it would silently break the knowledge base;
-- the last prompt sent, verbatim, after redaction.
+- the last prompt handed to the command since Tattle started, verbatim, after redaction; it
+  is kept in memory only.
 
 Nothing is sent until the user has chosen a provider and clicked explain on an item.
 
@@ -260,6 +255,17 @@ Building from source is a first-class path. A Homebrew cask is possible; the use
   messaging, and Tattle would join that with the socket it saw at the same moment to the
   same host. One extension per browser; Safari's needs Xcode and ideally a developer
   account.
+- **More for the Network tab.** Grouping an app's connections by service (forty Akamai hosts
+  for one app collapse to "Apple CDN"), from built-in and user rules only: a model choosing
+  `*.akamaiedge.net` as "Apple CDN" would otherwise mislabel every later match. History per
+  app and per destination, and what talked while the screen was locked. A flag on plaintext
+  connections. For each host, IP block owner (ASN data), country, domain category and owning
+  company (Tracker Radar), Apple's published host list, and the app's own
+  `InternetAccessPolicy.plist` on the rare occasions it ships one.
+- **More for the Startup tab.** Cron and `periodic` entries, and the installing app, matched
+  by bundle identifier prefix and signer.
+- **Patterns from answers.** The user promotes a model's proposed pattern to a glob rule at
+  confirmation.
 - **Blocking**, if ever, as a decision of its own: `/etc/hosts` for names, the extension
   for apps.
 - **Resource history**, if wanted, as a decision of its own.

@@ -50,8 +50,9 @@ launch daemon that opens the capture device read-only and hands it to Tattle. Th
 answers only a process that runs as the user who installed it, carries Tattle's signature,
 and runs with the hardened runtime.
 
-You install and remove the broker through the administrator password dialog, which shows
-the exact plist first. You can also remove it from the Startup tab. Without the broker, the
+You install and remove the broker through the administrator password dialog, and the
+**Packet access** screen shows the exact plist first. You can also remove it from the
+Startup tab, which does not show the plist. Without the broker, the
 Network tab shows addresses instead of names. [ADR-0003](docs/adr/0003-bpf-descriptor-broker.md)
 gives the design and the reasoning.
 

@@ -8,8 +8,7 @@ How Tattle is built. What it is for, who it serves and how it behaves is in the
 Every surface runs the same pipeline on a different source:
 
 1. **Observe**: collect raw items from the system.
-2. **Identify**: attach deterministic facts: process, responsible app, code signer, owner of
-   the IP block, category, the app's own declared intent.
+2. **Identify**: attach deterministic facts: process, responsible app, code signer.
 3. **Explain**: match the item against the knowledge base; if nothing matches and the user
    clicks, ask the LLM and keep the answer.
 
@@ -21,16 +20,18 @@ Every surface runs the same pipeline on a different source:
   (`net.inet.tcp.pcblist_n`, `net.inet.udp.pcblist_n`) that `netstat -anv` reads.
 - Bytes in and out per interface, from `getifaddrs`, for the menu bar and the resources
   line. There are no per-process byte counts.
-- A BPF sniffer that reads three things and nothing else: DNS replies on port 53, to build
-  an IP-to-name map; the TLS ClientHello on TCP, for the Server Name Indication; and the
-  QUIC Initial packet, which carries the same ClientHello under a key derivable from the
-  packet itself. A name from the wire wins; the DNS map is a fallback
+- A BPF sniffer that reads four things and nothing else: DNS replies on port 53, to build
+  an IP-to-name map; the TLS ClientHello on TCP, for the Server Name Indication; the QUIC
+  Initial packet, which carries the same ClientHello under a key derivable from the packet
+  itself; and the Host header of a plaintext HTTP request. A name from the wire wins; the DNS map is a fallback
   ([ADR-0001](adr/0001-sniffer-coverage.md)). The sniffer gets its capture descriptor from
   the broker (Privileges).
 
 ### Processes
 
-`proc_listpids` and `proc_pidinfo`, parent pid, CPU time and memory for sorting.
+The process list and parent pids from the `KERN_PROC_ALL` `sysctl`; paths from
+`proc_pidpath`; CPU time and memory for sorting from `proc_pid_rusage`, and from `/bin/ps`
+for the processes that call will not describe; the working directory from `proc_pidinfo`.
 
 Code signature via `SecCodeCopySigningInformation`: Apple, a Team ID with the organization
 name read from the leaf certificate, or unsigned. Helpers are attributed to their app by
@@ -45,8 +46,8 @@ Listening TCP and UDP sockets with owning pid, from the same `sysctl` as Network
 
 ### Startup
 
-`~/Library/LaunchAgents`, `/Library/LaunchAgents`, `/Library/LaunchDaemons`, cron and
-`periodic` entries, `launchctl` state for each, and the login-items database
+`~/Library/LaunchAgents`, `/Library/LaunchAgents`, `/Library/LaunchDaemons`, `launchctl`
+state for each, and the login-items database
 (`/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`), which needs
 Full Disk Access ([ADR-0002](adr/0002-login-items-full-disk-access.md)), is undocumented,
 and is a keyed archive with more than one schema version in the wild; KnockKnock has a
@@ -54,8 +55,8 @@ parser to learn from.
 
 ## Knowledge base
 
-The seed knowledge base ships in the repo as JSON files, one per source, compiled into
-SQLite at build time.
+The seed knowledge base ships in the repo as JSON files, one per source. They are copied
+into the app bundle and loaded into SQLite at launch, each only when its content changed.
 
 ## LLM presets
 
@@ -71,25 +72,25 @@ reply, and keeps nothing. It answers only a sender that runs as the installing u
 carries Tattle's signature, and cannot be steered by another process of that user. The
 checks, and how install verifies the build before root runs it, are in
 [ADR-0003](adr/0003-bpf-descriptor-broker.md). Installing and removing it goes through the
-standard macOS administrator password dialog, with the exact plist shown first. Everything
-else runs as the user: the socket table, the login-items database (with Full Disk Access),
+standard macOS administrator password dialog. The Packet access screen shows the exact
+plist first; the Startup tab's Remove does not. Everything else runs as the user: the socket table, the login-items database (with Full Disk Access),
 signatures, and launch agents need no root on current macOS. There is no `sudo`.
 
 ## Storage
 
-SQLite through GRDB: typed records, migrations, and value observation that pushes query
-results to SwiftUI when rows change, which is what every tab needs. Tables: connections
-(history), items seen per tab (for "new since"), knowledge base rules, settings.
+SQLite through GRDB: typed records and migrations. The tabs read in-memory `@Observable`
+snapshots, not the database. Tables: `connection` (history), `rule` (the knowledge base),
+`setting`.
 
 ## Third-party data and licenses
 
 | Data | Source | License | Handling |
 |---|---|---|---|
-| IP block owner | iptoasn.com | PDDL 1.0 | bundled |
-| Domain category and owner | DuckDuckGo Tracker Radar | CC BY-NC-SA 4.0 | separate file under its own license; the app runs without it; non-commercial forks only |
+| IP block owner (later) | iptoasn.com | PDDL 1.0 | not built yet; to be bundled |
+| Domain category and owner | DuckDuckGo Tracker Radar | CC BY-NC-SA 4.0 | separate file under its own license, shipped with no rules; the app runs without it; non-commercial forks only |
 | MAC vendor (later) | IEEE OUI registry | no copyright asserted | bundled |
-| Apple hosts | Apple, "Use Apple products on enterprise networks" (support.apple.com/101555) | Apple copyright | facts transcribed into the seed, with the source URL and transcription date; partial and enterprise-oriented, re-checked each macOS release |
-| App intent | `InternetAccessPolicy.plist` in app bundles | app's own | read from disk at runtime, only from validly signed bundles; rare (2 of 63 apps on the development machine) |
+| Apple hosts | Apple, "Use Apple products on enterprise networks" (support.apple.com/101555) | Apple copyright | the seed file ships with no rules; facts to be transcribed into it, with the source URL and transcription date; partial and enterprise-oriented, re-checked each macOS release |
+| App intent (later) | `InternetAccessPolicy.plist` in app bundles | app's own | not built yet; to be read from disk at runtime, only from validly signed bundles; rare (2 of 63 apps on the development machine) |
 
 The app is MIT. The knowledge base is split-licensed by source file so the ShareAlike data
 never contaminates the rest.
