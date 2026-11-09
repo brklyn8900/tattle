@@ -84,7 +84,8 @@ extension SocketEntry {
     static func isUnspecified(_ address: String) -> Bool { address == "0.0.0.0" || address == "::" }
 
     /// RFC 1918, RFC 6598's shared space (Tailscale's, and carrier NAT's), link-local,
-    /// multicast, and their IPv6 equivalents.
+    /// multicast, and their IPv6 equivalents. The sniffer's own test leaves shared space
+    /// out, so a Tailscale peer can still be named (`IPAddress.isLocalScope`).
     static func isLocalScope(_ address: String) -> Bool {
         let lower = address.lowercased()
         if lower.contains(":") {
