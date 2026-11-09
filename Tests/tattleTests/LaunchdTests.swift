@@ -98,8 +98,12 @@ final class LaunchdTests: XCTestCase {
         for dir in [user, daemons, apple] { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
         try plist("<key>Label</key><string>com.a</string><key>Program</key><string>/a</string>").write(to: user.appending(path: "com.a.plist"))
         try Data("junk".utf8).write(to: user.appending(path: "broken.plist"))
+        try Data("<plist><dict>".utf8).write(to: user.appending(path: "corrupt.plist"))
         try Data("ignored".utf8).write(to: user.appending(path: "README"))
         try plist("<key>Label</key><string>com.d</string><key>Program</key><string>/d</string>").write(to: daemons.appending(path: "com.d.plist"))
+        let locked = daemons.appending(path: "locked.plist")
+        try plist("<key>Label</key><string>com.l</string>").write(to: locked)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
         for i in 0..<3 { try plist("<key>Label</key><string>apple\(i)</string>").write(to: apple.appending(path: "apple\(i).plist")) }
 
         let reader = LaunchdReader(folders: [.userAgent: user, .daemon: daemons, .globalAgent: root.appending(path: "missing")], appleFolders: [apple])
@@ -107,12 +111,16 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(result.items.map(\.label), ["com.a", "com.d"])
         XCTAssertEqual(result.items.map(\.scope), [.userAgent, .daemon])
         XCTAssertEqual(result.appleCount, 3)
-        XCTAssertEqual(result.skipped.keys.map { URL(fileURLWithPath: $0).lastPathComponent }, ["broken.plist"])
+        XCTAssertEqual(result.unreadable.map(\.url.lastPathComponent), ["broken.plist", "corrupt.plist", "locked.plist"])
+        XCTAssertEqual(result.unreadable.map(\.scope), [.userAgent, .userAgent, .daemon])
+        XCTAssertEqual(result.unreadable.map(\.reason), [
+            "it is not a launchd job", "it is not a valid property list", "Tattle has no permission to read this file",
+        ])
     }
 
     func testThisMachineParsesCleanly() {
         let result = LaunchdReader().read()
-        XCTAssertTrue(result.skipped.isEmpty, "\(result.skipped)")
+        XCTAssertTrue(result.unreadable.isEmpty, "\(result.unreadable)")
         XCTAssertGreaterThan(result.appleCount, 100)
     }
 }

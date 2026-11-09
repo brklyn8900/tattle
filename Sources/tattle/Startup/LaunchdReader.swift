@@ -13,25 +13,42 @@ struct LaunchdReader: Sendable {
     struct Result: Equatable, Sendable {
         var items: [LaunchdItem]
         var appleCount: Int
-        /// Plists that could not be read, by path, with the reason.
-        var skipped: [String: String]
+        var unreadable: [Unreadable]
+    }
+
+    /// A plist in one of the folders that could not be read: a daemon's owner can make it
+    /// readable by root alone, and launchd still runs it.
+    struct Unreadable: Equatable, Sendable {
+        var url: URL
+        var scope: LaunchdItem.Scope
+        var reason: String
     }
 
     func read() -> Result {
         var items: [LaunchdItem] = []
-        var skipped: [String: String] = [:]
+        var unreadable: [Unreadable] = []
         for scope in LaunchdItem.Scope.allCases {
             guard let folder = folders[scope] else { continue }
             for url in plists(in: folder) {
                 do {
                     items.append(try LaunchdItem.parse(try Data(contentsOf: url), url: url, scope: scope))
                 } catch {
-                    skipped[url.path] = String(describing: error)
+                    unreadable.append(Unreadable(url: url, scope: scope, reason: Self.reason(error)))
                 }
             }
         }
         let appleCount = appleFolders.reduce(0) { $0 + plists(in: $1).count }
-        return Result(items: items, appleCount: appleCount, skipped: skipped)
+        return Result(items: items, appleCount: appleCount, unreadable: unreadable)
+    }
+
+    private static func reason(_ error: Error) -> String {
+        switch error {
+        case LaunchdItem.ParseError.noLabel: "it has no Label, so launchd rejects it too"
+        case LaunchdItem.ParseError.notADictionary: "it is not a launchd job"
+        case let error as CocoaError where error.code == .fileReadNoPermission: "Tattle has no permission to read this file"
+        case let error as CocoaError where error.code == .propertyListReadCorrupt: "it is not a valid property list"
+        default: error.localizedDescription
+        }
     }
 
     private func plists(in folder: URL) -> [URL] {

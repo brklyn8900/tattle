@@ -122,8 +122,10 @@ private struct StartupDetail: View {
                 Text(item.name).font(.headline)
                 FactsGrid(facts: item.facts)
                 Divider()
-                ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity), state: state)
-                Divider()
+                if item.canExplain {
+                    ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity), state: state)
+                    Divider()
+                }
                 HStack {
                     if let plist = item.plistURL {
                         Button("Reveal Plist") { NSWorkspace.shared.activateFileViewerSelecting([plist]) }
@@ -173,7 +175,7 @@ private struct StartupDetail: View {
                     Button("Load") { perform { try Launchctl.load(plist: plist) } }
                 case .running, .idle:
                     Button("Unload") { perform { try Launchctl.unload(label: item.id) } }
-                case .disabled, .placeholder, .enabled, .off:
+                case .disabled, .placeholder, .enabled, .off, .unreadable:
                     EmptyView()
                 }
             }

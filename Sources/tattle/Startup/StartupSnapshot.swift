@@ -37,6 +37,8 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         case placeholder
         /// A login item with its System Settings toggle on or off.
         case enabled, off
+        /// A plist Tattle could not read: launchd may still run the job.
+        case unreadable(reason: String)
 
         var text: String {
             switch self {
@@ -48,6 +50,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
             case .placeholder: "empty file, nothing runs"
             case .enabled: "on"
             case .off: "off"
+            case .unreadable: "could not be read"
             }
         }
 
@@ -85,6 +88,12 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
+    /// Of a file Tattle could not read it knows only the name: nothing to ask a model.
+    var canExplain: Bool {
+        if case .unreadable = state { return false }
+        return true
+    }
+
     /// What tells this item's code from another's of its label (`CodeIdentity`): its
     /// publisher's signature, else its command line. `signature` is of the code the line
     /// reaches, and `program` its first word, which can be a wrapper: only a team says whose
@@ -109,6 +118,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         }
         facts.append(Fact(name: "When", value: trigger))
         facts.append(Fact(name: "State", value: state.text))
+        if case .unreadable(let reason) = state { facts.append(Fact(name: "Reason", value: reason)) }
         if let signature {
             facts.append(.signedBy(signature))
             if case .launchItem(let program?) = signature.signer { facts.append(Fact(name: "Runs Apple's", value: program)) }
@@ -127,7 +137,6 @@ struct StartupItem: Equatable, Sendable, Identifiable {
 struct StartupSnapshot: Equatable, Sendable {
     var items: [StartupItem]
     var appleCount: Int
-    var skipped: [String: String]
     /// Why the login-items database could not be read, if it could not.
     var loginItemsError: String?
     var takenAt: Date
@@ -177,6 +186,19 @@ struct StartupSnapshot: Equatable, Sendable {
                 launchdScope: job.scope))
         }
 
+        // macOS's own record of a plist gives a row below, with its program and signer.
+        for plist in launchd.unreadable where byPlistPath[plist.url.path] == nil {
+            items.append(StartupItem(
+                id: plist.url.path,
+                group: group(for: plist.scope),
+                name: plist.url.deletingPathExtension().lastPathComponent,
+                trigger: "unknown",
+                state: .unreadable(reason: plist.reason),
+                plistURL: plist.url,
+                isLoginItem: false,
+                launchdScope: plist.scope))
+        }
+
         for item in loginItems where (item.isStartupItem || item.isExtension) && !joined.contains(item.identifier) {
             // An app record without the enabled bit is only the container for its helpers
             // and extensions; System Settings does not list it under Open at Login.
@@ -202,7 +224,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 launchdScope: nil))
         }
 
-        return StartupSnapshot(items: items, appleCount: launchd.appleCount, skipped: launchd.skipped, takenAt: takenAt)
+        return StartupSnapshot(items: items, appleCount: launchd.appleCount, takenAt: takenAt)
     }
 
     private static func group(for scope: LaunchdItem.Scope) -> StartupItem.Group {
