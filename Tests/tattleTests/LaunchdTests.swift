@@ -148,7 +148,9 @@ final class LaunchdTests: XCTestCase {
 
     func testThisMachineParsesCleanly() {
         let result = LaunchdReader().read()
-        XCTAssertTrue(result.unreadable.isEmpty, "\(result.unreadable)")
+        // A plist only root may read is the machine's business, not a parser's failure.
+        let failed = result.unreadable.filter { $0.reason != "Tattle has no permission to read this file" }
+        XCTAssertTrue(failed.isEmpty, "\(failed)")
         XCTAssertGreaterThan(result.appleCount, 100)
     }
 }
