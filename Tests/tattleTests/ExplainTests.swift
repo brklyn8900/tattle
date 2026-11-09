@@ -94,6 +94,14 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(disks.redact("see /Volumes/Data. Then /Volumes/My Passport. And /Users/other.", as: .program), "see /Volumes/<volume>. Then /Volumes/<volume>. And /Users/<other-user>.")
     }
 
+    /// A disk's or folder's name can hold the login, so the paths go before the login does.
+    func testAPathNameHoldingTheLoginIsReplacedWhole() {
+        let disks = Redactor(home: "/Users/username", username: "username", machineNames: [], volumeNames: ["username work files", "my username disk"])
+        XCTAssertEqual(disks.redact("/Volumes/username work files/bin/tool", as: .launchItem), "/Volumes/<volume>/bin/tool")
+        XCTAssertEqual(disks.redact("/Volumes/my username disk/app", as: .launchItem), "/Volumes/<volume>/app")
+        XCTAssertEqual(disks.redact("/Users/username-old/x", as: .launchItem), "/Users/<other-user>/x")
+    }
+
     func testMachineNames() {
         XCTAssertEqual(redactor.redact("host USERS-COMPUTER.local and Users-Computer", as: .host), "host <machine> and <machine>")
     }

@@ -119,6 +119,8 @@ struct Redactor: Sendable {
             let pattern = Self.pathStart + NSRegularExpression.escapedPattern(for: home) + Self.pathEnd
             out = out.replacingOccurrences(of: pattern, with: "<home>", options: [.regularExpression, .caseInsensitive])
         }
+        // Before any name: a disk's or a folder's name can hold the login.
+        if captured { out = redactFolders(out) }
         out = redactMachineNames(out, in: context)
         // After the machine's names, so this Mac's own MagicDNS name reads as the machine. A
         // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account.
@@ -128,7 +130,6 @@ struct Redactor: Sendable {
                 with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
         }
         out = redactUsername(out, in: context)
-        if captured { out = redactFolders(out) }
         return Self.redactAddresses(out)
     }
 
