@@ -55,15 +55,14 @@ final class ApplesProgramTests: XCTestCase {
         }
     }
 
-    /// The kernel names a listener after its executable's file, whatever it was started as
-    /// (measured with `exec -a` and a symlink), so a copy is the impostor this tab sees.
+    /// A copy of the program is the impostor this tab sees.
     func testPorts() {
-        let identities: [Int32: ProcessIdentity] = [
-            90: ProcessIdentity(pid: 90, name: "mDNSResponder", path: "/usr/sbin/mDNSResponder"),
-            500: ProcessIdentity(pid: 500, name: "mDNSResponder", path: "/private/tmp/mDNSResponder"),
-        ]
+        func process(_ pid: Int32, _ path: String) -> ProcessEntry {
+            ProcessEntry(pid: pid, parentPid: 1, uid: 0, name: "mDNSResponder", path: path, started: started)
+        }
+        let processes: [Int32: ProcessEntry] = [90: process(90, "/usr/sbin/mDNSResponder"), 500: process(500, "/private/tmp/mDNSResponder")]
         let snapshot = PortsSnapshot.build(entries: [listener(90), listener(500)], services: .empty,
-                                           identity: { identities[$0] }, signature: appleSigned)
+                                           processes: { processes[$0] }, signature: appleSigned)
         XCTAssertEqual(snapshot.items.map(\.explainKey), ["mDNSResponder:udp/5353", "mDNSResponder:udp/5353"])
         XCTAssertEqual(snapshot.items.map(\.isApplesProgram), [true, false])
     }
@@ -102,15 +101,6 @@ final class ApplesProgramTests: XCTestCase {
         }
         XCTAssertEqual(NetworkSnapshot(connections: [named(1, "/a/updater")], takenAt: started).groups.first?.identity?.text, "unsigned:/a/updater")
         XCTAssertNil(NetworkSnapshot(connections: [named(1, "/a/updater"), named(2, "/b/updater")], takenAt: started).groups.first?.identity)
-
-        // Ports reads no arguments: a program has an identity, an interpreter none.
-        func port(_ path: String, _ signature: CodeSignature) -> PortItem {
-            let name = URL(fileURLWithPath: path).lastPathComponent
-            return PortItem(id: "x", proto: .tcp, port: 8000, binding: .loopback, families: "IPv4", pid: 9, uid: 501,
-                            process: ProcessIdentity(pid: 9, name: name, path: path), signature: signature, serviceName: nil)
-        }
-        XCTAssertEqual(port("/x/server", CodeSignature(signer: .unsigned)).identity?.text, "unsigned:/x/server")
-        XCTAssertNil(port("/usr/bin/python3", CodeSignature(signer: .apple, identifier: "com.apple.python3")).identity)
 
         // A launch item's is its program's signature, else what its plist says runs.
         var item = StartupItem(id: "a", group: .userAgents, name: "a", program: "/bin/sh", arguments: ["-c", "x"], trigger: "", state: .notLoaded,

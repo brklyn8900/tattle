@@ -9,6 +9,11 @@ final class PortsSnapshotTests: XCTestCase {
                     pid: pid, effectivePid: 0, uid: uid)
     }
 
+    /// A process as the table lists it: named without its signature.
+    private func process(_ pid: Int32, _ path: String, arguments: [String]? = nil, uid: UInt32 = 501) -> ProcessEntry {
+        ProcessEntry(pid: pid, parentPid: 1, uid: uid, name: URL(fileURLWithPath: path).lastPathComponent, path: path, arguments: arguments, started: .distantPast)
+    }
+
     private let services = ServiceNames.parse("""
         # comment
         ssh              22/udp     # SSH Remote Login Protocol
@@ -28,8 +33,8 @@ final class PortsSnapshotTests: XCTestCase {
             entry(.udp, "0.0.0.0", 60000, pid: 300),
             entry(.udp, "0.0.0.0", 0, pid: 300),
         ]
-        let snapshot = PortsSnapshot.build(entries: entries, services: services, identity: { pid in
-            pid == 634 ? ProcessIdentity(pid: 634, name: "ControlCenter", path: "/System/ControlCenter") : nil
+        let snapshot = PortsSnapshot.build(entries: entries, services: services, processes: { pid in
+            pid == 634 ? self.process(634, "/System/ControlCenter") : nil
         }, signature: { _ in CodeSignature(signer: .apple) })
 
         XCTAssertEqual(snapshot.items.count, 5)
@@ -66,7 +71,7 @@ final class PortsSnapshotTests: XCTestCase {
     func testPortFactsKeepTheLoginAndCertificateNameOutOfTheirPromptValues() throws {
         let snapshot = PortsSnapshot.build(
             entries: [entry(.tcp, "0.0.0.0", 5000, pid: 634, uid: getuid())], services: services,
-            identity: { _ in ProcessIdentity(pid: 634, name: "Mine", path: "/x/Mine") },
+            processes: { _ in self.process(634, "/x/Mine") },
             signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") })
         assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: true)
     }
@@ -77,7 +82,7 @@ final class PortsSnapshotTests: XCTestCase {
         func boundTo(_ address: String, v6: Bool) throws -> Fact? {
             let snapshot = PortsSnapshot.build(
                 entries: [entry(.tcp, address, 5000, pid: 634, v6: v6)], services: services,
-                identity: { _ in ProcessIdentity(pid: 634, name: "Mine", path: "/x/Mine") }, signature: { _ in nil })
+                processes: { _ in self.process(634, "/x/Mine") }, signature: { _ in nil })
             return try XCTUnwrap(snapshot.items.first).facts.first { $0.name == "Bound to" }
         }
         let global = try XCTUnwrap(try boundTo("2a03:2880:f12f::1", v6: true))
@@ -87,6 +92,48 @@ final class PortsSnapshotTests: XCTestCase {
         XCTAssertEqual(v4.promptValue, "<public-ip> (IPv4)")
         XCTAssertNil(try boundTo("192.168.1.5", v6: false)?.promptValue, "the redaction already replaces a private address")
         XCTAssertNil(try boundTo("0.0.0.0", v6: false)?.promptValue)
+    }
+
+    /// A script listening on a port reads as the script, as it does in Processes and Network,
+    /// and not as its interpreter, which is Apple's.
+    func testAListenerIsReadAsTheCodeItRuns() throws {
+        let python = "/usr/bin/python3", apple = CodeSignature(signer: .apple, identifier: "com.apple.python3")
+        let processes: [Int32: ProcessEntry] = [
+            40: process(40, python, arguments: [python, "/x/server.py"]),
+            41: process(41, python, arguments: [python, "-c", "serve()"]),
+            42: process(42, python, uid: 0),
+            43: process(43, "/x/server", arguments: ["/x/server"]),
+        ]
+        let snapshot = PortsSnapshot.build(
+            entries: [entry(.tcp, "127.0.0.1", 8000, pid: 40), entry(.tcp, "127.0.0.1", 8001, pid: 41),
+                      entry(.tcp, "127.0.0.1", 8002, pid: 42, uid: 0), entry(.tcp, "127.0.0.1", 8003, pid: 43)],
+            services: .empty, processes: { processes[$0] },
+            signature: { $0 == python ? apple : CodeSignature(signer: .unsigned) })
+        func item(_ port: UInt16) throws -> PortItem { try XCTUnwrap(snapshot.items.first { $0.port == port }) }
+
+        let script = try item(8000)
+        XCTAssertEqual(script.processName, "server.py")
+        XCTAssertEqual(script.explainKey, "server.py:tcp/8000")
+        XCTAssertEqual(script.signature?.signer, .script)
+        XCTAssertEqual(script.interpreterSignature, apple)
+        XCTAssertEqual(script.identity, .script(at: "/x/server.py"), "an answer for it is kept, against the script's file")
+        XCTAssertFalse(script.isApplesProgram)
+        let facts = Dictionary(script.facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
+        XCTAssertEqual(facts["Runs with"], "python3 (/usr/bin/python3)")
+        XCTAssertEqual(facts["Signed by"], "script, not signed")
+        XCTAssertEqual(facts["Interpreter signed by"], "Apple")
+        XCTAssertNil(facts["Path"])
+
+        XCTAssertEqual(try item(8001).signature?.signer, .unnamed, "inline code")
+        XCTAssertNil(try item(8001).identity)
+        XCTAssertEqual(try item(8002).signature?.signer, .unnamed, "another account's arguments cannot be read")
+        XCTAssertNil(try item(8002).identity)
+
+        let program = try item(8003)
+        XCTAssertEqual(program.signature?.signer, .unsigned)
+        XCTAssertNil(program.interpreterSignature)
+        XCTAssertEqual(program.identity?.text, "unsigned:/x/server")
+        XCTAssertEqual(program.facts.first { $0.name == "Path" }?.value, "/x/server")
     }
 
     func testServiceNames() {
@@ -110,8 +157,9 @@ final class PortsSnapshotTests: XCTestCase {
     }
 
     func testThisMachine() throws {
+        let byPid = Dictionary(try ProcessTable.list(signature: { _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         let snapshot = PortsSnapshot.build(entries: try SocketTable.read(), services: ServiceNames.load(),
-                                           identity: ProcessIdentity.read(pid:), signature: { _ in nil })
+                                           processes: { byPid[$0] }, signature: { _ in nil })
         XCTAssertFalse(snapshot.items.isEmpty)
         XCTAssertEqual(Set(snapshot.items.map(\.id)).count, snapshot.items.count)
     }

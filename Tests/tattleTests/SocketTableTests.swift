@@ -31,14 +31,6 @@ final class SocketTableTests: XCTestCase {
         }
     }
 
-    func testProcessIdentity() {
-        let me = ProcessIdentity.read(pid: getpid())
-        XCTAssertNotNil(me?.path)
-        XCTAssertEqual(ProcessIdentity.read(pid: 1)?.name, "launchd", "root processes are readable too")
-        XCTAssertNil(ProcessIdentity.read(pid: 0))
-        XCTAssertNil(ProcessIdentity.read(pid: 999_999))
-    }
-
     private func run(_ path: String, _ arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)

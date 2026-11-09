@@ -16,9 +16,11 @@ final class PortsObserver {
         let result = await Task.detached(priority: .userInitiated) { () -> Result<PortsSnapshot, Error> in
             do {
                 let entries = try SocketTable.read()
+                // Listed without their signatures: each listener's is read when it is named.
+                let byPid = Dictionary(try ProcessTable.list(signature: { _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
                 return .success(PortsSnapshot.build(
                     entries: entries, services: services,
-                    identity: ProcessIdentity.read(pid:), signature: signatures.signature(at:)))
+                    processes: { byPid[$0] }, signature: signatures.signature(at:)))
             } catch {
                 return .failure(error)
             }
