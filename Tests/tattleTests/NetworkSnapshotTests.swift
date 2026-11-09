@@ -290,6 +290,28 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertFalse(snapshot.confirmOutbound(id: "other", isNew: true))
     }
 
+    /// A reading waits off the main actor for a new pid's owner, and the SYN's event can land
+    /// in that gap, before the row and its history exist.
+    @MainActor
+    func testAnOpeningSeenWhileAReadingResolvesOwnersReachesTheRowAndItsHistory() async throws {
+        let database = try AppDatabase.inMemory()
+        let store = ConnectionStore(database: database)
+        let observer = NetworkObserver(store: store, rules: RuleStore(database: database),
+                                       settings: try AppSettings(store: SettingsStore(database: database)))
+        let now = Date()
+        let socket = SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: 40000, remoteAddress: "17.1.1.1", remotePort: 443,
+                                 tcpState: SocketEntry.tcpEstablished, pid: getpid(), effectivePid: 0, uid: 501)
+        let reading = Task { await observer.fold(entries: [socket], processes: [], now: now) }
+        await Task.yield()
+        XCTAssertNil(observer.snapshot, "the reading is waiting for the owner")
+        observer.confirmOutbound(FlowKey(proto: .tcp, localPort: 40000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443), openedAt: now)
+        await reading.value
+        let row = try XCTUnwrap(observer.snapshot?.connections.first)
+        XCTAssertEqual(row.connection.direction, .outbound)
+        XCTAssertTrue(row.isNew, "an address never seen is a first contact")
+        XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1").first?.direction, .outbound)
+    }
+
     func testFirstContactCountsOnlyThisMacReachingOut() {
         var known = Set<String>()
         var accepted = connection(100, "203.0.113.5")

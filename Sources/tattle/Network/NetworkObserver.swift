@@ -136,8 +136,10 @@ final class NetworkObserver {
     }
 
     /// A seen opening settles the direction of a connection the socket table already showed.
-    private func confirmOutbound(_ flow: FlowKey, openedAt: Date) {
+    /// One a reading has yet to publish is left to that reading, which reads the tracker.
+    func confirmOutbound(_ flow: FlowKey, openedAt: Date) {
         for connection in tracker.confirmOutbound(flow: flow, openedAt: openedAt) {
+            guard snapshot?.connections.contains(where: { $0.id == connection.id }) == true else { continue }
             let isNew = LiveConnection.isFirstContact(connection, known: &known)
             if var snapshot, snapshot.confirmOutbound(id: connection.id, isNew: isNew) { self.snapshot = snapshot }
             do {
@@ -229,6 +231,11 @@ final class NetworkObserver {
             self.error = String(describing: error)
             return
         }
+        await fold(entries: entries, processes: processes, now: now)
+    }
+
+    /// Takes one reading of the table into the tracker, the history and the snapshot.
+    func fold(entries: [SocketEntry], processes: [ProcessEntry]?, now: Date) async {
         let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 
         // Owners are resolved once per pid and executable, from one process list per poll, off
@@ -253,7 +260,9 @@ final class NetworkObserver {
         }
 
         var opened: [LiveConnection] = []
-        for connection in changes.opened {
+        for reading in changes.opened {
+            // An opening seen while the owners were resolved has settled the tracker's copy.
+            let connection = tracker.live[reading.id] ?? reading
             let owner = owners[connection.pid] ?? .unknown
             let isNew = LiveConnection.isFirstContact(connection, known: &known)
             opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, outcome: names.outcome(for: connection.flowKey)))
