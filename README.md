@@ -97,9 +97,9 @@ names and Tailscale names stay in them. **Last prompt sent** shows the exact tex
 
 A name is replaced only where Tattle can tell it from an ordinary word, so some stay:
 
-- Your home folder's path matches in any case, at the start of a path; your username as a
-  word only as written, so a login `code` leaves the app `Code` alone. An exact match that is
-  the item's own name is still replaced.
+- Your home folder's path matches in any case, at the start of a path or straight after a
+  disk's root; your username as a word only as written, so a login `code` leaves the app `Code`
+  alone. An exact match that is the item's own name is still replaced.
 - Your username stays inside a host name, next to `_` (`username_db`), and in a file named for it
   (`username.py`). In another dotted name it is replaced only as the author's part
   (`com.username.helper`): the label straight after a leading `com`, `org`, `net` or `io`, or
