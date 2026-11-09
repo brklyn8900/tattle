@@ -149,6 +149,12 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(dev.redact("dev.example.com, dev.lan, dev.local. Then dev.", as: .instructions), "<machine>.example.com, <machine>.lan, <machine>. Then <machine>.")
     }
 
+    /// A run of numbers in the user's own words is not an address spelled with hyphens.
+    func testEditedInstructionsKeepNumbersWithHyphens() {
+        XCTAssertEqual(redactor.redact("steps 10-20-30-40 on 10.0.0.5", as: .instructions), "steps 10-20-30-40 on <private-ip>")
+        XCTAssertEqual(redactor.redact("ip-10-0-1-5.ec2.internal", as: .host), "ip-<private-ip>.ec2.internal", "captured text still loses one")
+    }
+
     /// macOS stores a curly apostrophe in the computer name; other text often has a straight one.
     func testAMachineNameMatchesEitherApostrophe() {
         for name in ["Username’s Computer", "Username's Computer"] {

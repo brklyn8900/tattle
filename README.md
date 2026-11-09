@@ -90,8 +90,10 @@ schema.
 Before sending, Tattle replaces these in the item and its facts with placeholders: your home
 path, your username, private and local IP addresses, the Mac's names, Tailscale device names,
 other accounts' folders, disk names, and a public address a port is bound to. The default
-instructions go out as written; instructions you edit lose your home path, your username, the
-Mac's names and private or local addresses. **Last prompt sent** shows the exact text.
+instructions go out as written. Instructions you edit lose your home path in any case, your
+username, the Mac's names with either apostrophe, and private or local addresses unless
+spelled with hyphens; a dotted name such as `com.username.helper`, other accounts' folders, disk
+names and Tailscale names stay in them. **Last prompt sent** shows the exact text.
 
 A name is replaced only where Tattle can tell it from an ordinary word, so some stay:
 

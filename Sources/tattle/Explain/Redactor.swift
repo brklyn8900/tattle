@@ -130,7 +130,7 @@ struct Redactor: Sendable {
                 with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
         }
         out = redactUsername(out, in: context)
-        return Self.redactAddresses(out)
+        return Self.redactAddresses(out, spelledWithHyphens: captured)
     }
 
     /// Where a text can say it is this Mac. A host is, only when all of it is one of the Mac's
@@ -216,9 +216,10 @@ struct Redactor: Sendable {
         return out
     }
 
-    /// Replaces private and local IP addresses only.
-    static func redactAddresses(_ text: String) -> String {
-        redactIPv6(redactIPv4(text))
+    /// Replaces private and local IP addresses only. The hyphen spelling belongs to host names;
+    /// in the user's own words the same digits are just numbers.
+    static func redactAddresses(_ text: String, spelledWithHyphens: Bool = true) -> String {
+        redactIPv6(redactIPv4(text, forms: spelledWithHyphens ? [ipv4, hyphenatedIPv4] : [ipv4]))
     }
 
     private static let ipv4 = try! NSRegularExpression(
@@ -240,8 +241,8 @@ struct Redactor: Sendable {
         }
     }
 
-    private static func redactIPv4(_ text: String) -> String {
-        [ipv4, hyphenatedIPv4].reduce(text) { text, form in
+    private static func redactIPv4(_ text: String, forms: [NSRegularExpression]) -> String {
+        forms.reduce(text) { text, form in
             let ns = text as NSString
             var out = text
             for match in form.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
