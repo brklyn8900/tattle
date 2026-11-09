@@ -18,6 +18,8 @@ struct SocketEntry: Equatable, Sendable {
     /// The process on whose behalf it was opened, when a system daemon proxies.
     var effectivePid: Int32
     var uid: UInt32
+    /// An IPv6 socket that takes IPv4 peers too: netstat's tcp46.
+    var isDualStack = false
 
     static let tcpListen: Int32 = 1
     static let tcpEstablished: Int32 = 4
@@ -33,6 +35,9 @@ struct SocketEntry: Equatable, Sendable {
     /// Unspecified address: reachable on every interface, including from the network.
     var isBoundToAllInterfaces: Bool { localAddress == "0.0.0.0" || localAddress == "::" }
     var isLoopback: Bool { localAddress.hasPrefix("127.") || localAddress == "::1" }
+
+    var acceptsIPv4: Bool { !isIPv6 || isDualStack }
+    var acceptsIPv6: Bool { isIPv6 }
 }
 
 /// Reads both tables through the pcblist_n sysctls. No privileges needed, and the owning
@@ -115,6 +120,7 @@ enum SocketTable {
 
     private static func entry(socket: tattle_xsocket_n, inpcb: tattle_xinpcb_n, tcpState: Int32?, proto: SocketEntry.Proto) -> SocketEntry {
         let isIPv6 = Int32(inpcb.inp_vflag) & INP_IPV6 != 0
+        let isDualStack = isIPv6 && Int32(inpcb.inp_vflag) & INP_IPV4 != 0
         let local: String, remote: String
         if isIPv6 {
             local = ipv6(inpcb.inp_dependladdr.inp6_local)
@@ -127,7 +133,7 @@ enum SocketTable {
             proto: proto, isIPv6: isIPv6,
             localAddress: local, localPort: UInt16(bigEndian: inpcb.inp_lport),
             remoteAddress: remote, remotePort: UInt16(bigEndian: inpcb.inp_fport),
-            tcpState: tcpState, pid: socket.so_last_pid, effectivePid: socket.so_e_pid, uid: socket.so_uid)
+            tcpState: tcpState, pid: socket.so_last_pid, effectivePid: socket.so_e_pid, uid: socket.so_uid, isDualStack: isDualStack)
     }
 
     private static func ipv4(_ address: in_addr) -> String {

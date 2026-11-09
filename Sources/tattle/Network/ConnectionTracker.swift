@@ -103,19 +103,26 @@ extension SocketEntry {
 /// address and port, the only sign of one in the socket table; the pid can differ, since
 /// launchd holds the listener of a job it starts on demand.
 private struct TCPListeners {
-    /// Ports listening on every interface.
-    private var everywhere = Set<UInt16>()
+    /// Ports listening on every address of a family. Each family's ephemeral ports are
+    /// allocated without regard to a listener of the other only, so a socket on such a port
+    /// was not accepted from it.
+    private var everyIPv4 = Set<UInt16>()
+    private var everyIPv6 = Set<UInt16>()
     /// Listeners bound to one address.
     private var bound = Set<String>()
 
     init(_ entries: [SocketEntry]) {
         for entry in entries where entry.proto == .tcp && entry.isListening {
-            if entry.isBoundToAllInterfaces { everywhere.insert(entry.localPort) } else { bound.insert(Self.endpoint(entry)) }
+            guard entry.isBoundToAllInterfaces else { bound.insert(Self.endpoint(entry)); continue }
+            if entry.acceptsIPv4 { everyIPv4.insert(entry.localPort) }
+            if entry.acceptsIPv6 { everyIPv6.insert(entry.localPort) }
         }
     }
 
     func accepted(_ entry: SocketEntry) -> Bool {
-        entry.proto == .tcp && (everywhere.contains(entry.localPort) || bound.contains(Self.endpoint(entry)))
+        guard entry.proto == .tcp else { return false }
+        let isIPv4 = !entry.isIPv6 || entry.localAddress.lowercased().hasPrefix("::ffff:")
+        return (isIPv4 ? everyIPv4 : everyIPv6).contains(entry.localPort) || bound.contains(Self.endpoint(entry))
     }
 
     /// An IPv6 socket talking IPv4 shows a mapped address where its listener may show IPv4.
