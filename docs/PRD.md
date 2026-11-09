@@ -222,7 +222,9 @@ Nothing is sent until the user has chosen a provider and clicked explain on an i
 - Connection history is kept in the local database for a configurable period, 30 days by
   default, then pruned. The database is excluded from Spotlight. The user decides whether
   Time Machine backs it up; the default leaves it included.
-- Nothing leaves the machine except an explicit, redacted LLM request.
+- Nothing leaves the machine except an explicit LLM request, redacted by Tattle. The command
+  can add to it what Tattle cannot remove: Claude Code adds the email address it is signed
+  in with.
 - The app has no account, no identifier, no crash reporter.
 
 ### Distribution
