@@ -56,6 +56,18 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("node (/Users/other/x.js) and file:///Users/other/y", as: .program), "node (/Users/<other-user>/x.js) and file:///Users/<other-user>/y")
     }
 
+    /// Every path pass reads the same start. A project's users/ folder is no account, and the
+    /// boot disk's firmlink or another disk's root is the top of a path.
+    func testEveryPathPassAgreesWhereAPathStarts() {
+        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
+        XCTAssertEqual(short.redact("/opt/app/users/e/tool", as: .program), "/opt/app/users/e/tool", "a project's folder is not the home")
+        XCTAssertEqual(redactor.redact("/opt/app/users/username/tool", as: .program), "/opt/app/users/<user>/tool")
+        XCTAssertEqual(redactor.redact("/System/Volumes/Data/Users/username/x", as: .launchItem), "/System/Volumes/Data<home>/x")
+        XCTAssertEqual(redactor.redact("/System/Volumes/Data/Users/other/x", as: .launchItem), "/System/Volumes/Data/Users/<other-user>/x")
+        XCTAssertEqual(redactor.redact("/Volumes/Backup/Users/username/x", as: .launchItem), "/Volumes/<volume><home>/x")
+        XCTAssertEqual(redactor.redact("/Volumes/Backup Disk/Users/other/x", as: .launchItem), "/Volumes/<volume> Disk/Users/<other-user>/x")
+    }
+
     func testOtherAccountsFoldersAndDiskNamesAreReplaced() {
         XCTAssertEqual(redactor.redact("/Users/other/bin/x, /users/Other and /Users/Shared/x", as: .program), "/Users/<other-user>/bin/x, /Users/<other-user> and /Users/Shared/x")
         XCTAssertEqual(redactor.redact("/Users/Sharedstuff/x", as: .program), "/Users/<other-user>/x")
@@ -77,6 +89,9 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(disks.redact("tool /Volumes/Data:tcp/8000", as: .program), "tool /Volumes/<volume>:tcp/8000")
         XCTAssertEqual(disks.redact("copy /Volumes/Data and then /opt/x", as: .program), "copy /Volumes/<volume> and then /opt/x")
         XCTAssertEqual(disks.redact("/Volumes/Other Disk/bin/x", as: .program), "/Volumes/<volume> Disk/bin/x", "a disk not mounted loses its first word only")
+        XCTAssertEqual(disks.redact("sh -c cd '/Volumes/Data' [/Volumes/Other] {/Volumes/Data}", as: .program), "sh -c cd '/Volumes/<volume>' [/Volumes/<volume>] {/Volumes/<volume>}")
+        XCTAssertEqual(disks.redact("x /Volumes/Data|y and /Volumes/Data=z", as: .program), "x /Volumes/<volume>|y and /Volumes/<volume>=z")
+        XCTAssertEqual(disks.redact("see /Volumes/Data. Then /Volumes/My Passport. And /Users/other.", as: .program), "see /Volumes/<volume>. Then /Volumes/<volume>. And /Users/<other-user>.")
     }
 
     func testMachineNames() {

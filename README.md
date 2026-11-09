@@ -95,9 +95,9 @@ Mac's names and private or local addresses. **Last prompt sent** shows the exact
 
 A name is replaced only where Tattle can tell it from an ordinary word, so some stay:
 
-- Your home folder's path matches in any case; your username as a word only as written, so
-  a login `code` leaves the app `Code` alone. An exact match that is the item's own name is
-  still replaced.
+- Your home folder's path matches in any case, at the start of a path; your username as a
+  word only as written, so a login `code` leaves the app `Code` alone. An exact match that is
+  the item's own name is still replaced.
 - Your username stays inside a host name, next to `_` (`username_db`), and in a file named for it
   (`username.py`). In another dotted name it is replaced only as the author's part
   (`com.username.helper`), the label after a domain ending.
@@ -107,8 +107,10 @@ A name is replaced only where Tattle can tell it from an ordinary word, so some 
   `dev.azure.com` stays on a Mac called `dev`, and `dev.lan` stays unless `lan` is a search
   domain. In a startup item they are replaced only as the author's part, and in a process or
   a port they stay. Straight and curly apostrophes count as one; other spellings do not match.
-- A disk's name with spaces is replaced whole only while the disk is mounted. Another
-  account's folder is replaced only at the start of a path, up to the first space.
+- A disk's name with spaces or punctuation is replaced whole only while the disk is mounted.
+  Another account's folder is replaced only at the start of a path or straight after a disk's
+  root, and only up to the first space or punctuation a name rarely holds, so
+  `/Users/Other User` keeps `User`.
 
 The Claude Code preset keeps no transcript of the call and starts none of your account's
 connectors, but Claude Code adds the email address it is signed in with to the request, and

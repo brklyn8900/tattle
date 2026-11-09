@@ -93,6 +93,16 @@ struct Redactor: Sendable {
         String(name.prefix { $0 != "." })
     }
 
+    /// Where an absolute path begins, for every pass that reads one: not inside a longer word
+    /// or path, or straight after a disk's root, as in "/System/Volumes/Data/Users/x". A disk's
+    /// name holds no slash and at most 255 characters.
+    private static let pathStart = "(?:(?<![\\w.-])|(?<=/Volumes/[^/\\n]{1,255}))"
+
+    /// A folder's or disk's name, and where one ends. A dot belongs to the name only with more
+    /// of it after, so a sentence's period stays.
+    private static let pathName = "[\\w.~@+%-]*[\\w~@+%-]"
+    private static let pathEnd = "(?![\\w~@+%-]|\\.[\\w~@+%-])"
+
     func redact(_ text: String, as context: Context) -> String {
         let captured = context != .instructions
         var out = text
@@ -100,7 +110,7 @@ struct Redactor: Sendable {
         // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
         // In any case, as APFS reads a path.
         if !home.isEmpty {
-            let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![\\w.~@+-])"
+            let pattern = Self.pathStart + NSRegularExpression.escapedPattern(for: home) + Self.pathEnd
             out = out.replacingOccurrences(of: pattern, with: "<home>", options: [.regularExpression, .caseInsensitive])
         }
         out = redactMachineNames(out, in: context)
@@ -152,15 +162,18 @@ struct Redactor: Sendable {
     /// /Users/Shared is no account. A mounted disk is found by its whole name; any other path
     /// under /Volumes loses one word, since text cannot show where a name with spaces ends.
     private func redactFolders(_ text: String) -> String {
+        let volumes = "(?i)" + Self.pathStart + "/Volumes/"
         var out = text
         for name in volumeNames.sorted(by: { $0.count > $1.count }) {
             out = out.replacingOccurrences(
-                of: "(?i)(?<![\\w.-])/Volumes/" + NSRegularExpression.escapedPattern(for: name) + "(?![\\w.~@+-])",
+                of: volumes + NSRegularExpression.escapedPattern(for: name) + Self.pathEnd,
                 with: "/Volumes/<volume>", options: .regularExpression)
         }
         return out
-            .replacingOccurrences(of: "(?i)(?<![\\w.-])/Volumes/[^\\s/\",;:()<]+", with: "/Volumes/<volume>", options: .regularExpression)
-            .replacingOccurrences(of: "(?i)(?<![\\w.-])/Users/(?!Shared(?![\\w.~@+-]))[\\w.~@+-]+", with: "/Users/<other-user>", options: .regularExpression)
+            .replacingOccurrences(of: volumes + Self.pathName, with: "/Volumes/<volume>", options: .regularExpression)
+            .replacingOccurrences(
+                of: "(?i)" + Self.pathStart + "/Users/(?!Shared" + Self.pathEnd + ")" + Self.pathName,
+                with: "/Users/<other-user>", options: .regularExpression)
     }
 
     /// The login matches only as written, so the login "code" leaves the app "Code" alone.
