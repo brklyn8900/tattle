@@ -204,3 +204,24 @@ what stays)
   (`Redactor.swift`).
 - A startup item labelled with the login reads `<user>` in its key, while its plist keeps the
   name: `/Library/LaunchAgents/username.plist` (`Redactor.swift`).
+- Coalesced QUIC Initials cost about 40 times an ordinary one. Only a local process can send
+  them and the cost is bounded per datagram (`FlowNamer.swift`, `QUIC.swift`).
+- The capture-buffer walk spins forever on a zero-length record, which only a kernel bug
+  produces (`packet_capture.c`). Guard on the walk not advancing, `bh_hdrlen + bh_caplen == 0`.
+  Don't guard on `bh_hdrlen < sizeof(struct bpf_hdr)`: by XNU's source `bh_hdrlen` is 18 on
+  Ethernet and the struct is 20, so that would refuse every record.
+- `SocketTable.parse` traps on a record kind of 2^31 or more; only kernel output reaches it.
+  `Int32(bitPattern:)` when next in the file.
+- The menu bar throughput label, on by default, resizes the status item as its digits change
+  and goes with 8 wakeups a second against 3 with it off (`TattleApp.swift`). Correlated
+  between two copies, not isolated.
+- Three wakeups a second continue with the panel closed: the capture read's 500 ms timeout,
+  the 1 Hz sampler and the 2-second poll. The read timeout is also how fast `stop()` takes
+  effect (`Sniffer.swift`, `ResourceSampler.swift`, `NetworkObserver.swift`).
+- Socket parsing formats the addresses of sockets it then drops. Check for loopback first
+  (`SocketTable.swift`).
+- `knownAddresses` scans all history on the main actor before the first poll: 92 ms at 204,068
+  rows (`NetworkObserver.swift`, `ConnectionStore.swift`).
+- `.task(id: request)` re-fires at each refresh of an open detail, and a kept answer's `stat`
+  runs on the main actor, so a hung network mount would freeze the panel. Suspected, not
+  reproduced (`FileDigests.swift`, `ExplainSection.swift`).
