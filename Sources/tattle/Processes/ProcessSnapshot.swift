@@ -35,6 +35,13 @@ struct AppBundle: Hashable, Sendable {
         return bundle?.owns(executable) != true
     }
 
+    /// Whether `opened`, the bundle Launch Services reports for a process, is this one. It
+    /// names Safari by /Applications/Safari.app, a link into the cryptex Safari runs from.
+    func isOpened(from opened: String?) -> Bool {
+        guard let opened else { return false }
+        return opened == path || URL(fileURLWithPath: opened).resolvingSymlinksInPath().path == URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
     /// The bundle Launch Services reports a process was opened from, when it is an app.
     /// Launch Services registers some command-line processes too (node servers that open a
     /// browser, say) and then reports the bare executable, and a script that opens a window
@@ -166,6 +173,8 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// What tells the row's program from another's of its name: the app, or the top process.
     /// None while a file in the app's bundle that its signer did not sign is running.
     var identity: CodeIdentity?
+    /// The member `leader` names.
+    var leaderPid: Int32?
 
     /// The bundle, or the top-level program; macOS is not one place.
     var path: String? {
@@ -220,12 +229,10 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
         return result
     }
 
-    /// The process to quit for the whole group: the one launchd started, else the
-    /// oldest. Nil for macOS.
-    var leader: ProcessItem? {
-        guard kind != .system else { return nil }
-        return members.filter { $0.parentPid <= 1 }.min { $0.pid < $1.pid } ?? members.min { $0.pid < $1.pid }
-    }
+    /// The process that stands for the whole group: the app's own, the oldest of several, or
+    /// the program at the top of the row's tree. Nil for macOS, and for an app that is not
+    /// open while its helpers or widgets run: quitting one of those would not quit the app.
+    var leader: ProcessItem? { members.first { $0.pid == leaderPid } }
 
     var facts: [Fact] {
         var facts = [Fact(name: "Processes", value: String(members.count))]
@@ -313,7 +320,7 @@ struct ProcessSnapshot: Equatable, Sendable {
                     identity = key.root?.identity
                 case .system: groupSignature = CodeSignature(signer: .apple)
                 }
-                groupsByID[key.id] = ProcessGroup(id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature, identity: identity)
+                groupsByID[key.id] = ProcessGroup(id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature, identity: identity, leaderPid: key.root?.pid)
                 order.append(key.id)
             }
             groupsByID[key.id]!.members.append(item)
@@ -321,11 +328,14 @@ struct ProcessSnapshot: Equatable, Sendable {
         var groups = order.compactMap { groupsByID[$0] }
         for index in groups.indices {
             groups[index].members.sort { ($0.memoryBytes, $1.pid) > ($1.memoryBytes, $0.pid) }
-            if case .app(let bundle) = groups[index].kind, groups[index].members.contains(where: {
+            guard case .app(let bundle) = groups[index].kind else { continue }
+            if groups[index].members.contains(where: {
                 bundle.holdsForeign($0.path, signed: $0.interpreterSignature ?? $0.signature, bundle: groups[index].signature)
             }) {
                 groups[index].identity = nil
             }
+            groups[index].leaderPid = groups[index].members.filter { bundle.isOpened(from: runningApp($0.pid)) }
+                .min { ($0.started, $0.pid) < ($1.started, $1.pid) }?.pid
         }
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
     }

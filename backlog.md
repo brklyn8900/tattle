@@ -69,7 +69,7 @@ once every line is ticked)
 - [x] 11 (S2): a running job reads as running. fix-7-facts.
 - [x] 12 (S1): unreadable plists are shown, not dropped. fix-7-facts.
 - [x] 13 (N1): inbound connections read as inbound. fix-7-facts.
-- [ ] 14 (PR1): "Quit <App>" acts on the app. fix-7-facts.
+- [x] 14 (PR1): "Quit <App>" acts on the app. fix-7-facts.
 - [ ] 15 (PR2): third-party root code is not labelled as the system. fix-7-facts.
 - [ ] 17 and decisions 4-6: docs match the code. fix-8-docs.
 - [ ] 18 (D6): the author's name only in author-credit fields. fix-8-docs.

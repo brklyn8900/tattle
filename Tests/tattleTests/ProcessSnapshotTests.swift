@@ -51,10 +51,62 @@ final class ProcessSnapshotTests: XCTestCase {
     /// and it registered a node script as an "app" whose bundle is the node binary.
     private func running(_ pid: Int32) -> String? {
         switch pid {
+        case 100: "/Applications/Slack.app"
         case 500: "/Applications/Comet.app"
         case 202: "/usr/local/bin/claude"
         default: nil
         }
+    }
+
+    private func signedByAcme(_ path: String) -> CodeSignature? { CodeSignature(signer: .developerID(name: "Acme"), teamIdentifier: "ACME") }
+
+    /// A widget launchd started at login has a lower pid than the app opened later, and is
+    /// not what "Quit Calendar" means. With the app closed there is nothing of that name to quit.
+    func testAnAppsLeaderIsTheProcessLaunchServicesOpenedItFrom() throws {
+        let calendar = "/System/Applications/Calendar.app"
+        let widget = entry(752, 1, calendar + "/Contents/PlugIns/CalendarWidgetExtension.appex/Contents/MacOS/CalendarWidgetExtension")
+        let service = entry(1564, 1, calendar + "/Contents/XPCServices/Reminder.xpc/Contents/MacOS/Reminder")
+        let app = entry(9000, 1, calendar + "/Contents/MacOS/Calendar")
+        let open = ProcessSnapshot.build(entries: [widget, service, app], previous: nil, signature: signedByAcme,
+                                         runningApp: { $0 == 9000 ? calendar : $0 == 752 ? widget.path : nil }, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertEqual(open.group(id: calendar)?.leader?.pid, 9000)
+        let closed = ProcessSnapshot.build(entries: [widget, service], previous: nil, signature: signedByAcme,
+                                           runningApp: { _ in nil }, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertNotNil(closed.group(id: calendar))
+        XCTAssertNil(closed.group(id: calendar)?.leader, "its helpers run, the app does not")
+    }
+
+    /// Pids wrap, so of two copies of one app the older can have the higher pid.
+    func testOfTwoCopiesOfAnAppTheLeaderIsTheOlder() {
+        let path = "/Applications/Two.app"
+        let snapshot = ProcessSnapshot.build(
+            entries: [entry(50, 1, path + "/Contents/MacOS/Two", started: epoch + 60), entry(9000, 1, path + "/Contents/MacOS/Two", started: epoch)],
+            previous: nil, signature: signedByAcme, runningApp: { _ in path }, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertEqual(snapshot.group(id: path)?.leader?.pid, 9000)
+    }
+
+    /// Launch Services names Safari by /Applications/Safari.app, a link into the cryptex its
+    /// executable runs from.
+    func testAnAppsLeaderIsFoundThroughALinkToItsBundle() throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let real = root.appending(path: "cryptex/Safari.app"), link = root.appending(path: "Safari.app")
+        try FileManager.default.createDirectory(at: real.appending(path: "Contents/MacOS"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let main = entry(9000, 1, real.path + "/Contents/MacOS/Safari")
+        let snapshot = ProcessSnapshot.build(entries: [main], previous: nil, signature: signedByAcme,
+                                             runningApp: { _ in link.path }, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertEqual(snapshot.group(id: real.path)?.leader?.pid, 9000)
+    }
+
+    /// A program started from a shell has a parent, and a worker with a lower pid after a wrap.
+    func testAProgramsLeaderIsTheTopOfItsTree() {
+        let snapshot = ProcessSnapshot.build(
+            entries: [entry(1, 0, "/sbin/launchd", uid: 0), entry(201, 1, "/bin/zsh"),
+                      entry(9000, 201, "/usr/local/bin/tool"), entry(50, 9000, "/usr/local/bin/worker")],
+            previous: nil, signature: sign, runningApp: { _ in nil }, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertEqual(snapshot.group(id: "pid:9000")?.members.map(\.pid).sorted(), [50, 9000])
+        XCTAssertEqual(snapshot.group(id: "pid:9000")?.leader?.pid, 9000)
     }
 
     func testAttributionAndRollup() {
