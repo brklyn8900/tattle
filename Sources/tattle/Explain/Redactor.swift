@@ -161,9 +161,10 @@ struct Redactor: Sendable {
     /// leading com, org, net or io, with another label following, as in "com.username.helper". Any
     /// other label is a product or an extension, so "at.obdev.x", "server.js" and
     /// "com.apple.mail.x" stay whole for a user called at, js or mail. A script's extension as
-    /// the last label does not count as the one following: "io.server.js" is a file.
+    /// the last label does not count as the one following: "io.server.js" is a file. A login
+    /// item's id can carry macOS's number first ("8.com.username.helper").
     private static func authorPart(_ name: String) -> String {
-        "(?<=(?<![\\w.-])(?:com|org|net|io)\\.)" + name + "(?=\\.[\\w-])(?!\\." + scriptExtension + "(?![\\w.-]))"
+        "(?<=(?<![\\w.-])(?:\\d{1,10}\\.)?(?:com|org|net|io)\\.)" + name + "(?=\\.[\\w-])(?!\\." + scriptExtension + "(?![\\w.-]))"
     }
 
     private static let scriptExtension = "(?:sh|bash|zsh|ksh|csh|tcsh|command|py|pl|rb|php|js|mjs|cjs|ts|lua|tcl|exp|awk|scpt|applescript)"

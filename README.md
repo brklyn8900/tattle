@@ -100,8 +100,9 @@ A name is replaced only where Tattle can tell it from an ordinary word, so some 
   the item's own name is still replaced.
 - Your username stays inside a host name, next to `_` (`username_db`), and in a file named for it
   (`username.py`). In another dotted name it is replaced only as the author's part
-  (`com.username.helper`): the label straight after a leading `com`, `org`, `net` or `io`, with
-  another label after it that is not a script's extension. So `io.github.username.tool`,
+  (`com.username.helper`): the label straight after a leading `com`, `org`, `net` or `io`, or
+  after that ending in a numbered login item id (`8.com.username.helper`), with another label
+  after it that is not a script's extension. So `io.github.username.tool`,
   `dev.username.tool`, `com.username` and `com.username.sh` stay.
 - A username of one or two letters is replaced only before an `@`, straight after the program
   in a process title, and as the author's part. In edited instructions it stays.

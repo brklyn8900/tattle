@@ -424,6 +424,17 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try key("username", .process, "com.username.sh"), "com.username.sh")
     }
 
+    /// macOS's login-item records put a number before the label, and a record with no bundle
+    /// id is listed by that identifier.
+    func testANumberedStartupIdHasAnAuthorsPartToo() {
+        let username = Redactor(home: "/Users/username", username: "username", machineNames: ["testmac"])
+        XCTAssertEqual(username.redact("8.com.username.helper", as: .launchItem), "8.com.<user>.helper")
+        XCTAssertEqual(username.redact("4096.com.testmac.podcasts", as: .launchItem), "4096.com.<machine>.podcasts")
+        XCTAssertEqual(username.redact("x.com.username.helper", as: .launchItem), "x.com.username.helper", "only a number goes before the ending")
+        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
+        XCTAssertEqual(short.redact("8.com.e.helper", as: .launchItem), "8.com.<user>.helper")
+    }
+
     /// Each ending names an author, and a script named for one still has a label after it.
     func testEachDomainEndingAndAScriptAfterTheAuthorsPart() throws {
         let username = Redactor(home: "/Users/username", username: "username", machineNames: [])
