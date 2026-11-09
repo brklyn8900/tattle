@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Installing and removing the packet-access broker (ADR-0003): what it does, in plain
 /// words, and the exact launch daemon that goes in, before the administrator dialog.
-/// Pushed inside the panel; the work and its outcome live in the observer, because the
-/// dialog takes focus and closes the panel.
+/// Pushed inside the panel; the work and its outcome live in the observer, so that they do
+/// not depend on the panel being open.
 struct PacketAccessView: View {
     /// What the Network tab pushes to get here.
     struct Destination: Hashable {}

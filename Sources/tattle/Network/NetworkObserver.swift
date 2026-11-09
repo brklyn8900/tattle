@@ -88,7 +88,7 @@ final class NetworkObserver {
     }
 
     /// Installs the broker through the administrator dialog. Held here rather than in
-    /// a view so it does not depend on the panel, which the dialog closes by taking focus.
+    /// a view so that the install and its outcome do not depend on the panel being open.
     func installBroker() async -> Bool {
         await access { try CaptureBroker.install() }
     }

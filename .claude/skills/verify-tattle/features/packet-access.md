@@ -56,7 +56,8 @@ Preconditions:
 
 ## Gotchas
 
-- The dialog takes focus, which closes the panel; reopen with `$V tab Network`.
+- The dialog takes focus and the panel stays on screen and updating (testmac, 2026-11-09). A
+  click outside the panel still closes it; reopen with `$V tab Network`.
 - The panel's state follows the observer, not the view: after the dialog, read the result
   in the Network header and the log, not in a stale view.
 - The dev copy is signed with the team identity, so a rebuild keeps the broker's
