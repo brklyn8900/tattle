@@ -2,13 +2,14 @@ import Foundation
 
 /// One connection: a socket with a peer, as seen in the socket table over time.
 struct Connection: Equatable, Sendable, Identifiable {
-    /// Which side opened the connection, as far as anything proves it.
+    /// Which side opened the connection, as far as anything shows it.
     enum Direction: String, Sendable, Codable {
-        /// This Mac's SYN or QUIC Initial was seen leaving.
+        /// This Mac's SYN or QUIC Initial was seen leaving, or no listener claims a socket on
+        /// an ephemeral local port.
         case outbound
         /// The socket sits on a listener's endpoint: it was accepted.
         case inbound
-        /// Neither is proven: nothing is claimed about which side connected.
+        /// None of those: nothing is claimed about which side connected.
         case unknown
     }
 
@@ -178,7 +179,13 @@ struct ConnectionTracker: Sendable {
                     localPort: entry.localPort, remoteAddress: entry.remoteAddress, remotePort: entry.remotePort,
                     isIPv6: entry.isIPv6, scope: scope, tcpState: entry.tcpState,
                     firstSeen: now, lastSeen: now, ended: nil, preExisting: !hasPolled)
-                connection.direction = outboundSeen(connection.flowKey) ? .outbound : listeners.accepted(entry) ? .inbound : .unknown
+                // macOS gives a connecting socket a port from the ephemeral range, so with no
+                // listener on it the port stands in for a SYN Tattle did not see. An accepted
+                // socket whose listener on such a port has closed reads wrongly here.
+                connection.direction = outboundSeen(connection.flowKey) ? .outbound
+                    : listeners.accepted(entry) ? .inbound
+                    : entry.localPort >= PortItem.ephemeralStart ? .outbound
+                    : .unknown
                 live[key] = connection
                 changes.opened.append(connection)
             }

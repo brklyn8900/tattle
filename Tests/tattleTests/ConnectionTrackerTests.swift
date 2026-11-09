@@ -125,11 +125,27 @@ final class ConnectionTrackerTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(tracker.live["500:tcp/22>203.0.113.5:51514"]).direction, .inbound)
     }
 
-    /// Nothing in the socket table says which side called.
+    /// Below the ephemeral range, with no listener and no seen opening, nothing says which
+    /// side called.
     func testASocketNothingProvesClaimsNoDirection() {
         var tracker = ConnectionTracker()
-        _ = tracker.update(entries: [tcp(1, 50000, "17.1.1.1"), udp(2, 60000, "8.8.8.8", 53), tcp(3, 22, "17.1.1.2")], at: t0)
+        _ = tracker.update(entries: [tcp(1, 49151, "17.1.1.1"), udp(2, 41641, "8.8.8.8", 53), tcp(3, 22, "17.1.1.2")], at: t0)
         XCTAssertEqual(tracker.open.map(\.direction), [.unknown, .unknown, .unknown])
+    }
+
+    /// Connections already open at launch have no seen opening: the local port is all there is.
+    func testAnEphemeralLocalPortReadsAsThisMacConnecting() throws {
+        var tracker = ConnectionTracker()
+        let opened = tracker.update(entries: [tcp(1, 49152, "17.1.1.1"), udp(2, 60000, "8.8.8.8", 53)], at: t0).opened
+        XCTAssertEqual(opened.map(\.direction), [.outbound, .outbound])
+        var known = Set<String>()
+        XCTAssertTrue(LiveConnection.isFirstContact(try XCTUnwrap(opened.first), known: &known), "first contact needs no packet access")
+    }
+
+    func testAListenerOutranksAnEphemeralLocalPort() {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [listener(1, 49701), tcp(500, 49701, "192.168.1.20", 54553)], at: t0)
+        XCTAssertEqual(tracker.live["500:tcp/49701>192.168.1.20:54553"]?.direction, .inbound)
     }
 
     func testASeenOpeningMakesAConnectionOutboundOverAListener() {
@@ -141,13 +157,13 @@ final class ConnectionTrackerTests: XCTestCase {
     /// The SYN's event can arrive after the poll that first showed the socket.
     func testASeenOpeningSettlesARowAlreadyShown() {
         var tracker = ConnectionTracker()
-        let entries = [listener(1, 22), tcp(500, 22, "17.1.1.1"), tcp(600, 50000, "17.1.1.2")]
+        let entries = [listener(1, 22), tcp(500, 22, "17.1.1.1"), tcp(600, 40000, "17.1.1.2")]
         _ = tracker.update(entries: entries, at: t0)
         func flow(_ port: UInt16, _ last: UInt8) -> FlowKey { FlowKey(proto: .tcp, localPort: port, remote: IPAddress(bytes: [17, 1, 1, last]), remotePort: 443) }
         XCTAssertEqual(tracker.confirmOutbound(flow: flow(22, 1), openedAt: t0 + 1).map(\.id), ["500:tcp/22>17.1.1.1:443"])
         XCTAssertEqual(tracker.live["500:tcp/22>17.1.1.1:443"]?.direction, .outbound)
         XCTAssertTrue(tracker.confirmOutbound(flow: flow(22, 1), openedAt: t0 + 1).isEmpty, "already settled")
-        XCTAssertTrue(tracker.confirmOutbound(flow: flow(50000, 2), openedAt: t0 + 60).isEmpty, "an older connection on the four-tuple")
+        XCTAssertTrue(tracker.confirmOutbound(flow: flow(40000, 2), openedAt: t0 + 60).isEmpty, "an older connection on the four-tuple")
         _ = tracker.update(entries: entries, at: t0 + 2)
         XCTAssertEqual(tracker.live["500:tcp/22>17.1.1.1:443"]?.direction, .outbound, "a later reading keeps it")
     }

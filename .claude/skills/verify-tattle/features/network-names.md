@@ -29,15 +29,16 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   even when that program then deletes its file.
 - `net-foreign`: a file in an app's bundle that the app's signer did not sign keeps the row
   from holding any answer given for the app; what the app only launches does not.
-- `net-direction`: a connection states a direction only on proof. Outbound: this Mac's SYN or
-  QUIC Initial was seen leaving, which needs packet access and a destination the sniffer
-  follows; the detail is headed `<app> to <name>`, with `Destination` and `First contact`.
-  Inbound: the socket sits on a listener's endpoint of its own family; a grey `incoming`
-  tag, `<app> from <peer>`, `From` and `To port`. A seen opening wins over a listener.
-  Otherwise neither is claimed: `<app> with <peer>`, `Peer` and `Local port`, no `new`, no
-  `First contact`, and the address does not count as reached. A group row says `N to`, `N
-  from` or `N with the internet`. The model is told none of the direction facts, since its
-  answer is kept for the host. History keeps it in `direction`.
+- `net-direction`: a connection states a direction on the first of these that holds. Outbound:
+  this Mac's SYN or QUIC Initial was seen leaving, which needs packet access and a destination
+  the sniffer follows; the detail is headed `<app> to <name>`, with `Destination` and `First
+  contact`. Inbound: the socket sits on a listener's endpoint of its own family; a grey
+  `incoming` tag, `<app> from <peer>`, `From` and `To port`. Outbound again: a local port of
+  49152 or above, macOS's ephemeral range, which needs no packet access. Otherwise neither is
+  claimed: `<app> with <peer>`, `Peer` and `Local port`, no `new`, no `First contact`, and the
+  address does not count as reached. A group row says `N to`, `N from` or `N with the
+  internet`. The model is told none of the direction facts, since its answer is kept for the
+  host. History keeps it in `direction`.
 - `net-reach`: `Reach` reads `this network` for private, link-local and shared (100.64/10,
   Tailscale's) addresses.
 - `net-history`: the same outcome in the `connection` table, written even when the
@@ -125,9 +126,11 @@ Preconditions:
 
 - **A connection's direction.** With the broker. `$V connect named`, then its row: detail
   headed `<terminal> to example.com`, with `Destination` and `First contact`. A row open since
-  before the copy started, under an app whose subtitle has `N with the internet`: no tag,
-  headed `<app> with <address>`, `Peer`, `Local port`, no `First contact`. `$V db "select
-  direction, scope, count(*) from connection where ended is null group by direction, scope"`.
+  before the copy started, from a local port of 49152 or above: `already open`, headed `<app>
+  to <address>`, with `Destination` and `First contact`. On a lower local port with no
+  listener: no tag, headed `<app> with <address>`, `Peer`, `Local port`, no `First contact`.
+  `$V db "select direction, scope, count(*) from connection where ended is null group by
+  direction, scope"`.
 - **Incoming connections and a Tailscale peer.** On testmac, with `IP` its `inet 100.` address:
   `sleep 1700 | nc -lk $IP 18091 > /dev/null &` and `sleep 1700 | nc $IP 18091 > /dev/null &`,
   from a script in a terminal app. `-k` keeps the listener, which is what tells the accepted
