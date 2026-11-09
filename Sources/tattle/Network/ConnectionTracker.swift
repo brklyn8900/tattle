@@ -114,9 +114,9 @@ extension SocketEntry {
 /// address and port, the only sign of one in the socket table; the pid can differ, since
 /// launchd holds the listener of a job it starts on demand.
 private struct TCPListeners {
-    /// Ports listening on every address of a family. Each family's ephemeral ports are
-    /// allocated without regard to a listener of the other only, so a socket on such a port
-    /// was not accepted from it.
+    /// Ports listening on every address, by family. A family's ephemeral ports are allocated
+    /// without regard to listeners that take only the other family, so a socket of one family
+    /// on such a listener's port was not accepted by it.
     private var everyIPv4 = Set<UInt16>()
     private var everyIPv6 = Set<UInt16>()
     /// Listeners bound to one address.
