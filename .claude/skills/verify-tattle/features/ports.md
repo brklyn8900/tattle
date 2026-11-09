@@ -13,7 +13,7 @@ and an answer about it is kept against the script's file.
   account's whose arguments cannot be read, and `Path` and its signer for a program.
 - `po-kept`: an answer about a script is stored with the script's file and content.
 - `po-quit`: `Quit <name>` for the user's own listeners, `Runs as <account>, so Tattle cannot
-  quit it` for others'.
+  quit it` for others'. `Runs as` is the listener's process's account, not the socket's creator.
 
 ## How to get to it (user POV)
 
@@ -43,3 +43,6 @@ Preconditions:
 - Proven 2026-11-08 on testmac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
   `build/verify/runs/testmac-2026-11-08/`. Inline code and an interpreter whose arguments cannot be read
   rest on the unit test (`testAListenerIsReadAsTheCodeItRuns`).
+- A process running as another account than its socket's creator rests on the unit test
+  (`testAListenerRunsAsItsProcessNotItsSocket`): a socket-activated agent's listener on testmac
+  (run `2026-11-08T221748`) stayed owned by launchd, and making one any other way needs root.

@@ -4,7 +4,8 @@ The Startup tab lists what starts on its own, grouped: `Open at login`, `Allowed
 background`, your agents (`~/Library/LaunchAgents`), agents for every user
 (`/Library/LaunchAgents`), daemons (`/Library/LaunchDaemons`), and `App extensions`, then
 one `Apple N system jobs` row. Each row says when it runs, its state (`running, pid N`,
-`not running`, `not loaded`, `disabled`, `empty file, nothing runs`, `could not be read`) and who signed it. A
+`not running`, `not loaded`, `disabled`, `empty file, nothing runs`, `could not be read`, `could not be
+listed`) and who signed it. A
 detail adds facts, an explanation, and controls.
 
 ## Sub-features
@@ -16,12 +17,17 @@ detail adds facts, an explanation, and controls.
 - `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Runs Apple's` when a launch
   item that is not Apple's runs one of Apple's programs, `Plist` with the path), `Explain`,
   `Reveal Plist`, `Login Items Settings`.
-- `st-control`: `Load` / `Unload` for agents, `Loading or unloading a daemon needs root` for
-  daemons, `Remove` only on Tattle's broker.
+- `st-control`: `Load` / `Unload` for agents, in the domain the agent loads in; `Loading or
+  unloading a daemon needs root` for daemons, `Remove` only on Tattle's broker.
 - `st-state`: what launchd has loaded reads as running or not running, whatever the plist's
-  `Disabled` or an override says; each job reads its own domain's state.
+  `Disabled` or an override says. Each job reads its own domain's state: a daemon the system
+  domain, an agent `gui/<uid>`, or `user/<uid>` when its plist limits it to `Background`.
 - `st-unreadable`: a plist Tattle cannot read is a row of its group, `<file name>, unknown ·
-  could not be read`; the detail has `Reason` and `Reveal Plist`, and no `Explain`.
+  could not be read`; the detail has `Reason` and `Reveal Plist`, and no `Explain`. With Full
+  Disk Access the row takes macOS's record of the plist: its name, `Runs`, signer and
+  `Explain`, still in its group, still `could not be read`.
+- `st-unlisted`: a folder Tattle cannot list is a row of its group, `<folder>, unknown ·
+  could not be listed`, with `Reason`, `Folder` and `Reveal Folder`. A missing folder is not.
 - `st-fda`: without Full Disk Access, `Login items need Full Disk Access: ...` and `Open
   Full Disk Access Settings`.
 
@@ -130,6 +136,20 @@ Preconditions:
   mode 000, and a file holding `junk`. Each row reads `<file name>, unknown · could not be
   read`; `Reason` is `Tattle has no permission to read this file` and `it is not a launchd
   job`, and neither detail has `Explain`. Afterwards delete both.
+- **A plist macOS has a record of.** With Full Disk Access, on the development Mac: a plist
+  the run writes to `~/Library/LaunchAgents/`, bootstrapped. Refresh until its detail has
+  `Login Items Settings` (macOS named the row `sleep`), `chmod 000` it, Refresh. The row,
+  under `Your agents`, reads `sleep, unknown · could not be read · launch item, not signed`;
+  the detail has `Runs /bin/sleep`, `Reason`, `Explain` and `Login Items Settings`. Afterwards
+  restore the mode, `launchctl bootout` it and delete it.
+- **A folder that cannot be listed.** On testmac: `chmod 000 ~/Library/LaunchAgents`, press
+  `Refresh`. `LaunchAgents, unknown · could not be listed`, with `Reason Tattle has no
+  permission to list this folder`, `Folder` and `Reveal Folder`, no `Explain`. Restore the
+  mode at once.
+- **An agent in the Background session.** On testmac: a plist with `LimitLoadToSessionType`
+  `Background` and `RunAtLoad`, `launchctl bootstrap user/$(id -u)`. The row reads `running,
+  pid N`. `Unload` removes it from `user/<uid>` and the row reads `not loaded`; `Load` puts
+  it back. Afterwards `launchctl bootout` it and delete the plist.
 - **A daemon's controls.** Under `Daemons`, a third party's (AlDente's helper on testmac): `Loading
   or unloading a daemon needs root`.
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
@@ -187,5 +207,9 @@ Preconditions:
 - The loaded job, the plists that cannot be read and the daemon's words proven 2026-11-08 on
   testmac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
   `build/verify/runs/testmac-2026-11-08/`. An agent and a daemon sharing a label rest on the unit test
-  (`testEachDomainAnswersForItsOwnJobs`), and a plist macOS has registered on
-  `testAnUnreadablePlistMacOSRegisteredIsListedOnce`.
+  (`testEachDomainAnswersForItsOwnJobs`).
+- A folder that cannot be listed and the Background agent, its `Unload` and `Load` included,
+  proven 2026-11-08 on testmac, run `2026-11-08T221748` (commit `97096f3`); copy in the development Mac's
+  `build/verify/runs/testmac-2026-11-08/`. A plist macOS has a record of proven 2026-11-08 on
+  the development Mac, run `2026-11-08T222028` (`97096f3`). A record of a kind Tattle does not
+  list rests on the unit test (`testARecordOfAnUnknownKindDoesNotHideAnUnreadablePlist`).

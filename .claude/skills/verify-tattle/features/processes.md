@@ -14,8 +14,9 @@ and for the user's own processes `Quit` and `Force Quit...`.
   once it exits.
 - `pr-quit`: `Quit <name>` (SIGTERM), and `Force Quit...` which arms `Force Quit <name>`
   with `Cancel`; `Runs as <account>, so Tattle cannot quit it` instead for others'
-  processes. An app's row quits the process Launch Services opened it from, and has no
-  `Quit` while only its helpers or widgets run.
+  processes. An app's row quits the process Launch Services opened it from, or the bundle's
+  main executable when Launch Services does not know it, and has no `Quit` while only its
+  helpers or widgets run.
 
 ## How to get to it (user POV)
 
@@ -114,6 +115,11 @@ Preconditions:
   so the helper has the lower pid. The row reads `Tool, 2 processes · ad hoc signed`. In its
   detail `Quit Tool` ends `Tool` and leaves `tool-helper` (`ps -p`); the detail then has
   `Processes 1` and no `Quit Tool`. Afterwards `launchctl bootout` the agent and delete it.
+- **Quit on an app with no window.** On testmac: `Tool.app`, ad-hoc signed, whose
+  `Contents/MacOS/Tool` is a plain program that starts `Contents/MacOS/tool-helper`, run by a
+  launch agent, so Launch Services never hears of it. The row reads `Tool, 2 processes`. In its
+  detail `Quit Tool` ends `Tool` and leaves `tool-helper` (`ps -p`), and then no `Quit Tool`
+  shows. Afterwards `launchctl bootout` the agent, delete it and end the helper.
 - **Another account's process.** AlDente's helper on testmac, which runs as root: `Runs as root,
   so Tattle cannot quit it`.
 
@@ -167,6 +173,8 @@ Preconditions:
   run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
   `build/verify/runs/testmac-2026-11-08/`. Two copies of an app and a program whose worker has the lower pid rest on unit tests in
   `ProcessSnapshotTests`.
+- Quit on an app with no window proven 2026-11-08 on testmac, run `2026-11-08T221748` (commit `97096f3`); copy in the development Mac's
+  `build/verify/runs/testmac-2026-11-08/`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,

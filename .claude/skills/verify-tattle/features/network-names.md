@@ -29,10 +29,15 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   even when that program then deletes its file.
 - `net-foreign`: a file in an app's bundle that the app's signer did not sign keeps the row
   from holding any answer given for the app; what the app only launches does not.
-- `net-incoming`: a connection this Mac accepted carries a grey `incoming` tag. Its detail is
-  headed `<app> from <peer>`, with `From` and `To port` in place of `Destination`, and no
-  `First contact`; it does not count among addresses never seen before. A group row says `N
-  from the internet` for those from public addresses. History keeps it in `isInbound`.
+- `net-direction`: a connection states a direction only on proof. Outbound: this Mac's SYN or
+  QUIC Initial was seen leaving, which needs packet access and a destination the sniffer
+  follows; the detail is headed `<app> to <name>`, with `Destination` and `First contact`.
+  Inbound: the socket sits on a listener's endpoint of its own family; a grey `incoming`
+  tag, `<app> from <peer>`, `From` and `To port`. A seen opening wins over a listener.
+  Otherwise neither is claimed: `<app> with <peer>`, `Peer` and `Local port`, no `new`, no
+  `First contact`, and the address does not count as reached. A group row says `N to`, `N
+  from` or `N with the internet`. The model is told none of the direction facts, since its
+  answer is kept for the host. History keeps it in `direction`.
 - `net-reach`: `Reach` reads `this network` for private, link-local and shared (100.64/10,
   Tailscale's) addresses.
 - `net-history`: the same outcome in the `connection` table, written even when the
@@ -118,17 +123,18 @@ Preconditions:
   and sleeps. The same query: one pid, `exec.sh | script, not signed | 18095` and `dropper | |
   18096`, with no signer. Row `dropper, 1 on this network, 1`, with no signer either.
 
+- **A connection's direction.** With the broker. `$V connect named`, then its row: detail
+  headed `<terminal> to example.com`, with `Destination` and `First contact`. A row open since
+  before the copy started, under an app whose subtitle has `N with the internet`: no tag,
+  headed `<app> with <address>`, `Peer`, `Local port`, no `First contact`. `$V db "select
+  direction, scope, count(*) from connection where ended is null group by direction, scope"`.
 - **Incoming connections and a Tailscale peer.** On testmac, with `IP` its `inet 100.` address:
   `sleep 1700 | nc -lk $IP 18091 > /dev/null &` and `sleep 1700 | nc $IP 18091 > /dev/null &`,
   from a script in a terminal app. `-k` keeps the listener, which is what tells the accepted
-  socket. Press the terminal's row: `$IP:18091, new, TCP · connected · this network · nc` and
-  `$IP:<port>, incoming, TCP · connected · this network · nc`. The first has `Destination`,
-  `Reach this network` and `First contact`; the second is headed `<terminal> from $IP:<port>`,
-  with `From`, `To port 18091`, `Reach this network` and no `First contact`. `$V db "select
-  processName, remoteAddress, remotePort, localPort, isInbound, scope from connection where
-  localPort = 18091 or remotePort = 18091"`: `isInbound` 1 on the accepted row, `scope` `local`
-  on both. An `ssh` held from another Mac over Tailscale reads the same in the row
-  `sshd-session: <login>@notty`: `incoming`, `To port 22`, `Reach this network`.
+  socket. Press the terminal's row: `$IP:<port>, incoming, TCP · connected · this network ·
+  nc` is headed `<terminal> from $IP:<port>`, with `From`, `To port 18091`, `Reach this
+  network` and no `First contact`. An `ssh` held from another Mac over Tailscale reads the
+  same in the row `sshd-session: <login>@notty`: `incoming`, `To port 22`, `Reach this network`.
 
 ## Gotchas
 
@@ -146,9 +152,16 @@ Preconditions:
   and a program that only returns never returned), with macOS's `"Calculator" is damaged and
   can't be opened` alert on the screen, so it never opened a connection to read.
   One put in a bundle built on the machine runs, which is the recipe above.
-- Incoming connections and the Tailscale peer proven 2026-11-08 on testmac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
-  `build/verify/runs/testmac-2026-11-08/`. `from the internet` needs a public peer,
-  so it rests on the unit test (`testAnInboundConnectionReadsAsInbound`).
+- Incoming connections and the Tailscale peer's reach proven 2026-11-08 on testmac, run
+  `2026-11-08T210232` (commit `c969c4d`); copy in the development Mac's
+  `build/verify/runs/testmac-2026-11-08/`. `from the internet` needs a public peer, so it rests
+  on the unit test (`testAnInboundConnectionReadsAsInbound`).
+- Direction proven 2026-11-08 on the development Mac with the broker, runs
+  `2026-11-08T222028` (a seen opening, `Ghostty to example.com`, `direction` `outbound`) and
+  `2026-11-08T222255` (commit `97096f3`, both): `Herdr Core with 160.79.104.10:443`, and
+  `rapportd from 192.168.1.20:54553`, `To port 49701`, among 128 of its accepted sockets. A
+  first contact on a proven row, listeners by family, and a seen opening arriving after the
+  row rest on unit tests. The `nc` pair over Tailscale does not connect on the development Mac.
 - The two unnamed rows look alike in the list; tell them apart by the `Process nc (pid
   ...)` fact against the pids `connect` printed.
 - The panel lists open connections only, and a closed connection's detail keeps the state
