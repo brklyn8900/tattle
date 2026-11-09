@@ -36,7 +36,8 @@ connectors.
 - `ex-host`: a host's prompt carries the host and the connection, not who made it.
 - `ex-publisher`: the shipped `claude` rule shows for Anthropic's program only.
 - `ex-redaction`: the prompt carries the item and facts as one JSON line; the key and the
-  facts get the full redaction, and the instructions lose only the home path and addresses.
+  facts share one redaction, set by what the item is. The default instructions go out as
+  written, and edited ones lose the login, the Mac's names and addresses.
 - `ex-no-grants`: the command is charged to itself, and cannot open what only Tattle's Full
   Disk Access opens.
 - `ex-preset`: the Claude Code preset works from the app and leaves nothing per call. A
@@ -87,19 +88,25 @@ Preconditions:
   row `Ghostty,`, then the title) and add plists, not loaded, to `~/Library/LaunchAgents`
   (Startup, `Refresh`, the label). Press `Explain` on each and read the recorded prompt:
   - title `postgres: <login> <machine name> [local] idle`: the key and `Process` read
-    `postgres: <user> <machine> [local] idle`; the login in capitals, `<LOGIN>-helper`, reads
-    `<user>-helper`;
+    `postgres: <user> <machine name> [local] idle`, the Mac's name left in a process; the login
+    in capitals, `<LOGIN>-helper`, stays;
   - label `com.<login>.proof`: the key reads `com.<user>.proof` and `Plist`
-    `<home>/Library/LaunchAgents/com.<user>.proof.plist`;
+    `<home>/Library/LaunchAgents/com.<user>.proof.plist`; label `com.<machine name>.proof` reads
+    `com.<machine>.proof` in both;
+  - a script `<dir>/com.<login>.tool.sh` run by `/bin/sh` (row `com.<login>.tool.sh`): the key
+    and `Process` read `com.<user>.tool.sh`;
   - a plist running `/Users/someone/bin/tool`: `Runs` reads `/Users/<other-user>/bin/tool (1
-    argument, not sent)`; one running `/Volumes/Proof Disk/bin/tool` reads
+    argument, not sent)`; one running `/opt/app/users/tool` is unchanged; one running
+    `/Volumes/Proof Disk/bin/tool` with that disk mounted (`hdiutil create -size 2m -fs HFS+
+    -volname "Proof Disk" <dmg>`, `hdiutil attach -nobrowse <dmg>`) reads
     `/Volumes/<volume>/bin/tool (1 argument, not sent)`;
-  - `prompt.instructions` saved with the machine's name in it: the prompt's first line keeps
-    the name. Restore or delete the row after the run;
+  - `prompt.instructions` saved with the Mac's name and the login in it: the prompt's first
+    line has `<machine>` and `<user>`. With no row, it is the default text as written. Restore
+    or delete the row after the run;
   - where the login has one or two letters, the title `sshd-session: <login> <login>@ttys003`
     reads `sshd-session: <user> <user>@ttys003`;
-  - where the computer name has a curly apostrophe, a title spelling it with a straight one
-    reads `<machine>`.
+  - where the computer name has a curly apostrophe, edited instructions spelling it with a
+    straight one read `<machine>`.
 
 - **An answer goes with its code.** With the fake provider, load a launch agent running
   `/bin/sh <dir>/a/updater` (`while :; do sleep 5; done`). In Processes, press `updater,`:
@@ -235,10 +242,13 @@ Preconditions:
   Settings and one real request in run `2026-11-08T174405`; the same text staying after a
   relaunch in run `2026-11-08T174445`; the command charged to `/bin/zsh` and refused the
   protected folder, with Startup listing login items, in run `2026-11-08T174453`.
-- What the prompt keeps back proven 2026-11-08 at `19b60f9`: the key, the login in any case and
-  as a launch item's label, another account's folder, a disk's name and the instructions on
-  testmac, run `2026-11-08T181031`, copied to `build/verify/runs/testmac-2026-11-08/`; a one-letter
-  login and the apostrophe on the development Mac, the only one with either, run
-  `2026-11-08T181445`. A tailnet name, an address spelled with hyphens and a public bound address
-  rest on unit tests: `connect` reaches only its approved hosts, and neither Mac holds a public
-  address.
+- What the prompt keeps back proven 2026-11-08 at `781f6a3`: a process's title and capitals, the
+  login and the Mac's name as a label's author, a script named for its author, another account's
+  folder, a mounted disk's name and edited instructions on testmac, run `2026-11-08T185357`; a
+  `users/` folder inside a path and the default instructions in run `2026-11-08T185610`, both
+  copied to `build/verify/runs/testmac-2026-11-08/`; a one-letter login and the apostrophe on the
+  development Mac, the only one with either, run `2026-11-08T185833`. A host's whole-name rule, a
+  tailnet name, an address spelled with hyphens and a public bound address rest on unit tests:
+  `connect` reaches only its approved hosts, and neither Mac holds a public address.
+- A script's facts name its interpreter, not its own path (`Runs with: bash (/bin/bash)`), so a
+  folder name in a script's path cannot be read from a process's prompt: use a plist's `Runs`.
