@@ -338,6 +338,18 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: "/Applications/Slack.app")?.facts.last, noShare)
     }
 
+    /// The list is read every few seconds, so a long gap means the Mac slept with it on screen:
+    /// an average over that is not what CPU means here.
+    func testAReadingLongAfterThePreviousHasNoCPU() {
+        let first = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
+        var later = machine
+        later[later.firstIndex { $0.pid == 100 }!].usage!.cpuSeconds = 11
+        let near = ProcessSnapshot.build(entries: later, previous: first, signature: sign, takenAt: epoch.addingTimeInterval(9))
+        XCTAssertNotNil(near.item(pid: 100)?.cpu)
+        let far = ProcessSnapshot.build(entries: later, previous: first, signature: sign, takenAt: epoch.addingTimeInterval(60))
+        XCTAssertTrue(far.items.allSatisfy { $0.cpu == nil }, "no share over a 60-second gap")
+    }
+
     /// A list sorted by CPU must not fall back to memory on a reading with no CPU and jump back
     /// at the next.
     func testAReadingWithNoCPUKeepsTheOrderOfTheLastOneThatHadIt() {

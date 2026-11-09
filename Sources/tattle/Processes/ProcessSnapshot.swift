@@ -254,6 +254,10 @@ struct ProcessSnapshot: Equatable, Sendable {
     /// would otherwise fall back to memory and jump back at the next reading.
     var lastCPU: [String: Double] = [:]
 
+    /// The longest gap a CPU share is worked out over. The list is read every few seconds, so a
+    /// longer one means the Mac slept or a read stalled, and the share would be an average over it.
+    private static let longestCPUGap: TimeInterval = 10
+
     func groups(sortedBy sort: Sort) -> [ProcessGroup] {
         switch sort {
         case .memory: groups.sorted { ($0.memoryBytes, $1.name) > ($1.memoryBytes, $0.name) }
@@ -285,7 +289,7 @@ struct ProcessSnapshot: Equatable, Sendable {
     ) -> ProcessSnapshot {
         let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         let elapsed = previous.map { takenAt.timeIntervalSince($0.takenAt) } ?? 0
-        let comparesWithPrevious = continuesPrevious && elapsed > 0.5
+        let comparesWithPrevious = continuesPrevious && elapsed > 0.5 && elapsed <= longestCPUGap
         let earlier = comparesWithPrevious ? Dictionary((previous?.items ?? []).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a }) : [:]
 
         var items: [ProcessItem] = []
