@@ -71,8 +71,10 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    The reply, and with it the descriptor, goes to the request's reply port, which belongs
    to the sender. A forked child inherits no XPC connection.
 
-   The only lever left to whoever launched the caller is the task exception ports the
-   caller inherits, and the broker cannot see them. A trap would hand the caller's task to
+   Whoever launched the caller has two levers left. It hands the caller its bootstrap
+   port, so it can answer for the broker's name itself; that can only keep the caller from
+   the real broker, and gets the launcher no descriptor. And it hands the caller its task
+   exception ports, which the broker cannot see. A trap would hand the caller's task to
    those ports, and the code it then runs is Tattle, which the broker accepts. The launcher
    can force that trap, as a small inherited stack limit did during Tattle's startup. So
    Tattle drops its own exception ports at launch, in an initializer of its own
@@ -138,17 +140,27 @@ as root.
   Other accounts on the Mac are refused. This guarantee claims nothing about:
   - root
   - software that makes `/dev/bpf*` readable, such as Wireshark's ChmodBPF
+  - with an Apple identity, any process of the installing user on a Mac that holds the
+    signing key (below)
   - a launcher that makes Tattle trap before its own initializer runs, in the dynamic
     loader or a system library's initializer
   - an app replaced before the user first opened it, which is the user installing
     someone else's app
 - What "Tattle's signature" means depends on how the build is signed. Ad hoc, it means
   this exact build. With an Apple identity, it means any binary the team signed with
-  Tattle's identifier or the dev copy's, older builds included. So a process that can use
-  the signing identity (a keychain "Always Allow" grant to codesign) can make one.
-  Admitting the dev copy widens nothing, because whoever can sign as the team can already
-  sign with Tattle's own identifier. It lets a dev copy capture beside a running release
-  build.
+  Tattle's identifier or the dev copy's, older builds included. So on a Mac that holds the
+  signing key, any process of the user can obtain a descriptor: it signs a hardened program
+  of its own with that identity, and the broker accepts it. On the development Mac that
+  took no password, because the key's access list names `codesign` (whether by default or
+  from an earlier grant is unverified). The team requirement stays: pinning the code hash
+  in team mode would cost an administrator dialog on every rebuild. Admitting the dev copy
+  widens nothing, because whoever can sign as the team can already sign with Tattle's own
+  identifier. It lets a dev copy capture beside a running release build.
+- The guarantee covers packets, not what Tattle makes of them. The connection history is an
+  unencrypted file in the user's Application Support folder, holding the server names of
+  every process on the Mac, root's daemons included, for the retention period (PRD, Privacy
+  and retention). Every process of the user can read it, and so can learn from it what the
+  broker would refuse it. That is accepted; the history stays unencrypted.
 - Install pins the exact running build, and through its seal the exact bundled broker, in
   both signing modes, so swapping the bundle or the broker inside it during the dialog,
   for an altered build or an older signed one, installs nothing.
@@ -159,9 +171,9 @@ as root.
   test runner, cannot use it, so tests call it through a signed fixture, and run the
   broker as an agent in the user's own launchd domain, which takes the same XPC path
   without root.
-- `SecCodeCreateWithXPCMessage` is public, but the SDK states no availability for it. It
-  is checked on macOS 26 only. The broker links it strongly, so the broker would not start
-  on a release without it.
+- `SecCodeCreateWithXPCMessage` is public. The SDK header states no availability for it,
+  but the macOS 12.1 through 15.4 SDKs export it, so every release Tattle supports has it.
+  The broker is checked on macOS 26 only.
 - The broker does not use XPC's own peer requirements, for two reasons. A peer they refuse
   sees only an interrupted connection, which the app could not tell from a crashed broker.
   And their lightweight form cannot say "no get-task-allow".

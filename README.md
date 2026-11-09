@@ -57,14 +57,14 @@ Network tab shows addresses instead of names. [ADR-0003](docs/adr/0003-bpf-descr
 gives the design and the reasoning.
 
 With an Apple Development identity, the broker recognises Tattle by its team and bundle
-identifier, so it keeps accepting the release app and the dev copy after a rebuild. An
-ad-hoc build is recognised by its code hash, which changes with every rebuild. After an
-ad-hoc rebuild, **Packet access** says the installed broker is from another build and
-installs it again in one dialog.
+identifier, so it keeps accepting the release app and the dev copy after a rebuild. On a
+Mac that holds that identity's signing key, any process you run can therefore obtain a
+capture descriptor: it can sign a program of its own with the same identity, and the broker
+accepts it. An ad-hoc build is recognised by its code hash, which changes with every
+rebuild. After an ad-hoc rebuild, **Packet access** says the installed broker is from
+another build and installs it again in one dialog.
 
-Packet access is tested on macOS 26 only. The broker uses `SecCodeCreateWithXPCMessage`,
-for which Apple documents no first macOS version, and it does not start on a release that
-lacks the call.
+Packet access is tested on macOS 26 only.
 
 ## Full Disk Access
 
@@ -73,6 +73,20 @@ Without the grant, the tab lists launchd jobs only and says what is missing. To 
 click **Open Full Disk Access Settings** in the Startup tab and turn Tattle on. Nothing
 else in the app needs the grant. An ad-hoc build loses it on every rebuild.
 [ADR-0002](docs/adr/0002-login-items-full-disk-access.md) explains why.
+
+## Connection history
+
+Tattle records each connection it sees in
+`~/Library/Application Support/Tattle/tattle.sqlite`: the process, its app and who signed
+them, the address and port at the other end, the name it learned, and when the connection
+opened and closed. That covers every process on the Mac, root's included. A row is deleted
+30 days after its connection ended; **History** in Settings changes that, from 1 to 365
+days. Tattle uses the record to mark an address it has not reached before; no screen lists
+it yet.
+
+The file is not encrypted, and every process you run can read it: the names the broker keeps
+from them are in it, for as long as the rows last. Spotlight does not index the folder, and
+Time Machine backs it up unless you exclude it.
 
 ## Explain
 
@@ -83,8 +97,8 @@ you choose a command and click **Explain** on an item.
 2. Under **Explain with**, pick a preset: Claude Code (`claude -p`), Codex (`codex exec`),
    or Ollama (`ollama run llama3.2`). The tool must be installed and signed in.
 
-To use another tool, pick **Custom** and write a command that reads the prompt on standard
-input and prints the answer on standard output. Tattle replaces `{schema}` in the command
+To use another tool, edit **Command** so it reads the prompt on standard input and prints
+the answer on standard output; the picker then shows **Custom**. Tattle replaces `{schema}` in the command
 with the JSON schema the answer must match. **Output contract** in Settings shows the
 schema.
 
@@ -122,7 +136,8 @@ The Claude Code preset keeps no transcript of the call and starts none of your a
 connectors, but Claude Code adds the email address it is signed in with to the request, and
 Tattle cannot remove it.
 The command runs in your login shell, in an empty temporary folder, and is stopped after
-120 seconds. Processes it leaves running are killed when it exits.
+120 seconds. When it exits, Tattle kills what is left in its process group; a process that
+left the group keeps running.
 
 Tattle stores the answer as a rule for that item, marked unconfirmed until you click
 **Confirm**. Unconfirmed answers expire after 45 days.
@@ -130,10 +145,21 @@ Tattle stores the answer as a rule for that item, marked unconfirmed until you c
 ## Uninstall
 
 1. If you allowed packet access, click **Remove** on the **Packet access** screen. Deleting
-   the app leaves the broker's launch daemon in `/Library/LaunchDaemons`.
+   the app leaves the broker's launch daemon in `/Library/LaunchDaemons`. If the app is
+   already gone, remove the broker in a terminal:
+
+       sudo launchctl bootout system/io.github.eladefrati.tattle.capture-broker
+       sudo rm /Library/LaunchDaemons/io.github.eladefrati.tattle.capture-broker.plist
+       sudo rm /Library/PrivilegedHelperTools/io.github.eladefrati.tattle.capture-broker
+
 2. Delete `Tattle.app`.
 3. To remove your history, rules, and settings, delete
-   `~/Library/Application Support/Tattle/`.
+   `~/Library/Application Support/Tattle/`. Tattle's window positions are in
+   `~/Library/Preferences/io.github.eladefrati.tattle.plist`.
+4. If you used Explain with the Claude Code preset, earlier versions of the preset left a
+   folder per call named `*tattle-explain*` in `~/.claude/projects/`, holding the transcript,
+   and in `~/Library/Caches/claude-cli-nodejs/`, holding logs. Delete those. Anything another
+   command keeps is in that tool's own folders.
 
 ## License
 

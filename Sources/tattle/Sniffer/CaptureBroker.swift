@@ -2,8 +2,8 @@ import CPacketCapture
 import Foundation
 
 /// The packet-access broker (ADR-0003): a root launch daemon that opens a capture device
-/// for this app and nothing else. This is what the app knows about it: where it lives,
-/// and how to ask it for a descriptor. Installing and removing it is in
+/// for a program carrying this app's signature. This is what the app knows about it: where
+/// it lives, and how to ask it for a descriptor. Installing and removing it is in
 /// CaptureBrokerInstall.swift.
 enum CaptureBroker {
     static let label = "io.github.eladefrati.tattle.capture-broker"

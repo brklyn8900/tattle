@@ -248,9 +248,11 @@ extension CaptureBroker {
     static let installExplanation = """
         Names for connections come from the first packets of each one, which only a root \
         process may read. Tattle installs a small daemon that opens the capture device \
-        read-only and hands it to Tattle, and to nothing else: it checks the signature of \
-        whoever asks. The daemon has no other function, keeps nothing, and is removed with \
-        one click here or from the Startup tab. The packet devices themselves stay root-only.
+        read-only and hands it only to a program carrying Tattle's signature, which it \
+        checks for whoever asks. On a Mac that holds the key that signed this build, any \
+        program you run can make that signature. The daemon has no other function, keeps \
+        nothing, and is removed with one click here or from the Startup tab. The packet \
+        devices themselves stay root-only.
         """
 
     /// The root half of install. Root reads the user's bundle once, to copy it where no
