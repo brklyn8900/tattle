@@ -169,6 +169,11 @@ Preconditions:
   `rapportd from 192.168.1.20:55421`, on a high port, among 128 sockets its listener claims.
   Listeners by family and a seen opening arriving after the row rest on unit tests. The `nc`
   pair over Tailscale does not connect on the development Mac.
+- A host's prompt with no direction proven 2026-11-08 on testmac, run `2026-11-08T232714`
+  (commit `25c7e20`): `Ghostty to 100.x.y.z:18091` shows `Destination` and `First contact`,
+  and the recorded prompt's `facts` are `Protocol`, `Reach` and `Since`. Copy in the development
+  Mac's `build/verify/runs/testmac-2026-11-08/`. An opening seen while a reading resolves owners
+  rests on the unit test (`testAnOpeningSeenWhileAReadingResolvesOwnersReachesTheRowAndItsHistory`).
 - The two unnamed rows look alike in the list; tell them apart by the `Process nc (pid
   ...)` fact against the pids `connect` printed.
 - The panel lists open connections only, and a closed connection's detail keeps the state

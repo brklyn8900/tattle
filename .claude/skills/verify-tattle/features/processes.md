@@ -120,6 +120,12 @@ Preconditions:
   launch agent, so Launch Services never hears of it. The row reads `Tool, 2 processes`. In its
   detail `Quit Tool` ends `Tool` and leaves `tool-helper` (`ps -p`), and then no `Quit Tool`
   shows. Afterwards `launchctl bootout` the agent, delete it and end the helper.
+- **Quit with an older run of the app's binary.** On testmac: `Tool.app`, ad-hoc signed with
+  `LSUIElement`, whose `Contents/MacOS/Tool` runs an `NSApplication`, or only sleeps when given
+  `--headless`. From one script, since a background job ends when its script's window closes:
+  `Tool --headless &`, wait 3 s, `open Tool.app`. `lsappinfo info -only pid <bundle id>` names
+  the opened one only. The row reads `Tool, 2 processes`. In its detail `Quit Tool` ends the
+  opened one and leaves the older `--headless` (`ps -p`); the row then reads `Tool, 1 process`.
 - **Another account's process.** AlDente's helper on testmac, which runs as root: `Runs as root,
   so Tattle cannot quit it`.
 
@@ -174,6 +180,9 @@ Preconditions:
   `build/verify/runs/testmac-2026-11-08/`. Two copies of an app and a program whose worker has the lower pid rest on unit tests in
   `ProcessSnapshotTests`.
 - Quit on an app with no window proven 2026-11-08 on testmac, run `2026-11-08T221748` (commit `97096f3`); copy in the development Mac's
+  `build/verify/runs/testmac-2026-11-08/`.
+- Quit with an older run of the app's binary proven 2026-11-08 on testmac, run
+  `2026-11-08T232714` (commit `25c7e20`); copy in the development Mac's
   `build/verify/runs/testmac-2026-11-08/`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
