@@ -218,7 +218,22 @@ final class NetworkSnapshotTests: XCTestCase {
             XCTAssertTrue(facts.contains { $0.name == name }, "the panel shows \(name)")
             XCTAssertFalse(told.contains(name), "the model is not told \(name)")
         }
-        XCTAssertTrue(told.isSuperset(of: ["Destination", "Protocol", "Reach"]), "\(told)")
+        XCTAssertTrue(told.isSuperset(of: ["Protocol", "Reach"]), "\(told)")
+    }
+
+    /// An answer is kept for the host and shown on connections either way: what an outbound
+    /// row says of its direction stays in the panel.
+    func testAnOutboundConnectionKeepsItsDirectionFromTheModel() {
+        let names: [NameOutcome?] = [nil] + [ConnectionName.Kind.destination, .relay, .hidden].map {
+            .named(ConnectionName(name: "example.com", source: .sni, kind: $0))
+        }
+        for outcome in names {
+            let row = LiveConnection(connection: connection(100, "203.0.113.5"), owner: ConnectionOwner(processName: "tool"), isNew: true, outcome: outcome)
+            let facts = row.facts(now: t0)
+            for claim in ["Destination", "First contact"] {
+                XCTAssertEqual(facts.filter { $0.name == claim }.map(\.inPrompt), [false], "\(claim) with \(String(describing: outcome))")
+            }
+        }
     }
 
     /// The peer came to this Mac: it is no destination, and no first contact of this Mac's.

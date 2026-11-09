@@ -37,8 +37,9 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   49152 or above, macOS's ephemeral range, which needs no packet access. Otherwise neither is
   claimed: `<app> with <peer>`, `Peer` and `Local port`, no `new`, no `First contact`, and the
   address does not count as reached. A group row says `N to`, `N from` or `N with the
-  internet`. The model is told none of the direction facts, since its answer is kept for the
-  host. History keeps it in `direction`.
+  internet`. The model is told none of `Destination`, `First contact`, `From`, `To port`,
+  `Peer` and `Local port`, since its answer is kept for the host. History keeps it in
+  `direction`.
 - `net-reach`: `Reach` reads `this network` for private, link-local and shared (100.64/10,
   Tailscale's) addresses.
 - `net-history`: the same outcome in the `connection` table, written even when the

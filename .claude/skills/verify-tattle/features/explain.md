@@ -160,8 +160,9 @@ Preconditions:
   Stop one of the two and end its connection: when the row holds one program the detail reads
   `No explanation yet.`
 - **A host's prompt.** With the fake provider, open a connection's detail and `Explain`. The
-  panel shows `Process`, `App` and `Signed by`; the recorded prompt's `facts` hold only
-  `Destination`, `Protocol`, `Reach`, `Since` and `First contact`.
+  panel shows `Process`, `App`, `Signed by`, `Destination` and `First contact`; the recorded
+  prompt's `facts` hold only `Protocol`, `Reach` and `Since`, with `Address` and `Name from`
+  once the host has a name.
 - **The shipped `claude` rule.** Where a real Claude Code session runs, open the row holding
   it (`Herdr Core,` here), then `--prefix "claude, pid <pid>"` (`claude, pid N · Anthropic
   PBC`): the detail ends in `Claude Code, Anthropic's coding agent ...` and `Tattle's rules ·

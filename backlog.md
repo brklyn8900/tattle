@@ -22,8 +22,8 @@
   old owner (`ConnectionOwner.unresolved`).
 - Inline code that calls a file is pinned by its line: `sh -c /x/agent` keeps its answer when
   `agent` changes.
-- The host prompt still carries per-connection facts (`Protocol`, `Since`, `First contact`),
-  and the model can echo them into an answer stored for the host (`NetworkSnapshot.swift`).
+- The host prompt still carries per-connection facts (`Protocol`, `Since`), and the model can
+  echo them into an answer stored for the host (`NetworkSnapshot.swift`).
 - A launch item's line is hashed after joining on spaces, so two argument splits collide:
   `["-c", "/x/job --dry-run"]` and `["-c", "/x/job", "--dry-run"]` (`StartupSnapshot.swift`).
 - A network counter that restarts between two readings, when an interface is detached and

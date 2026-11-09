@@ -152,18 +152,18 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         case .outbound:
             switch name?.kind {
             case .destination:
-                facts.append(Fact(name: "Destination", value: name!.name))
+                facts.append(Fact(name: "Destination", value: name!.name, inPrompt: false))
                 facts.append(Fact(name: "Address", value: destination))
             case .relay:
-                facts.append(Fact(name: "Destination", value: "hidden inside a relay"))
+                facts.append(Fact(name: "Destination", value: "hidden inside a relay", inPrompt: false))
                 facts.append(Fact(name: "Relay", value: name!.name))
                 facts.append(Fact(name: "Address", value: destination))
             case .hidden:
-                facts.append(Fact(name: "Destination", value: "hidden by Encrypted Client Hello"))
+                facts.append(Fact(name: "Destination", value: "hidden by Encrypted Client Hello", inPrompt: false))
                 facts.append(Fact(name: "Cover name", value: name!.name))
                 facts.append(Fact(name: "Address", value: destination))
             case nil:
-                facts.append(Fact(name: "Destination", value: destination))
+                facts.append(Fact(name: "Destination", value: destination, inPrompt: false))
             }
         }
         facts += [
@@ -183,7 +183,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
             facts.append(Fact(name: "Since", value: Self.ago(connection.firstSeen, now: now)))
         }
         if let ended = connection.ended { facts.append(Fact(name: "Ended", value: Self.ago(ended, now: now))) }
-        if connection.direction == .outbound { facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before")) }
+        if connection.direction == .outbound { facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before", inPrompt: false)) }
         if let name {
             facts.append(Fact(name: "Name from", value: name.source.text))
         } else if let unnamedReason {
