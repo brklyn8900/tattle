@@ -327,7 +327,34 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(facts["Signed by"], "node")
         XCTAssertEqual(facts["Team"], "T-node")
         XCTAssertEqual(facts["Memory"], "80 bytes resident")
-        XCTAssertNil(facts["CPU"])
+    }
+
+    /// The row stays when there is no share yet, so what is below it does not move; the model
+    /// is told only a real share.
+    func testTheCPURowStaysWithNoShareAndIsNotInThePrompt() throws {
+        let snapshot = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
+        let noShare = Fact(name: "CPU", value: "\u{2013}", inPrompt: false)
+        XCTAssertEqual(snapshot.item(pid: 401)?.facts.last, noShare)
+        XCTAssertEqual(snapshot.group(id: "/Applications/Slack.app")?.facts.last, noShare)
+    }
+
+    /// A list sorted by CPU must not fall back to memory on a reading with no CPU and jump back
+    /// at the next.
+    func testAReadingWithNoCPUKeepsTheOrderOfTheLastOneThatHadIt() {
+        let first = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
+        var later = machine
+        later[later.firstIndex { $0.pid == 400 }!].usage!.cpuSeconds = 1.6
+        later[later.firstIndex { $0.pid == 100 }!].usage!.cpuSeconds = 10.4
+        let measured = ProcessSnapshot.build(entries: later, previous: first, signature: sign, takenAt: epoch.addingTimeInterval(2))
+        let order = measured.groups(sortedBy: .cpu).map(\.id)
+        XCTAssertNotEqual(order, measured.groups(sortedBy: .memory).map(\.id), "CPU and memory must differ for this to prove anything")
+
+        let baseline = ProcessSnapshot.build(entries: later, previous: measured, continuesPrevious: false, signature: sign, takenAt: epoch.addingTimeInterval(60))
+        XCTAssertTrue(baseline.groups.allSatisfy { $0.cpu == nil })
+        XCTAssertEqual(baseline.groups(sortedBy: .cpu).map(\.id), order)
+
+        let baselineAgain = ProcessSnapshot.build(entries: later, previous: baseline, continuesPrevious: false, signature: sign, takenAt: epoch.addingTimeInterval(61))
+        XCTAssertEqual(baselineAgain.groups(sortedBy: .cpu).map(\.id), order, "a close during the first reading keeps it too")
     }
 
     /// Everything the panel shows about the user's own process, as the model would get it.

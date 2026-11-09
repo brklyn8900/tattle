@@ -46,4 +46,10 @@ struct Fact: Equatable, Sendable {
     static func runsAs(_ uid: uid_t) -> Fact {
         Fact(name: "Runs as", value: UserName.describe(uid), promptValue: UserName.describeForModel(uid))
     }
+
+    /// A CPU share, or a dash when there is none yet: the row stays, so what is below it does
+    /// not move. The model is told only a real share.
+    static func cpu(_ share: Double?) -> Fact {
+        Fact(name: "CPU", value: share.map(ProcessItem.cpuText) ?? "\u{2013}", inPrompt: share != nil)
+    }
 }

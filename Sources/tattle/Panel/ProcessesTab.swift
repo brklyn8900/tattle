@@ -18,7 +18,10 @@ struct ProcessesTab: View {
             guard state.panelIsShowing else { return }
             state.processes.beginReadings()
             // Memory moves and CPU is a difference between readings, so the list is
-            // kept current while it is on screen.
+            // kept current while it is on screen. The first reading has no CPU, so the
+            // next one follows after a second rather than a whole cycle.
+            await state.processes.refresh()
+            try? await Task.sleep(for: .seconds(1))
             while !Task.isCancelled {
                 await state.processes.refresh()
                 try? await Task.sleep(for: .seconds(3))

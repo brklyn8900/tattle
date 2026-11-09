@@ -130,7 +130,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
         if let usage {
             facts.append(Fact(name: "Memory", value: Self.memoryText(usage.memoryBytes) + (usage.memoryIsFootprint ? " footprint" : " resident")))
         }
-        if let cpu { facts.append(Fact(name: "CPU", value: Self.cpuText(cpu))) }
+        facts.append(.cpu(cpu))
         return facts
     }
 
@@ -236,7 +236,7 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
             if let team = signature.teamIdentifier { facts.append(Fact(name: "Team", value: team)) }
         }
         facts.append(Fact(name: "Memory", value: ProcessItem.memoryText(memoryBytes)))
-        if let cpu { facts.append(Fact(name: "CPU", value: ProcessItem.cpuText(cpu))) }
+        facts.append(.cpu(cpu))
         return facts
     }
 }
@@ -250,12 +250,22 @@ struct ProcessSnapshot: Equatable, Sendable {
     var items: [ProcessItem]
     var groups: [ProcessGroup]
     var takenAt: Date
+    /// Each group's last known share, on a reading that has none of its own: sorted by CPU, it
+    /// would otherwise fall back to memory and jump back at the next reading.
+    var lastCPU: [String: Double] = [:]
 
     func groups(sortedBy sort: Sort) -> [ProcessGroup] {
         switch sort {
         case .memory: groups.sorted { ($0.memoryBytes, $1.name) > ($1.memoryBytes, $0.name) }
-        case .cpu: groups.sorted { ($0.cpu ?? -1, $0.memoryBytes) > ($1.cpu ?? -1, $1.memoryBytes) }
+        case .cpu: groups.sorted { (shareForOrder($0), $0.memoryBytes) > (shareForOrder($1), $1.memoryBytes) }
         }
+    }
+
+    private func shareForOrder(_ group: ProcessGroup) -> Double { group.cpu ?? lastCPU[group.id] ?? -1 }
+
+    /// What a following reading with no CPU keeps of this one.
+    private var knownCPU: [String: Double] {
+        lastCPU.merging(groups.compactMap { group in group.cpu.map { (group.id, $0) } }) { _, new in new }
     }
 
     func item(pid: Int32) -> ProcessItem? { items.first { $0.pid == pid } }
@@ -266,16 +276,17 @@ struct ProcessSnapshot: Equatable, Sendable {
     /// bundle Launch Services opened a pid from, for the processes whose path does not
     /// say: Chromium browsers run their main process from a code-sign clone of the
     /// bundle under a .app.bundle name. CPU shares come from the difference against
-    /// `previous`.
+    /// `previous`, when `continuesPrevious` says nothing separates the two readings.
     static func build(
-        entries: [ProcessEntry], previous: ProcessSnapshot?,
+        entries: [ProcessEntry], previous: ProcessSnapshot?, continuesPrevious: Bool = true,
         signature: (String) -> CodeSignature?, runningApp: (Int32) -> String? = { _ in nil },
         mainExecutable: (AppBundle) -> String? = { Bundle(path: $0.path)?.executablePath },
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
     ) -> ProcessSnapshot {
         let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         let elapsed = previous.map { takenAt.timeIntervalSince($0.takenAt) } ?? 0
-        let earlier = Dictionary((previous?.items ?? []).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        let comparesWithPrevious = continuesPrevious && elapsed > 0.5
+        let earlier = comparesWithPrevious ? Dictionary((previous?.items ?? []).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a }) : [:]
 
         var items: [ProcessItem] = []
         items.reserveCapacity(entries.count)
@@ -283,7 +294,7 @@ struct ProcessSnapshot: Equatable, Sendable {
         for entry in entries {
             let executableSignature = entry.path.flatMap(signature)
             var cpu: Double?
-            if elapsed > 0.5, let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
+            if let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
                let now = entry.usage?.cpuSeconds, let then = before.usage?.cpuSeconds {
                 cpu = max(now - then, 0) / elapsed
             }
@@ -335,7 +346,7 @@ struct ProcessSnapshot: Equatable, Sendable {
             groups[index].leaderPid = (opened.isEmpty ? members.filter { $0.path != nil && $0.path == executable } : opened)
                 .min { ($0.started, $0.pid) < ($1.started, $1.pid) }?.pid
         }
-        return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
+        return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt, lastCPU: comparesWithPrevious ? [:] : previous?.knownCPU ?? [:])
     }
 
     /// The app a process belongs to: the bundle on its own path unless it runs a script,

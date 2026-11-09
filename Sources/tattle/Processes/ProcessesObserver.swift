@@ -23,12 +23,13 @@ final class ProcessesObserver {
         isLoading = true
         defer { isLoading = false }
         let signatures = signatures
-        let previous = isContinuingReadings ? snapshot : nil
+        let previous = snapshot
+        let continuesPrevious = isContinuingReadings
         let result = await Task.detached(priority: .userInitiated) { () -> Result<ProcessSnapshot, Error> in
             do {
                 let entries = try ProcessTable.read(signature: signatures.signature(at:))
                 return .success(ProcessSnapshot.build(
-                    entries: entries, previous: previous,
+                    entries: entries, previous: previous, continuesPrevious: continuesPrevious,
                     signature: signatures.signature(at:), runningApp: Self.runningAppBundle(pid:)))
             } catch {
                 return .failure(error)
