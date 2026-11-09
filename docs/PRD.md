@@ -34,9 +34,9 @@ don't:
 
 ## Goals
 
-- Live view of every outbound connection, and history within the retention period,
-  attributed to the process that made it, with the hostname the process asked for wherever
-  that can be observed.
+- Live view of every connection in either direction, and history within the retention
+  period, attributed to the process that holds it, with the hostname the process asked for
+  wherever that can be observed.
 - Every process, listening port, and persistent startup item on the machine, each with its
   code signer and the app responsible for it.
 - A shared explanation pipeline that resolves names deterministically first, from a
