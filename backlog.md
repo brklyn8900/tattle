@@ -60,6 +60,10 @@
   gives the loaded file's path (`StartupSnapshot.swift`).
 - A failed read of the process table fails the whole Ports refresh, and the old list stays on
   screen with no sign: the tab shows the error only when it has no list (`PortsObserver.swift`).
+- A one-shot listener on a port of 49152 or above is misread: once the listener has closed,
+  the socket it accepted reads outbound, and its peer can count as a first contact
+  (`ConnectionTracker.swift`). This Mac's SYN-ACK would prove inbound for it: the capture
+  filter already passes one, and `FlowNamer` drops it.
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
