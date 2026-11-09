@@ -211,7 +211,7 @@ struct StartupSnapshot: Equatable, Sendable {
             let path = registered?.executablePath.flatMap { $0.hasPrefix("/") ? $0 : nil }
             let signed = registered.flatMap { item in path.flatMap { registeredSignature(of: item, at: $0, reading: signature) } }
             items.append(StartupItem(
-                id: plist.url.path,
+                id: registered?.jobLabel ?? plist.url.path,
                 group: group(for: plist.scope),
                 name: registered?.name ?? plist.url.deletingPathExtension().lastPathComponent,
                 program: path,

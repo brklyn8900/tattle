@@ -46,6 +46,12 @@ struct LoginItem: Equatable, Sendable, Identifiable {
 
     var id: String { identifier }
 
+    /// The launchd label: a legacy record has no bundle identifier, and keeps the label after
+    /// its type in the identifier.
+    var jobLabel: String? {
+        bundleIdentifier ?? (legacy ? identifier.split(separator: ".", maxSplits: 1).last.map(String.init) : nil)
+    }
+
     var isStartupItem: Bool {
         switch kind {
         case .app, .loginItemHelper, .agent, .daemon, .backgroundRefresh: true

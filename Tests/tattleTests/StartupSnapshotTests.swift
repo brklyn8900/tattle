@@ -324,6 +324,19 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertTrue(row.canExplain, "the record says what runs")
     }
 
+    /// An answer is filed under the job's label, the key the row has once the plist is
+    /// readable. A legacy record has no bundle identifier: it keeps the label after its type.
+    func testAnUnreadablePlistIsKeyedByTheLabelMacOSRecorded() {
+        let url = URL(fileURLWithPath: "/Library/LaunchDaemons/com.acme.helper.plist")
+        let launchd = LaunchdReader.Result(items: [], appleCount: 0, unreadable: [.init(url: url, scope: .daemon, reason: "x")])
+        func key(_ records: [LoginItem]) -> String? {
+            StartupSnapshot.build(launchd: launchd, loginItems: records, state: LaunchctlState(), signature: { _ in nil }).items(in: .daemons).first?.explainKey
+        }
+        XCTAssertEqual(key([login("16.com.acme.helper", name: "Acme", kind: .daemon, url: url.absoluteString, legacy: true)]), "com.acme.helper")
+        XCTAssertEqual(key([login("16.com.acme.helper", name: "Acme", kind: .daemon, url: url.absoluteString, bundle: "com.acme.job", legacy: true)]), "com.acme.job")
+        XCTAssertEqual(key([]), url.path, "with no record, the file is all there is")
+    }
+
     /// A legacy record of a kind Tattle does not list gives no row of its own.
     func testARecordOfAnUnknownKindDoesNotHideAnUnreadablePlist() {
         let url = URL(fileURLWithPath: "/Library/LaunchAgents/com.acme.agent.plist")
