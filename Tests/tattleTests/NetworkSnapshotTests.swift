@@ -221,6 +221,38 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertTrue(told.isSuperset(of: ["Destination", "Protocol", "Reach"]), "\(told)")
     }
 
+    /// The peer came to this Mac: it is no destination, and no first contact of this Mac's.
+    func testAnInboundConnectionReadsAsInbound() throws {
+        var accepted = connection(100, "203.0.113.5", port: 51514)
+        accepted.localPort = 22
+        accepted.isInbound = true
+        let owner = ConnectionOwner(processName: "sshd")
+        let row = LiveConnection(connection: accepted, owner: owner, isNew: false)
+        XCTAssertEqual(row.headline, "sshd from 203.0.113.5:51514")
+        let facts = row.facts(now: t0)
+        let values = Dictionary(facts.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
+        XCTAssertEqual(values["From"], "203.0.113.5:51514")
+        XCTAssertEqual(values["To port"], "22")
+        XCTAssertNil(values["Destination"], "the model is not told the peer is where this Mac went")
+        XCTAssertNil(values["First contact"])
+        XCTAssertTrue(Set(facts.filter(\.inPrompt).map(\.name)).isSuperset(of: ["From", "To port"]))
+
+        let out = LiveConnection(connection: connection(100, "17.1.1.1"), owner: owner, isNew: false)
+        XCTAssertEqual(out.headline, "sshd to 17.1.1.1:443")
+        let group = ConnectionGroup(id: "sshd", name: "sshd", connections: [row, out, LiveConnection(connection: connection(100, "192.168.1.9", scope: .local), owner: owner, isNew: false)])
+        XCTAssertEqual(group.reachSummary, ["1 to the internet", "1 from the internet", "1 on this network"])
+    }
+
+    func testFirstContactCountsOnlyThisMacReachingOut() {
+        var known = Set<String>()
+        var accepted = connection(100, "203.0.113.5")
+        accepted.isInbound = true
+        XCTAssertFalse(LiveConnection.isFirstContact(accepted, known: &known))
+        XCTAssertTrue(known.isEmpty, "a later connection out to the peer is still a first contact")
+        XCTAssertTrue(LiveConnection.isFirstContact(connection(100, "203.0.113.5"), known: &known))
+        XCTAssertFalse(LiveConnection.isFirstContact(connection(100, "203.0.113.5"), known: &known))
+    }
+
     /// A process that took a name shares its row: the newest connection's signer alone would
     /// read as Apple's with the impostor's connections inside.
     func testARowWhoseConnectionsDifferNamesNoSigner() throws {

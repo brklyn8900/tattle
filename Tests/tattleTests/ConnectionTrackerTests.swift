@@ -4,8 +4,8 @@ import XCTest
 final class ConnectionTrackerTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func tcp(_ pid: Int32, _ local: UInt16, _ remote: String, _ port: UInt16 = 443, state: Int32 = SocketEntry.tcpEstablished, v6: Bool = false) -> SocketEntry {
-        SocketEntry(proto: .tcp, isIPv6: v6, localAddress: v6 ? "2001:db8::1" : "192.168.1.5", localPort: local,
+    private func tcp(_ pid: Int32, _ local: UInt16, _ remote: String, _ port: UInt16 = 443, state: Int32 = SocketEntry.tcpEstablished, v6: Bool = false, localAddress: String? = nil) -> SocketEntry {
+        SocketEntry(proto: .tcp, isIPv6: v6, localAddress: localAddress ?? (v6 ? "2001:db8::1" : "192.168.1.5"), localPort: local,
                     remoteAddress: remote, remotePort: port, tcpState: state, pid: pid, effectivePid: 0, uid: 501)
     }
 
@@ -56,6 +56,46 @@ final class ConnectionTrackerTests: XCTestCase {
         XCTAssertEqual(third.closed.count, 2)
         XCTAssertTrue(tracker.live.isEmpty)
         XCTAssertFalse(tracker.update(entries: [tcp(1, 1, "9.9.9.9")], at: t0 + 6).opened[0].preExisting)
+    }
+
+    private func listener(_ pid: Int32, _ port: UInt16, on address: String = "0.0.0.0", v6: Bool = false) -> SocketEntry {
+        SocketEntry(proto: .tcp, isIPv6: v6, localAddress: address, localPort: port, remoteAddress: v6 ? "::" : "0.0.0.0", remotePort: 0,
+                    tcpState: SocketEntry.tcpListen, pid: pid, effectivePid: 0, uid: 0)
+    }
+
+    /// An accepted socket keeps its listener's local address and port. launchd holds the
+    /// listener of a job it starts on demand, so the pids need not match.
+    func testASocketOnAListeningEndpointWasAccepted() throws {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [
+            listener(1, 22), listener(1, 8080, on: "127.0.0.1"), listener(1, 9000, on: "192.168.1.5"),
+            listener(1, 7000, on: "::", v6: true), listener(1, 9100, on: "192.168.1.5"),
+            tcp(500, 22, "203.0.113.5", 51514),
+            tcp(600, 50000, "17.1.1.1"),
+            tcp(700, 8080, "17.1.1.2"),
+            tcp(800, 9000, "203.0.113.6", 51515),
+            tcp(900, 7000, "::ffff:203.0.113.7", 51516, v6: true, localAddress: "::ffff:192.168.1.5"),
+            tcp(901, 9100, "::ffff:203.0.113.8", 51517, v6: true, localAddress: "::ffff:192.168.1.5"),
+            udp(1000, 5353, "224.0.0.251", 5353),
+            SocketEntry(proto: .udp, isIPv6: false, localAddress: "0.0.0.0", localPort: 5353, remoteAddress: "0.0.0.0", remotePort: 0, tcpState: nil, pid: 1, effectivePid: 0, uid: 0),
+        ], at: t0)
+        func inbound(_ key: String, file: StaticString = #filePath, line: UInt = #line) throws -> Bool {
+            try XCTUnwrap(tracker.live[key], file: file, line: line).isInbound
+        }
+        XCTAssertTrue(try inbound("500:tcp/22>203.0.113.5:51514"), "on a port listening on every interface")
+        XCTAssertFalse(try inbound("600:tcp/50000>17.1.1.1:443"))
+        XCTAssertFalse(try inbound("700:tcp/8080>17.1.1.2:443"), "the listener is on another address")
+        XCTAssertTrue(try inbound("800:tcp/9000>203.0.113.6:51515"), "on the listener's own address")
+        XCTAssertTrue(try inbound("900:tcp/7000>::ffff:203.0.113.7:51516"), "a dual-stack listener's IPv4 peer")
+        XCTAssertTrue(try inbound("901:tcp/9100>::ffff:203.0.113.8:51517"), "a mapped address is its IPv4 address")
+        XCTAssertFalse(try inbound("1000:udp/5353>224.0.0.251:5353"), "UDP accepts nothing")
+    }
+
+    func testAnAcceptedSocketStaysInboundAfterItsListenerCloses() throws {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [listener(1, 22), tcp(500, 22, "203.0.113.5", 51514)], at: t0)
+        _ = tracker.update(entries: [tcp(500, 22, "203.0.113.5", 51514)], at: t0 + 2)
+        XCTAssertTrue(try XCTUnwrap(tracker.live["500:tcp/22>203.0.113.5:51514"]).isInbound)
     }
 
     func testDuplicateRecordsCountOnce() {

@@ -16,6 +16,16 @@ final class ConnectionStoreTests: XCTestCase {
                           firstSeen: at, lastSeen: at, ended: nil, preExisting: preExisting)
     }
 
+    func testKnownAddressesLeaveOutPeersThatConnectedIn() throws {
+        var accepted = connection(100, "203.0.113.5", at: t0)
+        accepted.isInbound = true
+        try store.open(ConnectionRecord(accepted, processName: "sshd"))
+        try store.open(ConnectionRecord(connection(200, "17.1.1.1"), processName: "Safari"))
+        XCTAssertEqual(try store.knownAddresses(), ["17.1.1.1"])
+        XCTAssertEqual(try store.history(processName: "sshd").first?.isInbound, true)
+        XCTAssertEqual(try store.history(processName: "Safari").first?.isInbound, false)
+    }
+
     func testOpenCloseAndHistory() throws {
         let a = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari", appName: "Safari", appPath: "/Applications/Safari.app", signer: "Apple"))
         XCTAssertNotNil(a.id)

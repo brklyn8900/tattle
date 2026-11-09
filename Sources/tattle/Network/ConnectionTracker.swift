@@ -1,6 +1,6 @@
 import Foundation
 
-/// One outbound connection: a socket with a peer, as seen in the socket table over time.
+/// One connection: a socket with a peer, as seen in the socket table over time.
 struct Connection: Equatable, Sendable, Identifiable {
     enum Scope: String, Sendable {
         /// A public address: the internet.
@@ -28,6 +28,8 @@ struct Connection: Equatable, Sendable, Identifiable {
     var ended: Date?
     /// Already in the table when Tattle started looking, so first seen is not when it began.
     var preExisting: Bool
+    /// The peer connected to this Mac: the socket was accepted from a listener.
+    var isInbound = false
 
     var isOpen: Bool { ended == nil }
 
@@ -95,6 +97,32 @@ extension SocketEntry {
     }
 }
 
+/// The TCP endpoints sockets are listening on. An accepted socket keeps its listener's local
+/// address and port, the only sign of one in the socket table; the pid can differ, since
+/// launchd holds the listener of a job it starts on demand.
+private struct TCPListeners {
+    /// Ports listening on every interface.
+    private var everywhere = Set<UInt16>()
+    /// Listeners bound to one address.
+    private var bound = Set<String>()
+
+    init(_ entries: [SocketEntry]) {
+        for entry in entries where entry.proto == .tcp && entry.isListening {
+            if entry.isBoundToAllInterfaces { everywhere.insert(entry.localPort) } else { bound.insert(Self.endpoint(entry)) }
+        }
+    }
+
+    func accepted(_ entry: SocketEntry) -> Bool {
+        entry.proto == .tcp && (everywhere.contains(entry.localPort) || bound.contains(Self.endpoint(entry)))
+    }
+
+    /// An IPv6 socket talking IPv4 shows a mapped address where its listener may show IPv4.
+    private static func endpoint(_ entry: SocketEntry) -> String {
+        let address = entry.localAddress.lowercased()
+        return "\(address.hasPrefix("::ffff:") ? String(address.dropFirst(7)) : address)/\(entry.localPort)"
+    }
+}
+
 /// Follows connections across polls of the socket table: which opened, which are still
 /// there, which went away.
 struct ConnectionTracker: Sendable {
@@ -114,6 +142,7 @@ struct ConnectionTracker: Sendable {
     mutating func update(entries: [SocketEntry], at now: Date = Date()) -> Changes {
         var changes = Changes()
         var seen = Set<String>()
+        let listeners = TCPListeners(entries)
         for entry in entries {
             guard let scope = entry.connectionScope else { continue }
             let key = Connection.key(entry)
@@ -127,7 +156,7 @@ struct ConnectionTracker: Sendable {
                     id: key, proto: entry.proto, pid: entry.pid, uid: entry.uid,
                     localPort: entry.localPort, remoteAddress: entry.remoteAddress, remotePort: entry.remotePort,
                     isIPv6: entry.isIPv6, scope: scope, tcpState: entry.tcpState,
-                    firstSeen: now, lastSeen: now, ended: nil, preExisting: !hasPolled)
+                    firstSeen: now, lastSeen: now, ended: nil, preExisting: !hasPolled, isInbound: listeners.accepted(entry))
                 live[key] = connection
                 changes.opened.append(connection)
             }

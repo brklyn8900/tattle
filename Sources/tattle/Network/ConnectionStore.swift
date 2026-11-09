@@ -25,6 +25,7 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
     var lastSeen: Date
     var ended: Date?
     var preExisting: Bool
+    var isInbound: Bool
     var name: String?
     var nameSource: String?
 
@@ -47,6 +48,7 @@ struct ConnectionRecord: Codable, Equatable, Identifiable, Sendable {
         lastSeen = connection.lastSeen
         ended = connection.ended
         preExisting = connection.preExisting
+        isInbound = connection.isInbound
     }
 }
 
@@ -171,10 +173,10 @@ struct ConnectionStore: Sendable {
         }
     }
 
-    /// Every remote address ever recorded: what "first contact" is measured against.
+    /// Every address this Mac has reached: what "first contact" is measured against.
     func knownAddresses() throws -> Set<String> {
         try database.writer.read { db in
-            Set(try String.fetchAll(db, sql: "SELECT DISTINCT remoteAddress FROM connection"))
+            Set(try String.fetchAll(db, sql: "SELECT DISTINCT remoteAddress FROM connection WHERE NOT isInbound"))
         }
     }
 

@@ -76,7 +76,7 @@ struct ConnectionOwner: Equatable, Sendable {
 struct LiveConnection: Equatable, Sendable, Identifiable {
     var connection: Connection
     var owner: ConnectionOwner
-    /// First time this address appears in history.
+    /// First time this Mac reaches this address.
     var isNew: Bool
     /// From the sniffer, when it saw the handshake; nil until then or without packet access.
     var name: ConnectionName? = nil
@@ -122,22 +122,36 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
     /// A relay or cover name is still the right key: the rule for it says what it is.
     var explainKey: String { name?.name ?? connection.remoteAddress }
 
+    /// The detail's heading.
+    var headline: String { connection.isInbound ? "\(owner.displayName) from \(destination)" : "\(owner.displayName) to \(title)" }
+
+    /// Whether the address is one this Mac has not reached before, and remembers that it has.
+    /// A peer that connected in is not one it reached.
+    static func isFirstContact(_ connection: Connection, known: inout Set<String>) -> Bool {
+        !connection.isInbound && known.insert(connection.remoteAddress).inserted
+    }
+
     func facts(now: Date) -> [Fact] {
         var facts: [Fact] = []
-        switch name?.kind {
-        case .destination:
-            facts.append(Fact(name: "Destination", value: name!.name))
-            facts.append(Fact(name: "Address", value: destination))
-        case .relay:
-            facts.append(Fact(name: "Destination", value: "hidden inside a relay"))
-            facts.append(Fact(name: "Relay", value: name!.name))
-            facts.append(Fact(name: "Address", value: destination))
-        case .hidden:
-            facts.append(Fact(name: "Destination", value: "hidden by Encrypted Client Hello"))
-            facts.append(Fact(name: "Cover name", value: name!.name))
-            facts.append(Fact(name: "Address", value: destination))
-        case nil:
-            facts.append(Fact(name: "Destination", value: destination))
+        if connection.isInbound {
+            facts.append(Fact(name: "From", value: destination))
+            facts.append(Fact(name: "To port", value: String(connection.localPort)))
+        } else {
+            switch name?.kind {
+            case .destination:
+                facts.append(Fact(name: "Destination", value: name!.name))
+                facts.append(Fact(name: "Address", value: destination))
+            case .relay:
+                facts.append(Fact(name: "Destination", value: "hidden inside a relay"))
+                facts.append(Fact(name: "Relay", value: name!.name))
+                facts.append(Fact(name: "Address", value: destination))
+            case .hidden:
+                facts.append(Fact(name: "Destination", value: "hidden by Encrypted Client Hello"))
+                facts.append(Fact(name: "Cover name", value: name!.name))
+                facts.append(Fact(name: "Address", value: destination))
+            case nil:
+                facts.append(Fact(name: "Destination", value: destination))
+            }
         }
         facts += [
             Fact(name: "Protocol", value: connection.proto.rawValue.uppercased() + (connection.stateText.map { ", \($0)" } ?? "")),
@@ -156,7 +170,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
             facts.append(Fact(name: "Since", value: Self.ago(connection.firstSeen, now: now)))
         }
         if let ended = connection.ended { facts.append(Fact(name: "Ended", value: Self.ago(ended, now: now))) }
-        facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before"))
+        if !connection.isInbound { facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before")) }
         if let name {
             facts.append(Fact(name: "Name from", value: name.source.text))
         } else if let unnamedReason {
@@ -221,6 +235,16 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
     var newCount: Int { connections.filter(\.isNew).count }
     var remoteCount: Int { connections.filter { $0.connection.scope == .remote }.count }
     var localCount: Int { connections.count - remoteCount }
+
+    /// The row's subtitle, by where its connections go or come from.
+    var reachSummary: [String] {
+        let incoming = connections.filter { $0.connection.scope == .remote && $0.connection.isInbound }.count
+        var parts: [String] = []
+        if remoteCount > incoming { parts.append("\(remoteCount - incoming) to the internet") }
+        if incoming > 0 { parts.append("\(incoming) from the internet") }
+        if localCount > 0 { parts.append("\(localCount) on this network") }
+        return parts
+    }
 
     func facts(gone: Bool) -> [Fact] {
         var facts = [Fact(name: gone ? "Were open" : "Open", value: String(connections.count))]

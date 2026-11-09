@@ -240,8 +240,7 @@ final class NetworkObserver {
         var opened: [LiveConnection] = []
         for connection in changes.opened {
             let owner = owners[connection.pid] ?? .unknown
-            let isNew = !known.contains(connection.remoteAddress)
-            known.insert(connection.remoteAddress)
+            let isNew = LiveConnection.isFirstContact(connection, known: &known)
             opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, outcome: names.outcome(for: connection.flowKey)))
         }
         record(opened: opened, closed: changes.closed, now: now)

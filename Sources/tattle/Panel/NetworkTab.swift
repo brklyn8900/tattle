@@ -99,9 +99,7 @@ private struct ConnectionGroupRow: View {
     }
 
     private var subtitle: String {
-        var parts: [String] = []
-        if group.remoteCount > 0 { parts.append("\(group.remoteCount) to the internet") }
-        if group.localCount > 0 { parts.append("\(group.localCount) on this network") }
+        var parts = group.reachSummary
         if let signature = group.signature { parts.append(signature.summary) }
         return parts.joined(separator: " \u{00B7} ")
     }
@@ -118,6 +116,9 @@ private struct ConnectionRow: View {
                     Text(live.title).font(.body.monospacedDigit())
                     if live.isFromDNS {
                         Text("from DNS").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if live.connection.isInbound {
+                        Text("incoming").font(.caption).foregroundStyle(.secondary)
                     }
                     if live.isNew {
                         Text("new").font(.caption).foregroundStyle(.orange)
@@ -208,7 +209,7 @@ private struct ConnectionDetail: View {
         let now = state.network.snapshot?.takenAt ?? Date()
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("\(live.owner.displayName) to \(live.title)").font(.headline)
+                Text(live.headline).font(.headline)
                 if current == nil {
                     Text("Closed.")
                         .font(.callout)

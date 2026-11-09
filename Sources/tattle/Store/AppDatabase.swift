@@ -145,6 +145,9 @@ struct AppDatabase: Sendable {
                     #"claude -p --setting-sources project,local --tools "" --permission-prompts none --output-format json --json-schema {schema}"#,
                 ])
         }
+        migrator.registerMigration("v7-connection-inbound") { db in
+            try db.alter(table: "connection") { $0.add(column: "isInbound", .boolean).notNull().defaults(to: false) }
+        }
         return migrator
     }
 }
