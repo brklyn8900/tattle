@@ -261,6 +261,224 @@ final class RedactorTests: XCTestCase {
     }
 }
 
+/// Every input the two adversarial reviews of the redaction raised, with what it must read, so
+/// nothing fixed comes back. A row that looks wrong is a gap the README or backlog.md names, or
+/// a placeholder a login spells: no leak. Changing one is a decision.
+final class RedactionReviewTableTests: XCTestCase {
+    private func user(_ login: String, mac: [String] = [], disks: [String] = []) -> Redactor {
+        Redactor(home: "/Users/\(login)", username: login, machineNames: mac, volumeNames: disks)
+    }
+
+    func testEveryInputFromBothReviews() {
+        let username = user("username"), e = user("e"), code = user("code"), mail = user("mail"), apple = user("apple")
+        let admin = user("admin"), test = user("test"), server = user("server"), js = user("js"), home = user("home")
+        let testmac = user("username", mac: ["testmac"]), dev = user("username", mac: ["dev"]), macMac = user("username", mac: ["Mac"])
+        let homeMac = user("username", mac: ["home"]), curly = user("username", mac: ["Username’s Mac"])
+        let rows: [(Redactor, Redactor.Context, String, String)] = [
+            // First review: a login in a dotted name.
+            (username, .program, "com.username.helper", "com.<user>.helper"),
+            (username, .program, "/Library/PrivilegedHelperTools/com.username.helper", "/Library/PrivilegedHelperTools/com.<user>.helper"),
+            (username, .launchItem, "com.username.helper", "com.<user>.helper"),
+            (username, .program, "com.username.tool (pid 5)", "com.<user>.tool (pid 5)"),
+            (username, .program, "/Library/PrivilegedHelperTools/com.username.tool", "/Library/PrivilegedHelperTools/com.<user>.tool"),
+            (username, .launchItem, "/Library/PrivilegedHelperTools/com.username.tool", "/Library/PrivilegedHelperTools/com.<user>.tool"),
+            (username, .program, "backup-username.sh", "backup-username.sh"),
+            (username, .program, "username.py", "username.py"),
+            (username, .program, "username_backup", "username_backup"),
+            (username, .program, "backup_username", "backup_username"),
+            (username, .program, "USERNAME_SYNC", "USERNAME_SYNC"),
+            (username, .program, "postgres: username username_development [local] idle", "postgres: <user> username_development [local] idle"),
+            (username, .program, "username2-worker", "username2-worker"),
+            (username, .host, "username.com", "username.com"),
+            (username, .host, "www.username.com", "www.username.com"),
+            (user("username", mac: ["testmac"]), .launchItem, "com.testmac.backup", "com.<machine>.backup"),
+            (testmac, .launchItem, "/Library/LaunchAgents/com.testmac.backup.plist", "/Library/LaunchAgents/com.<machine>.backup.plist"),
+
+            // First review: a login that is a common word.
+            (code, .program, "Code", "Code"),
+            (code, .program, "/Applications/Visual Studio Code.app/Contents/MacOS/Code", "/Applications/Visual Studio Code.app/Contents/MacOS/Code"),
+            (code, .program, "unnamed code", "unnamed <user>"),
+            (user("login"), .program, "at login", "at <user>"),
+            (admin, .program, "/Applications/Admin Tools.app/Contents/MacOS/x", "/Applications/Admin Tools.app/Contents/MacOS/x"),
+            (user("mac"), .program, "Mac Mouse Fix", "Mac Mouse Fix"),
+            (apple, .program, "Apple", "Apple"),
+            (apple, .program, "Signed by Apple", "Signed by Apple"),
+            (mail, .program, "Mail", "Mail"),
+            (mail, .program, "/System/Applications/Mail.app/Contents/MacOS/Mail", "/System/Applications/Mail.app/Contents/MacOS/Mail"),
+            (mail, .host, "mail-attachment.googleusercontent.com", "mail-attachment.googleusercontent.com"),
+            (user("ruby"), .program, "Runs with: ruby (/usr/bin/ruby)", "Runs with: <user> (/usr/bin/<user>)"),
+            (user("alfred"), .program, "Alfred (pid 4)  /Applications/Alfred 5.app/Contents/MacOS/Alfred", "Alfred (pid 4)  /Applications/Alfred 5.app/Contents/MacOS/Alfred"),
+
+            // First review: the Mac's names in keys.
+            (dev, .host, "dev.azure.com", "dev.azure.com"),
+            (macMac, .host, "mac.com", "mac.com"),
+            (macMac, .program, "Mac Mouse Fix", "Mac Mouse Fix"),
+            (user("username", mac: ["Studio"]), .program, "Android Studio", "Android Studio"),
+            (user("username", mac: ["Pro"]), .program, "Logic Pro", "Logic Pro"),
+            (user("username", mac: ["mail", "dev"]), .host, "mail.google.com", "mail.google.com"),
+            (user("username", mac: ["mail", "dev"]), .host, "dev.example.com", "dev.example.com"),
+            (user("username", mac: ["mail", "dev"]), .program, "/usr/local/bin/dev", "/usr/local/bin/dev"),
+            (user("username", mac: ["server"]), .program, "node (/srv/app/server.js)", "node (/srv/app/server.js)"),
+
+            // First review: a launch item's dotted parts.
+            (user("at"), .launchItem, "at.obdev.littlesnitch.daemon", "at.obdev.littlesnitch.daemon"),
+            (user("at"), .launchItem, "/Library/LaunchDaemons/at.obdev.littlesnitch.daemon.plist", "/Library/LaunchDaemons/at.obdev.littlesnitch.daemon.plist"),
+            (user("de"), .launchItem, "de.appsolute.mampd", "de.appsolute.mampd"),
+            (js, .launchItem, "/opt/app/server.js", "/opt/app/server.js"),
+            (user("sh"), .launchItem, "/opt/tools/sync.sh", "/opt/tools/sync.sh"),
+            (mail, .launchItem, "com.apple.mail.helper", "com.apple.mail.helper"),
+            (e, .launchItem, "com.e.backup", "com.<user>.backup"),
+
+            // First review: instructions.
+            (username, .instructions, "Compare with /Users/other/x on nas.tail1234.ts.net", "Compare with /Users/other/x on nas.tail1234.ts.net"),
+            (username, .instructions, "Mention /Volumes/Backup when relevant, and be brief. Reply in French.", "Mention /Volumes/Backup when relevant, and be brief. Reply in French."),
+            (username, .instructions, "Mention /Volumes/Backup when relevant, and be brief. Reply in French. Compare /Users/other/x", "Mention /Volumes/Backup when relevant, and be brief. Reply in French. Compare /Users/other/x"),
+            (username, .instructions, "Treat /Users/other and /Volumes/Backup/x and nas.tail1.ts.net as personal.", "Treat /Users/other and /Volumes/Backup/x and nas.tail1.ts.net as personal."),
+            (user("username", mac: ["Users-Computer"]), .instructions, "Treat /Users/other and nas.tail1.ts.net as personal. My login is username on Users-Computer", "Treat /Users/other and nas.tail1.ts.net as personal. My login is <user> on <machine>"),
+            (user("username", mac: ["Atlas"]), .instructions, "My Mac is Atlas, I am username", "My Mac is <machine>, I am <user>"),
+
+            // First review: folders and disks.
+            (username, .program, "node /srv/api/users/server.js", "node /srv/api/users/server.js"),
+            (username, .program, "node (/opt/app/src/users/server.js)", "node (/opt/app/src/users/server.js)"),
+            (username, .program, "/var/www/users/avatar.png", "/var/www/users/avatar.png"),
+            (username, .program, "/var/db/dslocal/nodes/Default/users/root.plist", "/var/db/dslocal/nodes/Default/users/root.plist"),
+            (username, .program, "/var/db/dslocal/nodes/Default/users/_spotlight.plist", "/var/db/dslocal/nodes/Default/users/_spotlight.plist"),
+            (username, .program, "/Users/Other User/bin/x", "/Users/<other-user> User/bin/x"),
+            (username, .program, "/Volumes/Data (2 arguments, not sent)", "/Volumes/<volume> (2 arguments, not sent)"),
+            (username, .program, "rsync /Volumes/Data (pid 12)", "rsync /Volumes/<volume> (pid 12)"),
+            (username, .program, "tool /Volumes/Data:tcp/8000", "tool /Volumes/<volume>:tcp/8000"),
+            (username, .program, "/Volumes/My (Work) Disk/bin/tool", "/Volumes/<volume> (Work) Disk/bin/tool"),
+            (user("username", disks: ["My (Work) Disk"]), .program, "/Volumes/My (Work) Disk/bin/tool", "/Volumes/<volume>/bin/tool"),
+            (username, .program, "/Volumes/Photos (old) archive/bin/x", "/Volumes/<volume> (old) archive/bin/x"),
+            (user("username", disks: ["Photos (old) archive"]), .program, "/Volumes/Photos (old) archive/bin/x", "/Volumes/<volume>/bin/x"),
+            (username, .program, "/Volumes/Big \"Work\" Disk/bin/x", "/Volumes/<volume> \"Work\" Disk/bin/x"),
+            (user("username", disks: ["Big \"Work\" Disk"]), .program, "/Volumes/Big \"Work\" Disk/bin/x", "/Volumes/<volume>/bin/x"),
+
+            // First review: short logins, tailnet order and spelling.
+            (e, .program, "worker: e:tcp/8000", "worker: e:tcp/8000"),
+            (e, .program, "worker: e (pid 9)", "worker: <user> (pid 9)"),
+            (e, .program, "e run", "e run"),
+            (e, .program, "postgres: e e [local] idle", "postgres: <user> e [local] idle"),
+            (user("username", mac: ["nas"]), .host, "nas.tail1234.ts.net", "<tailnet-device>"),
+            (user("username", mac: ["nas", "nas.tail1234.ts.net"]), .host, "nas.tail1234.ts.net", "<machine>"),
+            (curly, .host, "Username‘s Mac", "Username‘s Mac"),
+            (curly, .host, "Usernameʼs Mac", "Usernameʼs Mac"),
+            (curly, .host, "Users Computer", "Users Computer"),
+            (user("username", mac: ["Café Computer"]), .host, "Cafe\u{301} Computer", "Cafe\u{301} Computer"),
+            (user("üser"), .program, "u\u{308}ser", "u\u{308}ser"),
+
+            // First review: a placeholder a login or Mac's name spells.
+            (home, .program, "/Users/home/bin/x", "<<user>>/bin/x"),
+            (homeMac, .instructions, "/Users/username/x", "<<machine>>/x"),
+            (user("username", mac: ["Home"]), .instructions, "/Users/username/Library/x", "<<machine>>/Library/x"),
+            (user("machine", mac: ["x"]), .instructions, "/Users/machine/bin/x", "<home>/bin/<<user>>"),
+            (user("machine", mac: ["testmac"]), .host, "testmac.lan", "testmac.lan"),
+
+            // Second review: a disk's name and the login.
+            (user("username", disks: ["username work files"]), .launchItem, "/Volumes/username work files/bin/tool", "/Volumes/<volume>/bin/tool"),
+            (user("username", disks: ["my username disk"]), .launchItem, "/Volumes/my username disk/app", "/Volumes/<volume>/app"),
+            (user("username", disks: ["username backup"]), .program, "/Volumes/username backup/x", "/Volumes/<volume>/x"),
+
+            // Second review: where a path starts.
+            (e, .program, "node /srv/api/users/e/x.js", "node /srv/api/users/e/x.js"),
+            (admin, .program, "node /srv/api/users/admin/x.js", "node /srv/api/users/<user>/x.js"),
+            (e, .program, "/opt/app/users/e/tool", "/opt/app/users/e/tool"),
+            (username, .program, "/opt/app/users/username/tool", "/opt/app/users/<user>/tool"),
+            (username, .program, "ssh://host/Users/username/x", "ssh://host/Users/<user>/x"),
+            (username, .launchItem, "/System/Volumes/Data/Users/other/x", "/System/Volumes/Data/Users/<other-user>/x"),
+            (username, .launchItem, "/System/Volumes/Data/Users/username/x", "/System/Volumes/Data<home>/x"),
+            (username, .launchItem, "/Volumes/Backup/Users/username/Documents/x", "/Volumes/<volume><home>/Documents/x"),
+            (username, .launchItem, "/Volumes/Backup Disk/Users/other/x", "/Volumes/<volume> Disk/Users/<other-user>/x"),
+            (username, .launchItem, "/Volumes/Untitled 1/Users/other/x", "/Volumes/<volume> 1/Users/<other-user>/x"),
+            (username, .launchItem, "/Volumes/Backup Drive/Users/other/bin/tool", "/Volumes/<volume> Drive/Users/<other-user>/bin/tool"),
+            (username, .launchItem, "/Volumes/.timemachine/ABC/2026.backup/Macintosh HD - Data/Users/other/x", "/Volumes/<volume>/ABC/2026.backup/Macintosh HD - Data/Users/other/x"),
+            (username, .launchItem, "/Users/username/../../Users/other/x", "<home>/../../Users/other/x"),
+            (username, .program, "-I/Users/other/include", "-I/Users/other/include"),
+            (username, .launchItem, "/Users/other(old)/x", "/Users/<other-user>(old)/x"),
+            (username, .launchItem, "/Users/other user/x", "/Users/<other-user> user/x"),
+
+            // Second review: file names and author's parts.
+            (test, .program, "db.test.js", "db.test.js"),
+            (test, .program, "ui.test.ts", "ui.test.ts"),
+            (test, .program, "dev.test.js", "dev.test.js"),
+            (test, .program, "foo.test.js", "foo.test.js"),
+            (server, .program, "dev.server.js", "dev.server.js"),
+            (server, .program, "/srv/app/io.server.js", "/srv/app/io.server.js"),
+            (js, .program, "ui.js.map", "ui.js.map"),
+            (e, .program, "to.e.x", "to.e.x"),
+            (username, .launchItem, "8.com.username.helper", "8.com.<user>.helper"),
+            (username, .launchItem, "4.com.username.magnetLauncher", "4.com.<user>.magnetLauncher"),
+            (username, .launchItem, "64.com.username.foo", "64.com.<user>.foo"),
+            (username, .launchItem, "4096.com.username.podcasts", "4096.com.<user>.podcasts"),
+            (testmac, .launchItem, "4096.com.testmac.podcasts", "4096.com.<machine>.podcasts"),
+            (e, .launchItem, "8.com.e.helper", "8.com.<user>.helper"),
+            (username, .launchItem, "x.com.username.helper", "x.com.username.helper"),
+            (username, .launchItem, "io.github.username.tool", "io.github.username.tool"),
+            (username, .launchItem, "com.github.username.tool", "com.github.username.tool"),
+            (username, .launchItem, "co.uk.username.tool", "co.uk.username.tool"),
+            (username, .launchItem, "uk.co.username.x", "uk.co.username.x"),
+            (username, .launchItem, "app.username.helper", "app.username.helper"),
+            (username, .launchItem, "app.username.x", "app.username.x"),
+            (username, .launchItem, "edu.username.x", "edu.username.x"),
+            (username, .launchItem, "username", "<user>"),
+            (username, .launchItem, "/Library/LaunchAgents/username.plist", "/Library/LaunchAgents/username.plist"),
+            (username, .launchItem, "com.username", "com.username"),
+
+            // Second review: a host's edges.
+            (dev, .host, "dev_db", "dev_db"),
+            (dev, .host, "my_dev", "my_dev"),
+            (dev, .host, "_dev._tcp.local", "_dev._tcp.local"),
+            (dev, .host, "dev_db.example.com", "dev_db.example.com"),
+            (dev, .host, "dev_api.example.com", "dev_api.example.com"),
+            (dev, .host, "devé", "devé"),
+            (dev, .host, "édev", "édev"),
+            (user("dev"), .host, "dev_db", "dev_db"),
+            (user("dev"), .host, "my_dev", "my_dev"),
+            (user("dev"), .host, "_dev._tcp.local", "_dev._tcp.local"),
+            (user("dev"), .host, "dev_db.example.com", "dev_db.example.com"),
+            (mail, .host, "mail-attachment.example", "mail-attachment.example"),
+            (mail, .host, "mail.google.com", "mail.google.com"),
+            (username, .host, "username_db.example.com", "username_db.example.com"),
+            (username, .host, "username@x.example", "<user>@x.example"),
+            (username, .host, "username.", "<user>."),
+            (username, .host, "username/", "<user>/"),
+
+            // Second review: what a disk's name may take with it.
+            (username, .program, "sh -c cd '/Volumes/Data'", "sh -c cd '/Volumes/<volume>'"),
+            (username, .program, "'/Volumes/Other'", "'/Volumes/<volume>'"),
+            (username, .program, "tool [/Volumes/Data] x", "tool [/Volumes/<volume>] x"),
+            (username, .program, "[/Volumes/Other]", "[/Volumes/<volume>]"),
+            (username, .program, "a {/Volumes/Data} b", "a {/Volumes/<volume>} b"),
+            (username, .program, "x /Volumes/Data|y", "x /Volumes/<volume>|y"),
+            (username, .program, "x /Volumes/Data=y", "x /Volumes/<volume>=y"),
+            (username, .program, "x /Volumes/Data&y", "x /Volumes/<volume>&y"),
+            (username, .program, "see /Volumes/Data.", "see /Volumes/<volume>."),
+            (user("username", disks: ["Data"]), .program, "mounted at /Volumes/Data.", "mounted at /Volumes/<volume>."),
+            (user("username", disks: ["My Passport"]), .program, "/Volumes/My Passport.", "/Volumes/<volume>."),
+            (user("username", disks: ["My Passport"]), .program, "at /Volumes/My Passport.", "at /Volumes/<volume>."),
+
+            // Second review: edited instructions.
+            (username, .instructions, "steps 10-20-30-40 and 10-0-0-5", "steps 10-20-30-40 and 10-0-0-5"),
+            (username, .instructions, "/USERS/USERNAME/x", "<home>/x"),
+            (curly, .instructions, "Username's Mac", "<machine>"),
+            (username, .instructions, "my app com.username.helper here", "my app com.username.helper here"),
+            (username, .instructions, "My NAS is nas.tail1234.ts.net.", "My NAS is nas.tail1234.ts.net."),
+            (macMac, .instructions, "a Mac's owner", "a <machine>'s owner"),
+
+            // Second review: a placeholder a login or Mac's name spells.
+            (home, .launchItem, "/Users/home/x", "<<user>>/x"),
+            (home, .program, "/Users/home/Library/x", "<<user>>/Library/x"),
+            (user("machine", mac: ["atlas"]), .host, "atlas", "<<user>>"),
+            (user("machine", mac: ["testmac"]), .host, "testmac", "<<user>>"),
+            (user("device"), .program, "ssh nas.tail1234.ts.net", "ssh <tailnet-<user>>"),
+            (homeMac, .instructions, "see /Users/username/x", "see <<machine>>/x"),
+        ]
+        for (redactor, context, input, expected) in rows {
+            XCTAssertEqual(redactor.redact(input, as: context), expected, "login \(redactor.username), \(context): \(input)")
+        }
+    }
+}
+
 final class LLMAnswerTests: XCTestCase {
     private let bare = #"{"owner":"Apple","purpose":"iCloud sync.","category":"sync","risk":"Low","confidence":"high"}"#
 
