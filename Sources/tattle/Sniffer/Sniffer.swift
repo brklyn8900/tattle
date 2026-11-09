@@ -3,7 +3,7 @@ import os
 
 /// Reads packets from the default route's interface on its own thread and reports flow
 /// events. Follows the interface when the default route moves; retries when the device
-/// cannot be opened, which is the state until the broker (ADR-0003) exists.
+/// cannot be opened, which is the state while the broker (ADR-0003) is not installed.
 final class Sniffer: @unchecked Sendable {
     enum Status: Equatable, Sendable {
         case stopped
@@ -11,8 +11,8 @@ final class Sniffer: @unchecked Sendable {
         case unavailable(CaptureError)
     }
 
-    /// How the capture is obtained for an interface: the device directly for now, the
-    /// broker's descriptor later.
+    /// How the capture is obtained for an interface: the broker's descriptor when the
+    /// broker is installed, else the device directly.
     typealias Opener = @Sendable (String) throws -> any CaptureSource
 
     /// What the loop reads about the machine's interfaces; tests change it underneath.

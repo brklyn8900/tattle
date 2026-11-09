@@ -3,7 +3,8 @@ import Foundation
 import SystemConfiguration
 
 enum CaptureError: Error, Equatable {
-    /// `/dev/bpf*` could not be opened: root-only until the broker (ADR-0003) exists.
+    /// `/dev/bpf*` could not be opened. The devices are root-only, so this is the state
+    /// without the broker (ADR-0003).
     case open(errno: Int32)
     case prepare(errno: Int32)
     case filterRejected(errno: Int32)
