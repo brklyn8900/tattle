@@ -103,6 +103,17 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(leader([entries[0]]), "only a helper runs")
     }
 
+    /// The app's binary run with no window, by a command-line tool say, is often the older of
+    /// the two, and is not what "Quit" means while the app itself is open.
+    func testAnAppsLeaderIsTheOneLaunchServicesKnowsOverAnOlderRunOfItsExecutable() {
+        let app = "/Applications/Core.app", main = app + "/Contents/MacOS/Core"
+        let snapshot = ProcessSnapshot.build(
+            entries: [entry(50, 1, main, started: epoch), entry(9000, 1, main, started: epoch + 60)],
+            previous: nil, signature: signedByAcme, runningApp: { $0 == 9000 ? app : nil },
+            mainExecutable: { $0.path == app ? main : nil }, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertEqual(snapshot.group(id: app)?.leader?.pid, 9000)
+    }
+
     /// A program started from a shell has a parent, and a worker with a lower pid after a wrap.
     func testAProgramsLeaderIsTheTopOfItsTree() {
         let snapshot = ProcessSnapshot.build(

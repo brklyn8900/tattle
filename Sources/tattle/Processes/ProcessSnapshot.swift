@@ -330,7 +330,9 @@ struct ProcessSnapshot: Equatable, Sendable {
                 groups[index].identity = nil
             }
             let executable = mainExecutable(bundle)
-            groups[index].leaderPid = groups[index].members.filter { runningApp($0.pid) == bundle.path || ($0.path != nil && $0.path == executable) }
+            let members = groups[index].members
+            let opened = members.filter { runningApp($0.pid) == bundle.path }
+            groups[index].leaderPid = (opened.isEmpty ? members.filter { $0.path != nil && $0.path == executable } : opened)
                 .min { ($0.started, $0.pid) < ($1.started, $1.pid) }?.pid
         }
         return ProcessSnapshot(items: items, groups: groups, takenAt: takenAt)
