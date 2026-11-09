@@ -21,7 +21,7 @@ the feature's file.
 - Press by label (`$V ax press`, `--prefix` for rows); read with `$V ax text`; never
   click by position.
 - Rows are `"<name>, <subtitle>, <count>"`; connection rows are
-  `"<name>, [from DNS,] [new,] <address:port> · <PROTO> · <state> · <process>, <age>"`.
+  `"<name>, [from DNS,] [incoming,] [new,] <address:port> · <PROTO> · <state> · <process>, <age>"`.
 - Mutations (packet access, Load/Unload, Quit) follow SKILL.md's Stop and ask.
 
 ## Proof and skip reporting
@@ -43,7 +43,7 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Network names and unnamed reasons](./network-names.md): who each connection goes to, or
   why Tattle could not tell, and who signed the process and its app. Proven 2026-10-25; a
   connection's own signer, rows with differing signers, a file put in a bundle and a process
-  that replaces itself 2026-11-08.
+  that replaces itself, incoming connections and a Tailscale peer's reach 2026-11-08.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build; a
@@ -53,14 +53,17 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
   Proven 2026-10-25; a command line's signer 2026-11-07; Apple's developer tools, copies
   of them, `open`'s long options, xcrun, registered items and launch items running Apple's
-  programs 2026-11-08.
+  programs, a loaded job's state, plists that cannot be read and a daemon's controls
+  2026-11-08.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
   CPU, and Quit. Proven 2026-10-25; the macOS row, a script started by launchd, standard
   input under launchd, Python (with the Command Line Tools, with Xcode, and a Tk window),
   Swift (its frontend and its tools) and a package by its folder 2026-11-07; a compile job,
   with the Command Line Tools and with Xcode, a copy of clang, an app among Xcode's
-  developer tools, a developer tool reading standard input, and an Apple-signed Xcode
-  2026-11-08.
+  developer tools, a developer tool reading standard input, an Apple-signed Xcode, Quit on
+  an app with a helper and another account's process 2026-11-08.
+- [Ports](./ports.md): what is listening, read by the code it runs. A script listening, its
+  answer kept, and another account's listener proven 2026-11-08.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27; an answer going with its code and one version of it, the shipped `claude` rule

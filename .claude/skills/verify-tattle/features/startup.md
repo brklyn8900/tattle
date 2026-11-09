@@ -4,7 +4,7 @@ The Startup tab lists what starts on its own, grouped: `Open at login`, `Allowed
 background`, your agents (`~/Library/LaunchAgents`), agents for every user
 (`/Library/LaunchAgents`), daemons (`/Library/LaunchDaemons`), and `App extensions`, then
 one `Apple N system jobs` row. Each row says when it runs, its state (`running, pid N`,
-`not running`, `not loaded`, `disabled`, `empty file, nothing runs`) and who signed it. A
+`not running`, `not loaded`, `disabled`, `empty file, nothing runs`, `could not be read`) and who signed it. A
 detail adds facts, an explanation, and controls.
 
 ## Sub-features
@@ -16,8 +16,12 @@ detail adds facts, an explanation, and controls.
 - `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Runs Apple's` when a launch
   item that is not Apple's runs one of Apple's programs, `Plist` with the path), `Explain`,
   `Reveal Plist`, `Login Items Settings`.
-- `st-control`: `Load` / `Unload` for the user's own agents, `Managed by the system` for
-  others, `Remove` only on Tattle's broker.
+- `st-control`: `Load` / `Unload` for agents, `Loading or unloading a daemon needs root` for
+  daemons, `Remove` only on Tattle's broker.
+- `st-state`: what launchd has loaded reads as running or not running, whatever the plist's
+  `Disabled` or an override says; each job reads its own domain's state.
+- `st-unreadable`: a plist Tattle cannot read is a row of its group, `<file name>, unknown ·
+  could not be read`; the detail has `Reason` and `Reveal Plist`, and no `Explain`.
 - `st-fda`: without Full Disk Access, `Login items need Full Disk Access: ...` and `Open
   Full Disk Access Settings`.
 
@@ -118,6 +122,16 @@ Preconditions:
   `ProvisoningProfileQuicklookExtension.appex` (in `Xcode.app/Contents/PlugIns`) and
   `uuid.mdimporter` (in `Xcode.app/Contents/Library/Spotlight`), both signed by Apple inside
   an App Store Xcode, read `unnamed code`.
+- **A job launchd has loaded.** On testmac, in `~/Library/LaunchAgents/`: a plist with
+  `Disabled` true running `/bin/sleep 1700`, then `launchctl enable gui/$(id -u)/<label>`,
+  `launchctl bootstrap` and `launchctl kickstart`. The row and `State` read `running, pid N`;
+  the detail has `Unload`. Afterwards `launchctl bootout` it and delete the plist.
+- **A plist that cannot be read.** On testmac, in `~/Library/LaunchAgents/`: a valid plist with
+  mode 000, and a file holding `junk`. Each row reads `<file name>, unknown · could not be
+  read`; `Reason` is `Tattle has no permission to read this file` and `it is not a launchd
+  job`, and neither detail has `Explain`. Afterwards delete both.
+- **A daemon's controls.** Under `Daemons`, a third party's (AlDente's helper on testmac): `Loading
+  or unloading a daemon needs root`.
 - **Full Disk Access.** If `startup-list.txt` has `Login items need Full Disk Access`, the
   `Open at login` and background groups are missing: record that precondition as unmet.
 
@@ -170,3 +184,8 @@ Preconditions:
   The copy, the link and the path out of `/usr` proven on testmac, run `2026-11-08T100408`
   (`b3a99b9`); in run `2026-11-08T100308` (`6db6203`) they had `Runs Apple's softwareupdated`
   and `Runs Apple's SafariUpdater`.
+- The loaded job, the plists that cannot be read and the daemon's words proven 2026-11-08 on
+  testmac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
+  `build/verify/runs/testmac-2026-11-08/`. An agent and a daemon sharing a label rest on the unit test
+  (`testEachDomainAnswersForItsOwnJobs`), and a plist macOS has registered on
+  `testAnUnreadablePlistMacOSRegisteredIsListedOnce`.

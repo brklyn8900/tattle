@@ -13,7 +13,9 @@ and for the user's own processes `Quit` and `Force Quit...`.
 - `pr-detail`: facts including `Process <name> (pid N)` and `Parent`, `No longer running.`
   once it exits.
 - `pr-quit`: `Quit <name>` (SIGTERM), and `Force Quit...` which arms `Force Quit <name>`
-  with `Cancel`; `System process` instead for others' processes.
+  with `Cancel`; `Runs as <account>, so Tattle cannot quit it` instead for others'
+  processes. An app's row quits the process Launch Services opened it from, and has no
+  `Quit` while only its helpers or widgets run.
 
 ## How to get to it (user POV)
 
@@ -106,6 +108,15 @@ Preconditions:
 - **Quit.** `$V ax press "Quit sleep"`, exact label; `ps -p <pid>` shows it gone; `$V ax
   wait "No longer running."`; `$V save marker-quit`.
 
+- **Quit on an app with a helper.** On testmac: `Tool.app`, ad-hoc signed with `LSUIElement`,
+  whose `Contents/MacOS/Tool` runs an `NSApplication` and whose `Contents/MacOS/tool-helper`
+  sleeps. Start the helper from a launch agent (`launchctl kickstart`), then `open Tool.app`,
+  so the helper has the lower pid. The row reads `Tool, 2 processes · ad hoc signed`. In its
+  detail `Quit Tool` ends `Tool` and leaves `tool-helper` (`ps -p`); the detail then has
+  `Processes 1` and no `Quit Tool`. Afterwards `launchctl bootout` the agent and delete it.
+- **Another account's process.** AlDente's helper on testmac, which runs as root: `Runs as root,
+  so Tattle cannot quit it`.
+
 ## Gotchas
 
 - Quit any process other than the run's own marker only with the user's yes.
@@ -152,6 +163,11 @@ Preconditions:
 - Standard input and the Apple-signed Xcode proven 2026-11-08 on testmac, run
   `2026-11-08T090736` (commit `b5e5e2c`); in run `2026-11-08T090623` (`0a31fdc`) the row was
   `Xcode, 7 processes · Apple`, Python among its members, and no `Python` row.
+- Quit on an app with a helper and another account's process proven 2026-11-08 on testmac,
+  run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
+  `build/verify/runs/testmac-2026-11-08/`. Two copies of an app, an app reached through a
+  link to its bundle (Safari's cryptex) and a program whose worker has the lower pid rest on
+  unit tests in `ProcessSnapshotTests`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the user's Mac the panel closed partway through two runs (`2026-11-07T224046`,
