@@ -69,3 +69,5 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   2026-10-27; an answer going with its code and one version of it, the shipped `claude` rule
   a host's prompt, a command that holds none of Tattle's grants and the Claude Code preset
   2026-11-08.
+- [Panel open and closed](./panel.md): closing the panel keeps its views and stops their
+  work, and what reopening shows. Proven 2026-11-09.

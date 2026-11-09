@@ -179,8 +179,9 @@ build/Tattle.app` starts it again.
 ## Gotchas
 
 - Opening the panel makes the run's copy the active app and takes focus from whatever the user is
-  using; the panel closes when anything else takes focus. Say so before a long drive if they
-  are at the Mac. Reopen with `$V ax open` and check where it is with `$V ax text`.
+  using; a click outside closes the panel, and focus taken without a click leaves it on screen
+  ([panel](features/panel.md)). Say so before a long drive if they are at the Mac. Reopen with
+  `$V ax open` and check where it is with `$V ax text`.
 - The panel keeps its navigation while closed; `$V tab` backs out first.
 - The sniffer skips local-network destinations (`Sources/tattle/Sniffer/FlowNamer.swift`),
   so a connection to the router or another LAN device never gets a name or a reason.

@@ -31,7 +31,8 @@ Preconditions:
 - **List.** `$V tab Processes`, `$V ax wait "apps and programs"` (the list reads `Reading
   processes` for a few seconds), `$V save processes-list`. Compare M processes with `ps
   -A | wc -l` minus one, within a few. Rows read `"<name>, N processes · <signer>,
-  <memory>, <cpu>"`; CPU is `–` until the second sample.
+  <memory>, <cpu>"`; CPU is `–` until the second sample, and for the first reading after the
+  list was off screen.
 - **macOS row.** In `processes-list.txt`, `macOS, N processes · Apple` holds most of the
   processes (650 of 717 on testmac). A macOS row of a handful, with Apple's daemons in rows
   of their own signed by a certificate name such as `macOS Software Signing`, means Apple's
