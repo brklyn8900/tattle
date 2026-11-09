@@ -13,7 +13,8 @@ struct PortsTab: View {
                 ProgressView("Reading listening ports")
             }
         }
-        .task {
+        .task(id: state.panelIsShowing) {
+            guard state.panelIsShowing else { return }
             // Ports come and go; keep the list current while it is on screen.
             while !Task.isCancelled {
                 await state.ports.refresh()

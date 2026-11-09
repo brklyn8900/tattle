@@ -14,6 +14,25 @@ final class AppState {
     let connections: ConnectionStore
     let explainer: Explainer
 
+    /// Whether the panel is on screen. MenuBarExtra keeps the panel's views alive when it
+    /// closes, so what they do while open follows this rather than their lifetime. True
+    /// until the first close: nothing reads it before the panel first opens.
+    var panelIsShowing = true {
+        didSet {
+            guard !panelIsShowing else { return }
+            heldSample = sampler.sample
+            heldNetworkSnapshot = network.snapshot
+        }
+    }
+    @ObservationIgnored private var heldSample = ResourceSample.zero
+    @ObservationIgnored private var heldNetworkSnapshot: NetworkSnapshot?
+
+    /// The sampler and the network readings keep running with the panel closed, for the menu
+    /// bar label and the history. The panel reads them through these, which do not touch the
+    /// sources while it is closed, so a new reading leaves its views nothing to update for.
+    var panelSample: ResourceSample { panelIsShowing ? sampler.sample : heldSample }
+    var panelNetworkSnapshot: NetworkSnapshot? { panelIsShowing ? network.snapshot : heldNetworkSnapshot }
+
     init(database: AppDatabase) throws {
         rules = RuleStore(database: database)
         connections = ConnectionStore(database: database)

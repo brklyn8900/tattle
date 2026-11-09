@@ -5,7 +5,7 @@ struct NetworkTab: View {
 
     var body: some View {
         Group {
-            if let snapshot = state.network.snapshot {
+            if let snapshot = state.panelNetworkSnapshot {
                 ConnectionsList(snapshot: snapshot, captureStatus: state.network.captureStatus, state: state)
             } else if let error = state.network.error {
                 Text(error).foregroundStyle(.secondary)
@@ -152,11 +152,11 @@ private struct ConnectionGroupDetail: View {
     let state: AppState
 
     /// The group as it is now; gone once its last connection closed.
-    private var current: ConnectionGroup? { state.network.snapshot?.group(id: group.id) }
+    private var current: ConnectionGroup? { state.panelNetworkSnapshot?.group(id: group.id) }
 
     var body: some View {
         let group = current ?? self.group
-        let now = state.network.snapshot?.takenAt ?? Date()
+        let now = state.panelNetworkSnapshot?.takenAt ?? Date()
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text(group.name).font(.headline)
@@ -202,11 +202,11 @@ private struct ConnectionDetail: View {
     let state: AppState
 
     /// The connection as it is now; the one opened stays readable once it has closed.
-    private var current: LiveConnection? { state.network.snapshot?.connection(id: live.id) }
+    private var current: LiveConnection? { state.panelNetworkSnapshot?.connection(id: live.id) }
 
     var body: some View {
         let live = current ?? self.live
-        let now = state.network.snapshot?.takenAt ?? Date()
+        let now = state.panelNetworkSnapshot?.takenAt ?? Date()
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text(live.headline).font(.headline)

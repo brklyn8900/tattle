@@ -14,7 +14,8 @@ struct ProcessesTab: View {
                 ProgressView("Reading processes")
             }
         }
-        .task {
+        .task(id: state.panelIsShowing) {
+            guard state.panelIsShowing else { return }
             state.processes.beginReadings()
             // Memory moves and CPU is a difference between readings, so the list is
             // kept current while it is on screen.

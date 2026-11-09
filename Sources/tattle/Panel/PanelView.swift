@@ -17,7 +17,7 @@ struct PanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ResourcesLine(sample: state.sampler.sample)
+            ResourcesLine(sample: state.panelSample)
             Picker("Tab", selection: $tab) {
                 ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -43,6 +43,7 @@ struct PanelView: View {
         }
         .padding(12)
         .frame(width: 480)
+        .background(WindowOnScreenReader { state.panelIsShowing = $0 })
     }
 
     @ViewBuilder
@@ -56,6 +57,46 @@ struct PanelView: View {
             ProcessesTab(state: state)
         case .network:
             NetworkTab(state: state)
+        }
+    }
+}
+
+/// Reports when the window this view is in goes on or off screen. Follows occlusion rather than
+/// key status: another app taking focus without a click takes key from the panel, and the panel
+/// stays on screen.
+private struct WindowOnScreenReader: NSViewRepresentable {
+    let onChange: @MainActor (Bool) -> Void
+
+    func makeNSView(context: Context) -> ReaderView { ReaderView(onChange: onChange) }
+    func updateNSView(_ view: ReaderView, context: Context) { view.onChange = onChange }
+
+    final class ReaderView: NSView {
+        var onChange: @MainActor (Bool) -> Void
+        private var observer: NSObjectProtocol?
+
+        init(onChange: @escaping @MainActor (Bool) -> Void) {
+            self.onChange = onChange
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("not used from a nib") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            guard let window else { return }
+            observer = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reportOcclusion() }
+            }
+        }
+
+        private func reportOcclusion() {
+            guard let window else { return }
+            onChange(window.occlusionState.contains(.visible))
         }
     }
 }
