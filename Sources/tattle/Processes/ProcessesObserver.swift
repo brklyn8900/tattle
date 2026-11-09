@@ -9,13 +9,21 @@ final class ProcessesObserver {
     private(set) var error: String?
     private(set) var isLoading = false
     private let signatures = SignatureCache()
+    /// Whether `snapshot` is a reading the next one can be compared with for CPU shares.
+    private var isContinuingReadings = false
+
+    /// Starts a new run of readings, when the list comes on screen. Its first reading shows no
+    /// CPU: against the last reading of the previous run it would be an average over the gap.
+    func beginReadings() {
+        isContinuingReadings = false
+    }
 
     func refresh() async {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         let signatures = signatures
-        let previous = snapshot
+        let previous = isContinuingReadings ? snapshot : nil
         let result = await Task.detached(priority: .userInitiated) { () -> Result<ProcessSnapshot, Error> in
             do {
                 let entries = try ProcessTable.read(signature: signatures.signature(at:))
@@ -29,6 +37,7 @@ final class ProcessesObserver {
         switch result {
         case .success(let snapshot):
             self.snapshot = snapshot
+            isContinuingReadings = true
             error = nil
         case .failure(let failure):
             error = String(describing: failure)

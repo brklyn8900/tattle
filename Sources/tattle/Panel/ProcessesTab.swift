@@ -15,6 +15,7 @@ struct ProcessesTab: View {
             }
         }
         .task {
+            state.processes.beginReadings()
             // Memory moves and CPU is a difference between readings, so the list is
             // kept current while it is on screen.
             while !Task.isCancelled {

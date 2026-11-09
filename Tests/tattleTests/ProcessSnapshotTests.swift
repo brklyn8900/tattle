@@ -373,6 +373,28 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(try rules.lookup(kind: .process, key: "mdnsresponder"), "process names are case-sensitive")
     }
 
+    /// CPU is a difference between readings, and the list is not read while it is off screen:
+    /// against the last reading before that, the first one back could only show an average over the gap.
+    @MainActor
+    func testTheFirstReadingOfARunIsABaselineWithNoCPU() async throws {
+        let observer = ProcessesObserver()
+        func readAfterAPause() async throws -> ProcessSnapshot {
+            try await Task.sleep(for: .milliseconds(600))
+            await observer.refresh()
+            return try XCTUnwrap(observer.snapshot)
+        }
+        await observer.refresh()
+        let continuing = try await readAfterAPause()
+        XCTAssertTrue(continuing.items.contains { $0.cpu != nil }, "a reading that follows another has CPU")
+
+        observer.beginReadings()
+        let baseline = try await readAfterAPause()
+        XCTAssertTrue(baseline.items.allSatisfy { $0.cpu == nil }, "nothing current to compare it with")
+
+        let next = try await readAfterAPause()
+        XCTAssertTrue(next.items.contains { $0.cpu != nil }, "the reading after the baseline has CPU")
+    }
+
     func testThisMachine() throws {
         let start = Date()
         let cache = SignatureCache()
