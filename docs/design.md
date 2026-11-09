@@ -19,9 +19,8 @@ Every surface runs the same pipeline on a different source:
 
 - The socket table with owning pid, for all users, without root, from the same `sysctl`
   (`net.inet.tcp.pcblist_n`, `net.inet.udp.pcblist_n`) that `netstat -anv` reads.
-- Per-process byte counts from NetworkStatistics, the private framework behind `nettop`.
-  It works unentitled today because a kernel gate is off; the tab degrades to interface
-  totals if that changes.
+- Bytes in and out per interface, from `getifaddrs`, for the menu bar and the resources
+  line. There are no per-process byte counts.
 - A BPF sniffer that reads three things and nothing else: DNS replies on port 53, to build
   an IP-to-name map; the TLS ClientHello on TCP, for the Server Name Indication; and the
   QUIC Initial packet, which carries the same ClientHello under a key derivable from the
