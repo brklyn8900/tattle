@@ -30,11 +30,13 @@ struct IPAddress: Hashable {
         return String(cBuffer: buf)
     }
 
-    // Destinations that never need a public name: private, loopback, link-local, multicast.
+    // Destinations that never need a public name: private, shared (100.64/10), loopback,
+    // link-local, multicast.
     var isLocalScope: Bool {
         if isV4 {
             let a = bytes[0], b = bytes[1]
             return a == 10 || a == 127 || a == 0
+                || (a == 100 && (64...127).contains(b))
                 || (a == 172 && (16...31).contains(b))
                 || (a == 192 && b == 168)
                 || (a == 169 && b == 254)

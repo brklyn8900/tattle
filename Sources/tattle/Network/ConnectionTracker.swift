@@ -74,7 +74,8 @@ extension SocketEntry {
 
     static func isUnspecified(_ address: String) -> Bool { address == "0.0.0.0" || address == "::" }
 
-    /// RFC 1918, link-local, multicast, and their IPv6 equivalents.
+    /// RFC 1918, RFC 6598's shared space (Tailscale's, and carrier NAT's), link-local,
+    /// multicast, and their IPv6 equivalents.
     static func isLocalScope(_ address: String) -> Bool {
         let lower = address.lowercased()
         if lower.contains(":") {
@@ -87,6 +88,7 @@ extension SocketEntry {
         guard octets.count == 4 else { return false }
         switch octets[0] {
         case 10, 0: return true
+        case 100: return (64...127).contains(octets[1])
         case 172: return (16...31).contains(octets[1])
         case 192: return octets[1] == 168
         case 169: return octets[1] == 254
