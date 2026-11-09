@@ -92,17 +92,27 @@ Preconditions:
     in capitals, `<LOGIN>-helper`, stays;
   - label `com.<login>.proof`: the key reads `com.<user>.proof` and `Plist`
     `<home>/Library/LaunchAgents/com.<user>.proof.plist`; label `com.<machine name>.proof` reads
-    `com.<machine>.proof` in both;
+    `com.<machine>.proof` in both; `org` and `net` read the same; label `dev.<login>.proof`
+    stays whole;
   - a script `<dir>/com.<login>.tool.sh` run by `/bin/sh` (row `com.<login>.tool.sh`): the key
-    and `Process` read `com.<user>.tool.sh`;
+    and `Process` read `com.<user>.tool.sh`; scripts `io.<login>.sh` and `db.<login>.sh` stay
+    whole;
+  - a title holding `'/Volumes/Data' [/Volumes/Other] see /Volumes/Data.`: each disk reads
+    `/Volumes/<volume>` and the quote, bracket and period stay;
   - a plist running `/Users/someone/bin/tool`: `Runs` reads `/Users/<other-user>/bin/tool (1
-    argument, not sent)`; one running `/opt/app/users/tool` is unchanged; one running
-    `/Volumes/Proof Disk/bin/tool` with that disk mounted (`hdiutil create -size 2m -fs HFS+
-    -volname "Proof Disk" <dmg>`, `hdiutil attach -nobrowse <dmg>`) reads
-    `/Volumes/<volume>/bin/tool (1 argument, not sent)`;
+    argument, not sent)`; through the firmlink, `/System/Volumes/Data/Users/someone/bin/tool`,
+    reads `/System/Volumes/Data/Users/<other-user>/bin/tool`; `/Volumes/Spare Disk/Users/someone/
+    bin/tool`, no such disk mounted, reads `/Volumes/<volume> Disk/Users/<other-user>/bin/tool`;
+    one running `/opt/app/users/tool` is unchanged, and `/opt/app/users/<login>/tool` reads
+    `/opt/app/users/<user>/tool`; one running `/Volumes/Proof Disk/bin/tool` with that disk
+    mounted (`hdiutil create -size 2m -fs HFS+ -volname "Proof Disk" <dmg>`, `hdiutil attach
+    -nobrowse <dmg>`) reads `/Volumes/<volume>/bin/tool (1 argument, not sent)`, also when the
+    disk's name holds the login;
   - `prompt.instructions` saved with the Mac's name and the login in it: the prompt's first
-    line has `<machine>` and `<user>`. With no row, it is the default text as written. Restore
-    or delete the row after the run;
+    line has `<machine>` and `<user>`. Saved as `Steps 10-20-30-40 on 10.0.0.5 for <login> at
+    /USERS/<LOGIN>/x and com.<login>.helper.`: it reads `Steps 10-20-30-40 on <private-ip> for
+    <user> at <home>/x and com.<login>.helper.` With no row, it is the default text as written.
+    Restore or delete the row after the run;
   - where the login has one or two letters, the title `sshd-session: <login> <login>@ttys003`
     reads `sshd-session: <user> <user>@ttys003`;
   - where the computer name has a curly apostrophe, edited instructions spelling it with a
@@ -250,5 +260,13 @@ Preconditions:
   development Mac, the only one with either, run `2026-11-08T185833`. A host's whole-name rule, a
   tailnet name, an address spelled with hyphens and a public bound address rest on unit tests:
   `connect` reaches only its approved hosts, and neither Mac holds a public address.
+- The shared path and host rules proven 2026-11-08 on testmac at `fe3956b`, run
+  `2026-11-08T201245`, its prompts copied with it to `build/verify/runs/testmac-2026-11-08/`: the
+  firmlink, an unmounted disk, a mounted disk named for the login, a project's `users/<login>`
+  folder, a disk's name in a title, the domain endings, script extensions and edited
+  instructions. A numbered login item id, a host's edges next to `_` and a mounted disk's name
+  before a period rest on unit tests: no login item without a bundle id is at hand, `connect`
+  reaches only its approved hosts, and a plist's `Runs` puts text after the path. Every input
+  from the two adversarial reviews is pinned in `testEveryInputFromBothReviews`.
 - A script's facts name its interpreter, not its own path (`Runs with: bash (/bin/bash)`), so a
   folder name in a script's path cannot be read from a process's prompt: use a plist's `Runs`.
