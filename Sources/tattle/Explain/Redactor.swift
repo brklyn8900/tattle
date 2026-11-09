@@ -5,8 +5,7 @@ import SystemConfiguration
 /// the home path, the username, private and local IP addresses, the machine's names,
 /// Tailscale names, which identify the account, other accounts' folders and disk names.
 struct Redactor: Sendable {
-    /// What a text is. An item's key and facts share one, so a fact cannot undo the key's
-    /// redaction or the reverse.
+    /// What a text is. An item's key and facts share one, so the same rules apply to both.
     enum Context {
         case host
         /// A process or a listening port.
@@ -189,9 +188,9 @@ struct Redactor: Sendable {
 
     /// The login matches only as written, so the login "code" leaves the app "Code" alone.
     /// In a host it matches only as a whole name, so "mail.google.com" and
-    /// "mail-attachment.example" stay whole for a user called mail. Elsewhere the username
-    /// never matches as a label of a dotted name. A dot that ends a sentence does not join a
-    /// label.
+    /// "mail-attachment.example" stay whole for a user called mail. Elsewhere a label of a
+    /// dotted name goes only as its author's part, and in edited instructions not at all. A
+    /// dot that ends a sentence does not join a label.
     ///
     /// A login of one or two letters would match ordinary text ("-e"), so it goes only where
     /// a login stands: before an "@" ("e@ttys003"), first after the program in a process title

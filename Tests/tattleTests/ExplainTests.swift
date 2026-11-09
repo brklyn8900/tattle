@@ -340,7 +340,7 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try key(.host, "dev.lan"), "dev.lan")
         XCTAssertEqual(try key(.host, "dev"), "<machine>")
         XCTAssertEqual(try key(.launchItem, "username-backup"), "<user>-backup")
-        XCTAssertEqual(try key(.launchItem, "dev-backup"), "dev-backup", "a machine name matches only as a whole host name")
+        XCTAssertEqual(try key(.launchItem, "dev-backup"), "dev-backup", "in a startup item a machine name matches only as the author's part")
     }
 
     /// The default instructions hold nothing of the user's, and a Mac named "Mac" or a user
@@ -351,8 +351,8 @@ final class PromptTests: XCTestCase {
         XCTAssertTrue(prompt.hasPrefix(Prompt.defaultInstructions + "\n\n"), prompt)
     }
 
-    /// Edited instructions can name the user. The passes for captured paths and tailnet names
-    /// stay out of them: a path in a sentence has no end the text can show.
+    /// Edited instructions can name the user. They keep main's matching: the passes for other
+    /// accounts' folders, disk names and tailnet names run on captured text only.
     func testEditedInstructionsLoseTheLoginTheMacsNamesAndAddresses() {
         let redactor = Redactor(home: "/Users/username", username: "username", machineNames: ["Atlas"])
         let instructions = "My Mac is Atlas, I am username. See /Users/username/x on 10.0.0.5, /Volumes/Backup when relevant, /Users/other/y and nas.tail1.ts.net."
