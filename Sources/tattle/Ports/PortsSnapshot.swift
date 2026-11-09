@@ -129,7 +129,7 @@ struct PortsSnapshot: Equatable, Sendable {
             let executable = process?.path.flatMap(signature)
             byKey[key] = PortItem(
                 id: key, proto: entry.proto, port: entry.localPort, binding: binding, families: family,
-                pid: entry.pid, uid: entry.uid, process: process,
+                pid: entry.pid, uid: process?.uid ?? entry.uid, process: process,
                 signature: process?.codeSignature(executable: executable),
                 interpreterSignature: process?.interpreter == nil ? nil : executable,
                 identity: process?.identity(executable: executable),

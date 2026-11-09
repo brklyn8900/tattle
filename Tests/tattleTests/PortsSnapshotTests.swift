@@ -136,6 +136,16 @@ final class PortsSnapshotTests: XCTestCase {
         XCTAssertEqual(program.facts.first { $0.name == "Path" }?.value, "/x/server")
     }
 
+    /// A socket's uid is whoever created it: launchd creates a socket-activated agent's as
+    /// root, and a server can bind as root and drop privileges.
+    func testAListenerRunsAsItsProcessNotItsSocket() throws {
+        let snapshot = PortsSnapshot.build(
+            entries: [entry(.tcp, "0.0.0.0", 8000, pid: 40, uid: 0), entry(.tcp, "0.0.0.0", 8001, pid: 41, uid: 0)],
+            services: .empty, processes: { $0 == 40 ? self.process(40, "/x/server", uid: 501) : nil }, signature: { _ in nil })
+        XCTAssertEqual(snapshot.items.first { $0.port == 8000 }?.uid, 501)
+        XCTAssertEqual(snapshot.items.first { $0.port == 8001 }?.uid, 0, "with no process to ask, the socket's")
+    }
+
     func testServiceNames() {
         XCTAssertEqual(services.name(port: 22, proto: .tcp), "ssh")
         XCTAssertEqual(services.name(port: 7000, proto: .tcp), "afs3-fileserver")
