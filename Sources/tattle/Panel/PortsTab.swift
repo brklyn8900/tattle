@@ -128,7 +128,7 @@ private struct PortDetail: View {
                     } else if ProcessControl.canQuit(uid: item.uid) {
                         Button("Quit \(item.processName)") { quit() }
                     } else {
-                        Text("System process").font(.caption).foregroundStyle(.secondary)
+                        Text(ProcessControl.whyNoQuit(uid: item.uid)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .controlSize(.small)

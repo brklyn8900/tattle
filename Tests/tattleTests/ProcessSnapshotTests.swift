@@ -109,6 +109,12 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: "pid:9000")?.leader?.pid, 9000)
     }
 
+    /// Root's process can be anyone's code, so the words say whose process it is.
+    func testNoQuitSaysWhoseProcessItIs() {
+        XCTAssertEqual(ProcessControl.whyNoQuit(uid: 0), "Runs as root, so Tattle cannot quit it")
+        XCTAssertEqual(ProcessControl.whyNoQuit(uid: 65), "Runs as _mdnsresponder, so Tattle cannot quit it")
+    }
+
     func testAttributionAndRollup() {
         let snapshot = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, runningApp: running, takenAt: epoch)
         XCTAssertEqual(snapshot.items.count, machine.count)

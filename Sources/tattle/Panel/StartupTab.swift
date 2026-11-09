@@ -168,7 +168,7 @@ private struct StartupDetail: View {
                 }
                 .disabled(state.network.accessBusy)
             } else if !Launchctl.canControl(scope) {
-                Text("Managed by the system").font(.caption).foregroundStyle(.secondary)
+                Text("Loading or unloading a daemon needs root").font(.caption).foregroundStyle(.secondary)
             } else {
                 switch item.state {
                 case .notLoaded:

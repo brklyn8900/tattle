@@ -10,6 +10,10 @@ enum ProcessControl {
 
     static func canQuit(uid: UInt32) -> Bool { uid == getuid() }
 
+    /// What a detail says in place of Quit. Root's code is not always macOS's: it says whose
+    /// process it is, not that the process is the system.
+    static func whyNoQuit(uid: UInt32) -> String { "Runs as \(UserName.describe(uid)), so Tattle cannot quit it" }
+
     /// An app gets the regular quit; anything else gets SIGTERM.
     @MainActor
     static func quit(pid: Int32, uid: UInt32) throws {

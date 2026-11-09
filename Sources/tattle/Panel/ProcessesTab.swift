@@ -251,7 +251,7 @@ private struct QuitControls: View {
 
     var body: some View {
         if !ProcessControl.canQuit(uid: item.uid) {
-            Text("System process").font(.caption).foregroundStyle(.secondary)
+            Text(ProcessControl.whyNoQuit(uid: item.uid)).font(.caption).foregroundStyle(.secondary)
         } else if armed {
             Text("Unsaved work is lost.").font(.caption).foregroundStyle(.secondary)
             Button("Cancel") { armed = false }
