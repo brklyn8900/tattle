@@ -35,10 +35,12 @@ Of the 17,915 public connections:
 
 Real destination named: 17,509, or 97.7%.
 
-The relay row is Private Relay and OHTTP ingress (`mask.icloud.com` 319,
-`mask-api.icloud.com` 20, `apple-relay.*` 14, `ohttp-relay*` 13). The sniffer read those
-names correctly; they are the relay, not where the traffic goes, and one relay connection
-carries many Safari destinations, so the per-connection share understates what is hidden.
+The relay row is what the spike counted as relay ingress: iCloud Private Relay
+(`mask.icloud.com` 319, `mask-api.icloud.com` 20), the `apple-relay.*` hosts (14), which Apple
+lists for Private Cloud Compute and Apple Intelligence Extensions, and hosts named for
+Oblivious HTTP (`ohttp-relay*` 13). The sniffer read those names correctly; they are the
+relay, not where the traffic goes, and one Private Relay connection carries many Safari
+destinations, so the per-connection share understates what is hidden.
 The 13 ECH connections carried the outer name `cloudflare-ech.com`.
 
 No QUIC Initial sent to a public address failed to decrypt. The 27 unnamed were SSH to
