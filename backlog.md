@@ -64,6 +64,12 @@
   the socket it accepted reads outbound, and its peer can count as a first contact
   (`ConnectionTracker.swift`). This Mac's SYN-ACK would prove inbound for it: the capture
   filter already passes one, and `FlowNamer` drops it.
+- An agent limited to `LoginWindow` reads `not loaded` and offers `Load` in a domain it does
+  not belong to: any session type other than exactly `Aqua` or `Background` falls through to
+  `gui` and `user` (`LaunchdItem.domains`).
+- A login item macOS has a record of and no plist is read in `gui/<uid>` only, so an agent
+  limited to `Background` would read `enabled` or `off`, not `running`
+  (`StartupSnapshot.loginItemState`).
 
 **Act on, from the review triage of 2026-11-07** (groups and IDs are the triage's; each fix
 session ticks its lines in the commit that closes them; the docs session removes this list
