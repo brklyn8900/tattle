@@ -38,6 +38,14 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(none.redact("sshd: x@y", as: .program), "sshd: x@y", "no login, nothing to match")
     }
 
+    /// In the user's own sentences one or two letters are ordinary words, wherever they stand.
+    func testAShortUsernameStaysInEditedInstructions() {
+        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
+        let written = "mail e@x.example, postgres: e db, com.e.helper"
+        XCTAssertEqual(short.redact(written, as: .instructions), written)
+        XCTAssertEqual(short.redact("sshd: e", as: .instructions), "sshd: e")
+    }
+
     /// "/Users/eve/..." is another account's folder, not the home "/Users/u" plus "ve/...".
     func testHomeMatchesOnAPathBoundary() {
         let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
