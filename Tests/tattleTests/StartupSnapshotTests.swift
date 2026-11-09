@@ -35,7 +35,7 @@ final class StartupSnapshotTests: XCTestCase {
             login("4096.com.example.podcasts", name: "Podcasts refresh", kind: .backgroundRefresh, container: "2.com.example.logic", enabled: true, allowed: false),
         ]
         var state = LaunchctlState()
-        state.user.services = ["com.acme.updater": .init(pid: 42, lastExitStatus: nil), "com.example.magnet": .init(pid: 7, lastExitStatus: nil)]
+        state.gui.services = ["com.acme.updater": .init(pid: 42, lastExitStatus: nil), "com.example.magnet": .init(pid: 7, lastExitStatus: nil)]
         state.system.services = ["com.other.daemon": .init(pid: nil, lastExitStatus: 1)]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: loginItems, state: state, signature: { path in
             path == "/usr/bin/x" ? CodeSignature(signer: .developerID(name: "Acme"), teamIdentifier: "TEAM1") : nil
@@ -187,7 +187,7 @@ final class StartupSnapshotTests: XCTestCase {
     func testLaunchctlOverrideAndNotLoaded() {
         let launchd = LaunchdReader.Result(items: [job("a"), job("b")], appleCount: 0, unreadable: [])
         var state = LaunchctlState()
-        state.user.overrides = ["a": true]
+        state.gui.overrides = ["a": true]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil })
         XCTAssertEqual(snapshot.items.map(\.state), [.disabled, .notLoaded])
     }
@@ -202,13 +202,45 @@ final class StartupSnapshotTests: XCTestCase {
             job("override-off-unloaded"), job("plist-off-unloaded", disabled: true),
         ], appleCount: 0, unreadable: [])
         var state = LaunchctlState()
-        state.user.services = ["plist-off-running": .init(pid: 9, lastExitStatus: nil), "plist-off-idle": .init(pid: nil, lastExitStatus: 0),
+        state.gui.services = ["plist-off-running": .init(pid: 9, lastExitStatus: nil), "plist-off-idle": .init(pid: nil, lastExitStatus: 0),
                                "override-off-running": .init(pid: 7, lastExitStatus: nil)]
-        state.user.overrides = ["plist-off-running": false, "override-off-running": true, "override-on-unloaded": false, "override-off-unloaded": true]
+        state.gui.overrides = ["plist-off-running": false, "override-off-running": true, "override-on-unloaded": false, "override-off-unloaded": true]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil })
         XCTAssertEqual(snapshot.items.map(\.state), [
             .running(pid: 9), .idle(lastExitStatus: 0), .running(pid: 7), .notLoaded, .disabled, .disabled,
         ])
+    }
+
+    /// An agent limited to the Background session loads in `user/<uid>`, not `gui/<uid>`.
+    func testABackgroundAgentReadsTheUserDomain() throws {
+        func agent(_ label: String, _ sessions: [String]) -> LaunchdItem {
+            var item = job(label, plist: "/Library/LaunchAgents/\(label).plist")
+            item.sessionTypes = sessions
+            return item
+        }
+        let launchd = LaunchdReader.Result(items: [
+            agent("background", ["Background"]), agent("aqua", ["Aqua"]), agent("plain", []), agent("both", ["Aqua", "Background"]),
+            agent("only-gui-has-it", ["Background"]),
+        ], appleCount: 0, unreadable: [])
+        var state = LaunchctlState()
+        state.user.services = ["background": .init(pid: 8, lastExitStatus: nil), "both": .init(pid: 9, lastExitStatus: nil), "aqua": .init(pid: 6, lastExitStatus: nil)]
+        state.gui.services = ["only-gui-has-it": .init(pid: 7, lastExitStatus: nil), "plain": .init(pid: 5, lastExitStatus: nil)]
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil })
+        XCTAssertEqual(snapshot.items.map(\.state), [
+            .running(pid: 8), .notLoaded, .running(pid: 5), .running(pid: 9), .notLoaded,
+        ], "each reads the domain its session type loads it in")
+        XCTAssertEqual(snapshot.items.map(\.launchDomain), [.user, .gui, .gui, .user, .user],
+                       "Load and Unload act where the job is, or where it would load")
+    }
+
+    func testAnOverrideIsReadFromTheJobsOwnDomain() {
+        var item = job("background")
+        item.sessionTypes = ["Background"]
+        var state = LaunchctlState()
+        state.gui.overrides = ["background": true]
+        XCTAssertEqual(StartupSnapshot.build(launchd: .init(items: [item], appleCount: 0, unreadable: []), loginItems: [], state: state, signature: { _ in nil }).items.map(\.state), [.notLoaded])
+        state.user.overrides = ["background": true]
+        XCTAssertEqual(StartupSnapshot.build(launchd: .init(items: [item], appleCount: 0, unreadable: []), loginItems: [], state: state, signature: { _ in nil }).items.map(\.state), [.disabled])
     }
 
     /// An agent and a daemon can share a label: each is a job of its own domain, and the
@@ -220,8 +252,8 @@ final class StartupSnapshotTests: XCTestCase {
             job("com.off", scope: .daemon, plist: "/Library/LaunchDaemons/com.off.plist"),
         ], appleCount: 0, unreadable: [])
         var state = LaunchctlState()
-        state.user.services = ["com.shared": .init(pid: 5, lastExitStatus: nil), "com.helper": .init(pid: 11, lastExitStatus: nil)]
-        state.user.overrides = ["com.off": true]
+        state.gui.services = ["com.shared": .init(pid: 5, lastExitStatus: nil), "com.helper": .init(pid: 11, lastExitStatus: nil)]
+        state.gui.overrides = ["com.off": true]
         state.system.overrides = ["com.shared": true]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [
             login("16.com.helper", name: "Helper", kind: .daemon, url: "file:///x/com.helper.plist", bundle: "com.helper", allowed: true),

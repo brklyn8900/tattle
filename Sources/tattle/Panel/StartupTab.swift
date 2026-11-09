@@ -172,9 +172,9 @@ private struct StartupDetail: View {
             } else {
                 switch item.state {
                 case .notLoaded:
-                    Button("Load") { perform { try Launchctl.load(plist: plist) } }
+                    Button("Load") { perform { try Launchctl.load(plist: plist, in: item.launchDomain) } }
                 case .running, .idle:
-                    Button("Unload") { perform { try Launchctl.unload(label: item.id) } }
+                    Button("Unload") { perform { try Launchctl.unload(label: item.id, in: item.launchDomain) } }
                 case .disabled, .placeholder, .enabled, .off, .unreadable, .unlisted:
                     EmptyView()
                 }

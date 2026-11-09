@@ -1,8 +1,8 @@
 import Foundation
 
 /// What launchd currently says about its jobs, read through `launchctl print` for the
-/// user's GUI domain and the system domain. Both work without privileges. A label names a
-/// job within one domain, so the two are kept apart.
+/// user's two domains and the system one. All work without privileges. A label names a job
+/// within one domain, so they are kept apart.
 struct LaunchctlState: Equatable, Sendable {
     struct Service: Equatable, Sendable {
         /// Running pid, nil when not running.
@@ -18,6 +18,9 @@ struct LaunchctlState: Equatable, Sendable {
         var overrides: [String: Bool] = [:]
     }
 
+    /// `gui/<uid>`: agents of the logged-in session.
+    var gui = Domain()
+    /// `user/<uid>`: agents limited to the Background session.
     var user = Domain()
     var system = Domain()
 
@@ -25,11 +28,16 @@ struct LaunchctlState: Equatable, Sendable {
         func domain(_ name: String) -> Domain {
             Domain(services: parseServices(run(["print", name])), overrides: parseOverrides(run(["print-disabled", name])))
         }
-        return LaunchctlState(user: domain(Launchctl.userDomain), system: domain("system"))
+        return LaunchctlState(gui: domain(LaunchDomain.gui.name), user: domain(LaunchDomain.user.name), system: domain(LaunchDomain.system.name))
     }
 
-    /// Where a job in `scope` is loaded: agents in both folders in the user's domain.
-    func domain(for scope: LaunchdItem.Scope) -> Domain { scope == .daemon ? system : user }
+    subscript(_ domain: LaunchDomain) -> Domain {
+        switch domain {
+        case .gui: gui
+        case .user: user
+        case .system: system
+        }
+    }
 
     /// The `services = { pid status label }` block of `launchctl print <domain>`.
     static func parseServices(_ output: String) -> [String: Service] {
@@ -65,21 +73,32 @@ struct LaunchctlState: Equatable, Sendable {
     }
 }
 
-/// Loading and unloading jobs in the user's domain. Agents in both agents folders load
-/// there; daemons live in the system domain, which needs root, so they are not offered.
+/// Where launchd keeps a job.
+enum LaunchDomain: Equatable, Sendable {
+    case gui, user, system
+
+    var name: String {
+        switch self {
+        case .gui: "gui/\(getuid())"
+        case .user: "user/\(getuid())"
+        case .system: "system"
+        }
+    }
+}
+
+/// Loading and unloading jobs in the user's domains. Daemons live in the system domain,
+/// which needs root, so they are not offered.
 enum Launchctl {
     enum ControlError: Error, Equatable {
         case failed(status: Int32, message: String)
     }
 
-    static var userDomain: String { "gui/\(getuid())" }
-
-    static func load(plist: URL) throws {
-        try check(run(["bootstrap", userDomain, plist.path]))
+    static func load(plist: URL, in domain: LaunchDomain = .gui) throws {
+        try check(run(["bootstrap", domain.name, plist.path]))
     }
 
-    static func unload(label: String) throws {
-        try check(run(["bootout", userDomain + "/" + label]))
+    static func unload(label: String, in domain: LaunchDomain = .gui) throws {
+        try check(run(["bootout", domain.name + "/" + label]))
     }
 
     static func canControl(_ scope: LaunchdItem.Scope) -> Bool {

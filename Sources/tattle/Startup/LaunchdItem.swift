@@ -40,6 +40,8 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     /// The folder launchd changes the root to before it starts the job (`RootDirectory`).
     var rootDirectory: String? = nil
     var triggers: [Trigger]
+    /// `LimitLoadToSessionType`: the sessions this agent loads in; empty for the default.
+    var sessionTypes: [String] = []
     /// `Disabled` in the plist. launchd's own override state comes from launchctl.
     var disabled: Bool
     var associatedBundleIdentifiers: [String]
@@ -48,6 +50,16 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     var isPlaceholder: Bool = false
 
     var id: String { label }
+
+    /// Where launchd loads this job: a daemon in the system domain, an agent in the GUI
+    /// session unless its plist limits it. `Background` agents load in `user/<uid>`, as all
+    /// of Apple's do; any other mix of session types is looked for in both.
+    var domains: [LaunchDomain] {
+        if scope == .daemon { return [.system] }
+        if sessionTypes.isEmpty || sessionTypes == ["Aqua"] { return [.gui] }
+        if sessionTypes == ["Background"] { return [.user] }
+        return [.gui, .user]
+    }
 
     enum ParseError: Error, Equatable {
         case notADictionary
@@ -77,6 +89,7 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
             environmentPath: (plist["EnvironmentVariables"] as? [String: Any])?["PATH"] as? String,
             rootDirectory: plist["RootDirectory"] as? String,
             triggers: Trigger.triggers(in: plist),
+            sessionTypes: plist["LimitLoadToSessionType"] as? [String] ?? (plist["LimitLoadToSessionType"] as? String).map { [$0] } ?? [],
             disabled: plist["Disabled"] as? Bool ?? false,
             associatedBundleIdentifiers: plist["AssociatedBundleIdentifiers"] as? [String]
                 ?? (plist["AssociatedBundleIdentifiers"] as? String).map { [$0] } ?? [])

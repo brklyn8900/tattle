@@ -263,9 +263,9 @@ final class LaunchctlStateTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: plist) }
 
         try Launchctl.load(plist: plist)
-        XCTAssertNotNil(LaunchctlState.read().user.services[label])
+        XCTAssertNotNil(LaunchctlState.read().gui.services[label])
         try Launchctl.unload(label: label)
-        XCTAssertNil(LaunchctlState.read().user.services[label])
+        XCTAssertNil(LaunchctlState.read().gui.services[label])
         XCTAssertThrowsError(try Launchctl.unload(label: label)) { error in
             guard case Launchctl.ControlError.failed = error else { return XCTFail("\(error)") }
         }

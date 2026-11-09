@@ -134,6 +134,18 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(result.appleCount, 0)
     }
 
+    func testSessionTypesAreReadAsAStringOrAnArray() throws {
+        func parsed(_ value: String) throws -> [String] {
+            let xml = """
+                <?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Label</key><string>a</string>\(value)</dict></plist>
+                """
+            return try LaunchdItem.parse(Data(xml.utf8), url: URL(fileURLWithPath: "/x/a.plist"), scope: .userAgent).sessionTypes
+        }
+        XCTAssertEqual(try parsed("<key>LimitLoadToSessionType</key><string>Background</string>"), ["Background"])
+        XCTAssertEqual(try parsed("<key>LimitLoadToSessionType</key><array><string>Aqua</string><string>Background</string></array>"), ["Aqua", "Background"])
+        XCTAssertEqual(try parsed(""), [])
+    }
+
     func testThisMachineParsesCleanly() {
         let result = LaunchdReader().read()
         XCTAssertTrue(result.unreadable.isEmpty, "\(result.unreadable)")

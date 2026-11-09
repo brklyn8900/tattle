@@ -84,6 +84,8 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// Managed in System Settings, Login Items.
     var isLoginItem: Bool
     var launchdScope: LaunchdItem.Scope?
+    /// Where Load and Unload act.
+    var launchDomain = LaunchDomain.gui
 
     /// The program and its arguments.
     var runs: String? { program.map { ([$0] + arguments).joined(separator: " ") } }
@@ -198,7 +200,8 @@ struct StartupSnapshot: Equatable, Sendable {
                 parent: nil,
                 plistURL: job.plistURL,
                 isLoginItem: registered != nil,
-                launchdScope: job.scope))
+                launchdScope: job.scope,
+                launchDomain: job.domains.first { state[$0].services[job.label] != nil } ?? job.domains[0]))
         }
 
         for plist in launchd.unreadable {
@@ -261,17 +264,17 @@ struct StartupSnapshot: Equatable, Sendable {
 
     private static func launchdState(_ job: LaunchdItem, state: LaunchctlState) -> StartupItem.State {
         if job.isPlaceholder { return .placeholder }
-        let domain = state.domain(for: job.scope)
+        let domains = job.domains.map { state[$0] }
         // A loaded job runs whatever the plist says, and a disable only stops the next load.
-        if let service = domain.services[job.label] {
+        if let service = domains.lazy.compactMap({ $0.services[job.label] }).first {
             if let pid = service.pid { return .running(pid: pid) }
             return .idle(lastExitStatus: service.lastExitStatus)
         }
-        return domain.overrides[job.label] ?? job.disabled ? .disabled : .notLoaded
+        return domains.lazy.compactMap({ $0.overrides[job.label] }).first ?? job.disabled ? .disabled : .notLoaded
     }
 
     private static func loginItemState(_ item: LoginItem, state: LaunchctlState) -> StartupItem.State {
-        if let label = item.bundleIdentifier, let service = state.domain(for: item.kind == .daemon ? .daemon : .userAgent).services[label], let pid = service.pid {
+        if let label = item.bundleIdentifier, let service = state[item.kind == .daemon ? .system : .gui].services[label], let pid = service.pid {
             return .running(pid: pid)
         }
         return item.allowed ? .enabled : .off
