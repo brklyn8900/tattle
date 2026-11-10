@@ -118,34 +118,20 @@ final class ProcessTableTests: XCTestCase {
         return [30: entry(30, 20), 20: entry(20, 1), 40: entry(40, 1), 50: entry(50, 1), 60: entry(60, 1)]
     }()
 
-    /// Every owner's record is taken before any line is walked: an owner that exits while
-    /// another's line is read has already been seen.
-    func testEveryOwnerIsReadBeforeAnyLine() {
-        let table = lineTable
-        var steps: [String] = []
-        _ = ProcessTable.lines(of: [30, 40], record: { pid in
-            steps.append("record \(pid)")
-            return table[pid]
-        }, entry: { found in
-            steps.append("entry \(found.pid)")
+    func testALineFollowsParentsAndTheResponsibleProcess() {
+        var reads: [Int32] = []
+        let lines = ProcessTable.lines(of: [30, 40, 20, 70], table: { lineTable }, parent: \.parentPid, entry: { found in
+            reads.append(found.pid)
             return found
         }, responsible: { $0 == 40 ? 50 : nil })
-        XCTAssertEqual(Set(steps.prefix(2)), ["record 30", "record 40"], "\(steps)")
-        XCTAssertEqual(steps.filter { $0.hasPrefix("record") }.count, 4, "each process once")
-    }
-
-    func testALineFollowsParentsAndTheResponsibleProcess() {
-        let table = lineTable
-        var reads: [Int32] = []
-        let lines = ProcessTable.lines(of: [30, 40, 20, 70], record: { pid in
-            reads.append(pid)
-            if pid == 70 { throw ProcessTable.ReadError.sysctl(errno: EINVAL) }
-            return table[pid]
-        }, entry: { $0 }, responsible: { $0 == 40 ? 50 : nil })
-        XCTAssertEqual(Set(lines.entries.keys), [20, 30, 40, 50], "not the bystander")
+        XCTAssertEqual(Set(lines.entries.keys), [20, 30, 40, 50], "not the bystander, nor a pid with no record")
         XCTAssertEqual(lines.responsible, [40: 50])
-        XCTAssertEqual(lines.unreadable, [70])
-        XCTAssertEqual(reads.sorted(), [20, 30, 40, 50, 70], "each process once")
+        XCTAssertEqual(lines.unreadable, [])
+        XCTAssertEqual(reads.sorted(), [20, 30, 40, 50], "each process once")
+
+        let unreadable = ProcessTable.lines(of: [30, 40], table: { () throws -> [Int32: ProcessEntry] in throw ProcessTable.ReadError.sysctl(errno: EINVAL) },
+                                            parent: \.parentPid, entry: { $0 }, responsible: { _ in nil })
+        XCTAssertEqual(unreadable, ProcessLines(unreadable: [30, 40]), "the kernel would not list processes")
     }
 
     /// A child not yet waited for stays in the table as a zombie once it exits.

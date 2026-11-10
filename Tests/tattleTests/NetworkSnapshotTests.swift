@@ -297,28 +297,46 @@ final class NetworkSnapshotTests: XCTestCase {
         struct Unreadable: Error {}
         private let lock = NSLock()
         private var processes: [Int32: ProcessEntry]
-        private let unreadable: Set<Int32>
+        private let unreadable: Bool
         private var sockets: [SocketEntry] = []
         private var reads: [Int32] = []
+        private var endingWhenTaken: [Int32: [Int32]] = [:]
 
-        init(_ processes: [ProcessEntry], unreadable: Set<Int32> = []) {
+        /// `unreadable`: the kernel will not report on processes.
+        init(_ processes: [ProcessEntry], unreadable: Bool = false) {
             self.processes = Dictionary(processes.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
             self.unreadable = unreadable
         }
+
+        /// Ends `pids` as `pid`'s record is taken.
+        func endWhenTaken(_ pid: Int32, ending pids: [Int32]) { lock.withLock { endingWhenTaken[pid] = pids } }
 
         var table: [SocketEntry] {
             get { lock.withLock { sockets } }
             set { lock.withLock { sockets = newValue } }
         }
 
-        /// Every pid asked about, in order, repeats included.
+        /// Every process read beyond its record, in order, repeats included.
         var readPids: [Int32] { lock.withLock { reads } }
 
-        func read(_ pid: Int32) throws -> ProcessEntry? {
+        /// Every process's record, as the kernel lists them in one go.
+        func records() throws -> [Int32: ProcessEntry] {
             try lock.withLock {
-                reads.append(pid)
-                if unreadable.contains(pid) { throw Unreadable() }
-                return processes[pid]
+                if unreadable { throw Unreadable() }
+                defer { for pid in processes.keys { endingWhenTaken[pid]?.forEach { processes[$0] = nil } } }
+                return processes
+            }
+        }
+
+        /// The rest of a process, read from the system now: one that has exited since its record
+        /// was taken has no path.
+        func entry(_ record: ProcessEntry) -> ProcessEntry? {
+            lock.withLock {
+                reads.append(record.pid)
+                guard processes[record.pid] == nil else { return record }
+                var exited = record
+                exited.path = nil
+                return exited
             }
         }
 
@@ -331,7 +349,7 @@ final class NetworkSnapshotTests: XCTestCase {
         return NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
                                settings: try AppSettings(store: SettingsStore(database: database)),
                                socketTable: { world.table },
-                               processLines: { ProcessTable.lines(of: $0, record: world.read, entry: { $0 }, responsible: { _ in nil }) },
+                               processLines: { ProcessTable.lines(of: $0, table: world.records, parent: \.parentPid, entry: world.entry, responsible: { _ in nil }) },
                                signature: signature)
     }
 
@@ -340,8 +358,9 @@ final class NetworkSnapshotTests: XCTestCase {
                     tcpState: SocketEntry.tcpEstablished, pid: pid, effectivePid: 0, uid: 501)
     }
 
-    /// A reading reads the owners it has not met and the lines their apps can come from, not the
-    /// table, and an owner it knows that still runs the same program is not read again.
+    /// Beyond the processes' records, a reading reads the owners it has not met and the lines
+    /// their apps can come from, not the table, and an owner it knows that still runs the same
+    /// program is not read again.
     @MainActor
     func testAReadingReadsOnlyNewOwnersAndTheirLines() async throws {
         let me = getpid()
@@ -353,11 +372,11 @@ final class NetworkSnapshotTests: XCTestCase {
         let observer = try observer(in: world)
         world.table = [socket(me, localPort: 40000)]
         await observer.read()
-        XCTAssertEqual(world.readPids, [me, 9_000_002], "the owner and its line, each once")
+        XCTAssertEqual(world.readPids.sorted(), [me, 9_000_002], "the owner and its line, each once")
 
         world.table = [socket(me, localPort: 40000), socket(me, localPort: 40001)]
         await observer.read()
-        XCTAssertEqual(world.readPids, [me, 9_000_002], "a known owner still running the same program is not read again")
+        XCTAssertEqual(world.readPids.sorted(), [me, 9_000_002], "a known owner still running the same program is not read again")
     }
 
     /// Two owners open connections in one reading, and every process in their lines exits as
@@ -380,10 +399,27 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(owners[9_000_021]?.app?.name, "Zoom")
     }
 
+    /// A helper's parent exits as the helper is read. The parent was running when the reading
+    /// began, so the helper still reaches the app above it.
+    @MainActor
+    func testAHelperWhoseParentExitsAsItIsReadKeepsItsApp() async throws {
+        let world = World([
+            entry(9_000_041, 9_000_042, "/x/helper"), entry(9_000_042, 9_000_043, "/x/launcher"),
+            entry(9_000_043, 1, "/Applications/Slack.app/Contents/MacOS/Slack"),
+        ])
+        world.endWhenTaken(9_000_041, ending: [9_000_042])
+        let observer = try observer(in: world)
+        world.table = [socket(9_000_041, localPort: 40000)]
+        await observer.read()
+        let owner = try XCTUnwrap(observer.snapshot?.connections.first?.owner)
+        XCTAssertEqual(owner.processName, "helper")
+        XCTAssertEqual(owner.app?.name, "Slack")
+    }
+
     /// A process the kernel will not report on is not taken for one that exited.
     @MainActor
     func testAnOwnerTheKernelWillNotReadIsUnknownNotExited() async throws {
-        let world = World([], unreadable: [9_000_031])
+        let world = World([], unreadable: true)
         let observer = try observer(in: world)
         world.table = [socket(9_000_031, localPort: 40000)]
         await observer.read()

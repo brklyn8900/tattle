@@ -137,7 +137,8 @@ struct ProcessLines: Equatable, Sendable {
     var entries: [Int32: ProcessEntry] = [:]
     /// The process macOS holds responsible for an entry launchd started, when it is another.
     var responsible: [Int32: Int32] = [:]
-    /// Pids the kernel would not report on, which are not known to have exited.
+    /// The pids asked about when the kernel would not report on processes: none is known to
+    /// have exited.
     var unreadable: Set<Int32> = []
 
     /// Adds what a later reading found, keeping what this one already had.
@@ -185,6 +186,15 @@ enum ProcessTable {
     /// The kernel's process list. Zombies are left out: they hold nothing and are gone
     /// as soon as their parent notices.
     static func list(signature: (String) -> CodeSignature?) throws -> [ProcessEntry] {
+        // One argmax-sized scratch buffer for the command lines: allocating a
+        // megabyte per process made a sweep of 1,600 take over a second.
+        var scratch: [UInt8] = []
+        return try records().compactMap { entry($0, scratch: &scratch, signature: signature) }
+    }
+
+    /// The kernel's record of every process, in one read: pid, parent, user, start time and
+    /// command name, with no path or command line.
+    private static func records() throws -> [kinfo_proc] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         let stride = MemoryLayout<kinfo_proc>.stride
         // Processes start between the size query and the read, so ask for room to spare
@@ -198,10 +208,8 @@ enum ProcessTable {
                 if errno == ENOMEM { continue }
                 throw ReadError.sysctl(errno: errno)
             }
-            // One argmax-sized scratch buffer for the command lines: allocating a
-            // megabyte per process made a sweep of 1,600 take over a second.
-            var scratch: [UInt8] = []
-            return buffer.prefix(length / stride).compactMap { entry($0, scratch: &scratch, signature: signature) }
+            buffer.removeLast(buffer.count - length / stride)
+            return buffer
         }
         throw ReadError.sysctl(errno: ENOMEM)
     }
@@ -209,56 +217,48 @@ enum ProcessTable {
     /// The lines of `pids` as the kernel has them now, named without signatures.
     static func lines(of pids: Set<Int32>) -> ProcessLines {
         var scratch: [UInt8] = []
-        return lines(of: pids, record: kernelRecord, entry: { entry($0, scratch: &scratch, signature: { _ in nil }) },
-                     responsible: ResponsibleProcess.pid(for:))
+        return lines(of: pids, table: {
+            var byPid: [Int32: kinfo_proc] = [:]
+            for record in try records() where Int32(record.kp_proc.p_stat) != SZOMB { byPid[record.kp_proc.p_pid] = record }
+            return byPid
+        }, parent: { $0.kp_eproc.e_ppid }, entry: { entry($0, scratch: &scratch, signature: { _ in nil }) },
+        responsible: ResponsibleProcess.pid(for:))
     }
 
-    /// Each pid's line, read in one go: the process, every ancestor up to the one launchd
-    /// started, and for that one, the process macOS holds responsible for it. Which of them names the app
-    /// depends on signatures read later (`ProcessSnapshot.app`), so the whole line is read.
-    /// `record` takes a process's record, nil for one that has exited, and throws when the kernel
-    /// cannot be asked; `entry` reads the rest, nil for a zombie. Every pid's record is taken
-    /// before any line is walked: one can exit while another's line is read, and its record is
-    /// what names it then.
+    /// Each pid's line: the process, every ancestor up to the one launchd started, and for that
+    /// one, the process macOS holds responsible for it. Which of them names the app depends on
+    /// signatures read later (`ProcessSnapshot.app`), so the whole line is read. The lines are
+    /// walked through one reading of every process's record (`table`, by pid, with no zombies), as
+    /// the full list is, so a process that exits while they are read keeps its place on them; then
+    /// `entry` reads the rest of each process on a line. `table` throws when the kernel cannot be
+    /// asked, and every pid is then unreadable.
     static func lines<Record>(
-        of pids: Set<Int32>, record: (Int32) throws -> Record?, entry: (Record) -> ProcessEntry?, responsible: (Int32) -> Int32?
+        of pids: Set<Int32>, table: () throws -> [Int32: Record], parent: (Record) -> Int32,
+        entry: (Record) -> ProcessEntry?, responsible: (Int32) -> Int32?
     ) -> ProcessLines {
-        var lines = ProcessLines()
-        var asked = Set<Int32>()
-        var pending: [Int32] = []
-        func take(_ pid: Int32) -> Record? {
-            guard asked.insert(pid).inserted else { return nil }
-            do {
-                return try record(pid)
-            } catch {
-                lines.unreadable.insert(pid)
-                Log.app.error("process \(pid) could not be read: \(error, privacy: .public)")
-                return nil
-            }
+        let records: [Int32: Record]
+        do {
+            records = try table()
+        } catch {
+            Log.app.error("the process table could not be read: \(error, privacy: .public)")
+            return ProcessLines(unreadable: pids)
         }
-        func add(_ pid: Int32, _ found: Record?) {
-            guard let found, let read = entry(found) else { return }
-            lines.entries[pid] = read
-            if read.parentPid > 1 {
-                if read.parentPid != pid { pending.append(read.parentPid) }
+        var lines = ProcessLines()
+        var walked: [Int32: Record] = [:]
+        var pending = Array(pids)
+        while let pid = pending.popLast() {
+            guard walked[pid] == nil, let record = records[pid] else { continue }
+            walked[pid] = record
+            let parentPid = parent(record)
+            if parentPid > 1 {
+                if parentPid != pid { pending.append(parentPid) }
             } else if let owner = responsible(pid) {
                 lines.responsible[pid] = owner
                 pending.append(owner)
             }
         }
-        for (pid, found) in pids.map({ ($0, take($0)) }) { add(pid, found) }
-        while let pid = pending.popLast() { add(pid, take(pid)) }
+        for (pid, record) in walked { lines.entries[pid] = entry(record) }
         return lines
-    }
-
-    /// The kernel's record of a process: nil when there is none, which is how an exited pid
-    /// reads. Throws when the kernel cannot be asked.
-    private static func kernelRecord(_ pid: Int32) throws -> kinfo_proc? {
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        var info = kinfo_proc()
-        var length = MemoryLayout<kinfo_proc>.stride
-        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0 else { throw ReadError.sysctl(errno: errno) }
-        return length > 0 ? info : nil
     }
 
     private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (String) -> CodeSignature?) -> ProcessEntry? {
@@ -343,7 +343,10 @@ enum ProcessTable {
     /// The kernel's name for a process: the file name of the program it last started, cut to
     /// `MAXCOMLEN` bytes. Nil when it has exited.
     static func commandName(_ pid: Int32) -> String? {
-        guard let info = try? kernelRecord(pid), Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var length = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0, length > 0, Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         return commandName(of: info)
     }
 
