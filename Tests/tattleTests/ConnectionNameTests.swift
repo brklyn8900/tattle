@@ -41,6 +41,7 @@ final class ConnectionNameTests: XCTestCase {
         let unnamed = LiveConnection(connection: connection("17.253.144.10"), owner: owner, isNew: false)
         XCTAssertEqual(unnamed.title, "17.253.144.10:443")
         XCTAssertEqual(unnamed.explainKey, "17.253.144.10")
+        XCTAssertEqual(LiveConnection(connection: connection("::ffff:17.253.144.10"), owner: owner, isNew: false).explainKey, "17.253.144.10")
         var facts = Dictionary(unnamed.facts(now: t0).map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
         XCTAssertEqual(facts["Destination"], "17.253.144.10:443")
         XCTAssertNil(facts["Address"])

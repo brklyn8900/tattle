@@ -119,7 +119,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
 
     /// Knowledge-base key: the name once the sniffer supplies one, the address until then.
     /// A relay or cover name is still the right key: the rule for it says what it is.
-    var explainKey: String { name?.name ?? connection.remoteAddress }
+    var explainKey: String { name?.name ?? connection.wireAddress }
 
     /// The detail's heading.
     var headline: String {
@@ -134,7 +134,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
     /// Only a connection proven to be this Mac's counts: a peer that connected in, or one no
     /// one can say about, is not an address it reached.
     static func isFirstContact(_ connection: Connection, known: inout Set<String>) -> Bool {
-        connection.direction == .outbound && known.insert(connection.remoteAddress).inserted
+        connection.direction == .outbound && known.insert(connection.wireAddress).inserted
     }
 
     func facts(now: Date) -> [Fact] {

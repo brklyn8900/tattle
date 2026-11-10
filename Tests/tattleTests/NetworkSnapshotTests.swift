@@ -548,6 +548,9 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertTrue(known.isEmpty, "a later connection out to the peer is still a first contact")
         XCTAssertTrue(LiveConnection.isFirstContact(connection(100, "203.0.113.5"), known: &known))
         XCTAssertFalse(LiveConnection.isFirstContact(connection(100, "203.0.113.5"), known: &known))
+        XCTAssertFalse(LiveConnection.isFirstContact(connection(100, "::ffff:203.0.113.5"), known: &known), "an IPv6 socket talking IPv4 reaches the same peer")
+        XCTAssertTrue(LiveConnection.isFirstContact(connection(100, "::FFFF:203.0.113.6"), known: &known))
+        XCTAssertFalse(LiveConnection.isFirstContact(connection(100, "203.0.113.6"), known: &known))
     }
 
     /// A process that took a name shares its row: the newest connection's signer alone would

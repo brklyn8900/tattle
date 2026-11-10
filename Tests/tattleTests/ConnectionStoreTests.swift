@@ -33,6 +33,9 @@ final class ConnectionStoreTests: XCTestCase {
         try store.setOutbound(key: unproven.id)
         XCTAssertEqual(try store.history(processName: "tool").first?.direction, .outbound)
         XCTAssertEqual(try store.knownAddresses(), ["17.1.1.1", "203.0.113.6"])
+
+        try store.open(ConnectionRecord(connection(400, "::ffff:203.0.113.7", at: t0), processName: "tool"))
+        XCTAssertEqual(try store.knownAddresses(), ["17.1.1.1", "203.0.113.6", "203.0.113.7"], "a mapped address is the IPv4 peer")
     }
 
     /// First contact is measured against what was recorded before directions existed.

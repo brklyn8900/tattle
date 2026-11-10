@@ -59,12 +59,15 @@ struct Connection: Equatable, Sendable, Identifiable {
         "\(entry.pid):\(entry.proto.rawValue)/\(entry.localPort)>\(entry.remoteAddress):\(entry.remotePort)"
     }
 
-    /// What the sniffer sees of this connection (`FlowKey.text`): the key without the
-    /// pid. An IPv6 socket talking IPv4 shows a mapped address; the wire shows IPv4.
-    var flowKey: String {
-        var remote = remoteAddress
-        if remote.lowercased().hasPrefix("::ffff:") { remote = String(remote.dropFirst(7)) }
-        return "\(proto.rawValue)/\(localPort)>\(remote):\(remotePort)"
+    /// What the sniffer sees of this connection (`FlowKey.text`): the key without the pid.
+    var flowKey: String { "\(proto.rawValue)/\(localPort)>\(wireAddress):\(remotePort)" }
+
+    /// The peer's address as the wire shows it. An IPv6 socket talking IPv4 shows a mapped
+    /// address; the wire shows IPv4, and both are one peer.
+    var wireAddress: String { Self.wireAddress(remoteAddress) }
+
+    static func wireAddress(_ address: String) -> String {
+        address.lowercased().hasPrefix("::ffff:") ? String(address.dropFirst(7)) : address
     }
 }
 

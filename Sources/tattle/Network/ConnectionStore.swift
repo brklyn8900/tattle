@@ -182,7 +182,7 @@ struct ConnectionStore: Sendable {
     /// Every address this Mac has reached: what "first contact" is measured against.
     func knownAddresses() throws -> Set<String> {
         try database.writer.read { db in
-            Set(try String.fetchAll(db, sql: "SELECT DISTINCT remoteAddress FROM connection WHERE direction = 'outbound'"))
+            Set(try String.fetchAll(db, sql: "SELECT DISTINCT remoteAddress FROM connection WHERE direction = 'outbound'").map(Connection.wireAddress))
         }
     }
 
