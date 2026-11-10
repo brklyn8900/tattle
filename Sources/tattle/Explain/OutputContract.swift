@@ -17,7 +17,7 @@ enum OutputContract {
             },
             "category": {
               "type": "string",
-              "description": "One or two words, such as: system, sync, update, telemetry, advertising, cdn, developer tool, media."
+              "description": "One or two words, such as: system, sync, update, telemetry, advertising, cdn, developer-tool, media."
             },
             "risk": {
               "type": "string",
