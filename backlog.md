@@ -285,3 +285,12 @@ what stays)
   per 211,000 rows. Dropped without the table scan, `knownAddresses` is 10% slower (327 to 339
   against 360 to 375 ms). `history(remoteAddress:)` could then order rows that share a
   `firstSeen` differently (`ConnectionStore.swift`, `AppDatabase.swift`).
+- A DNS reply whose answers all point at one valid 255-byte name of four long labels still
+  costs 0.26 ms on testmac, about 55 times the 63-byte reply and 1.5 times a real reply of the
+  same size: each of its 99 names is decoded and checked in full, and the reply's bound counts
+  labels and pointers, not bytes (2026-11-10). A cap on the name bytes a reply may decode, or a
+  cache of names already decoded by offset, would bound it (`DNS.swift`, `HostName.swift`).
+- Ordinary-looking DNS replies from a forged resolver address can keep the capture thread busy:
+  88 A records in 1,462 bytes cost 0.18 ms on testmac, so about 5,500 such replies a second fill
+  it (2026-11-10). Any host on the network can forge the resolver's address (`FlowNamer.swift`,
+  `DNS.swift`).
