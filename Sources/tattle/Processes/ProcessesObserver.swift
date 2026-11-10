@@ -9,7 +9,6 @@ final class ProcessesObserver {
     private(set) var error: String?
     private(set) var isLoading = false
     private let signatures = SignatureCache()
-    /// Whether `snapshot` is a reading the next one can be compared with for CPU shares.
     private var isContinuingReadings = false
 
     /// Starts a new run of readings, when the list comes on screen. Its first reading shows no

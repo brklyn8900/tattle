@@ -134,19 +134,13 @@ struct ProcessUsage: Equatable, Sendable {
     var memoryIsFootprint: Bool
 }
 
-/// What the owners of new connections are named from, read with the socket table
-/// (`ProcessRecords`).
 struct ProcessLines: Equatable, Sendable {
     var entries: [Int32: ProcessEntry] = [:]
     /// The process macOS holds responsible for an entry launchd started, when it is another.
     var responsible: [Int32: Int32] = [:]
 }
 
-/// One reading of every process's kernel record, taken with the socket table, through which
-/// new owners' lines are then walked (`ProcessTable.records()`).
 struct ProcessRecords {
-    /// The lines of these pids, walked through the records
-    /// (`ProcessTable.lines(of:in:parent:entry:responsible:)`).
     let lines: (Set<Int32>) -> ProcessLines
 }
 
@@ -193,8 +187,6 @@ enum ProcessTable {
         return try kernelRecords().compactMap { entry($0, scratch: &scratch, signature: signature) }
     }
 
-    /// The kernel's record of every process, in one read: pid, parent, user, start time and
-    /// command name, with no path or command line.
     private static func kernelRecords() throws -> [kinfo_proc] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         let stride = MemoryLayout<kinfo_proc>.stride
@@ -215,8 +207,6 @@ enum ProcessTable {
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
-    /// Every process's kernel record now, whose lines are named without signatures; nil when
-    /// the kernel would not list processes.
     static func records() -> ProcessRecords? {
         let records: [kinfo_proc]
         do {
@@ -225,7 +215,6 @@ enum ProcessTable {
             Log.app.error("the process table could not be read: \(error, privacy: .public)")
             return nil
         }
-        // Zombies are left out, as from the list.
         var byPid: [Int32: kinfo_proc] = [:]
         for record in records where Int32(record.kp_proc.p_stat) != SZOMB { byPid[record.kp_proc.p_pid] = record }
         return ProcessRecords { pids in

@@ -49,7 +49,6 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try queue.read { try String.fetchOne($0, sql: "SELECT direction FROM connection") }, "outbound")
     }
 
-    /// A file for one test, removed when the test ends.
     private func historyFile() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-history-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -57,9 +56,6 @@ final class ConnectionStoreTests: XCTestCase {
         return folder.appending(path: "tattle.sqlite")
     }
 
-    /// A history from before the flow index, in a rollback journal, keeps every row and setting
-    /// when the app opens it, gains the index, and is written ahead from then on: each poll's
-    /// writes append to a log that is folded into the file now and then.
     func testAHistoryFromBeforeKeepsItsRowsAndIsWrittenAhead() throws {
         let url = try historyFile()
         let rows: [Row]
@@ -189,9 +185,6 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1").map(\.name), ["new.example.com", "old.example.com"])
     }
 
-    /// A name is written on the main actor, and a client that talks to one address all day
-    /// leaves tens of thousands of rows for it, so the rows are found by the whole flow, not
-    /// by the address and then read one by one.
     func testNamingAFlowSearchesByTheWholeFlow() throws {
         final class Statements: @unchecked Sendable { var sql: [String] = [] }
         let statements = Statements()

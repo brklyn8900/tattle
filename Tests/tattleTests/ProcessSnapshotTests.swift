@@ -329,8 +329,6 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(facts["Memory"], "80 bytes resident")
     }
 
-    /// The row stays when there is no share yet, so what is below it does not move; the model
-    /// is told only a real share.
     func testTheCPURowStaysWithNoShareAndIsNotInThePrompt() throws {
         let snapshot = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
         let noShare = Fact(name: "CPU", value: "\u{2013}", inPrompt: false)
@@ -338,8 +336,6 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: "/Applications/Slack.app")?.facts.last, noShare)
     }
 
-    /// The list is read every few seconds, so a long gap means the Mac slept with it on screen:
-    /// an average over that is not what CPU means here.
     func testAReadingLongAfterThePreviousHasNoCPU() {
         let first = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
         var later = machine
@@ -350,8 +346,6 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertTrue(far.items.allSatisfy { $0.cpu == nil }, "no share over a 60-second gap")
     }
 
-    /// A list sorted by CPU must not fall back to memory on a reading with no CPU and jump back
-    /// at the next.
     func testAReadingWithNoCPUKeepsTheOrderOfTheLastOneThatHadIt() {
         let first = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, takenAt: epoch)
         var later = machine
@@ -412,8 +406,6 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(try rules.lookup(kind: .process, key: "mdnsresponder"), "process names are case-sensitive")
     }
 
-    /// CPU is a difference between readings, and the list is not read while it is off screen:
-    /// against the last reading before that, the first one back could only show an average over the gap.
     @MainActor
     func testTheFirstReadingOfARunIsABaselineWithNoCPU() async throws {
         let observer = ProcessesObserver()

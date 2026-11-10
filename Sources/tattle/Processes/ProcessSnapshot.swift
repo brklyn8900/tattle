@@ -267,7 +267,6 @@ struct ProcessSnapshot: Equatable, Sendable {
 
     private func shareForOrder(_ group: ProcessGroup) -> Double { group.cpu ?? lastCPU[group.id] ?? -1 }
 
-    /// What a following reading with no CPU keeps of this one.
     private var knownCPU: [String: Double] {
         lastCPU.merging(groups.compactMap { group in group.cpu.map { (group.id, $0) } }) { _, new in new }
     }

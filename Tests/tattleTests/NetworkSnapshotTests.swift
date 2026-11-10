@@ -290,7 +290,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertFalse(snapshot.confirmOutbound(id: "other", isNew: true))
     }
 
-    /// Holds the first thread that reaches it until the test opens it.
     private final class Gate: @unchecked Sendable {
         struct NotReached: Error {}
         private let lock = NSLock()
@@ -333,22 +332,17 @@ final class NetworkSnapshotTests: XCTestCase {
         private var tablesBeingRead = 0
         private var mostTablesAtOnce = 0
 
-        /// `unreadable`: the kernel will not report on processes.
         init(_ processes: [ProcessEntry], unreadable: Bool = false) {
             self.processes = Dictionary(processes.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
             self.unreadable = unreadable
         }
 
-        /// Starts these processes, or has these pids run these programs now.
         func start(_ entries: [ProcessEntry]) { lock.withLock { entries.forEach { processes[$0.pid] = $0 } } }
 
-        /// Ends `pids` as `pid`'s record is taken.
         func endWhenTaken(_ pid: Int32, ending pids: [Int32]) { lock.withLock { endingWhenTaken[pid] = pids } }
 
-        /// Ends `pids` once a reading has next read processes.
         func endAfterNextRead(_ pids: [Int32]) { lock.withLock { endingAfterRead = pids } }
 
-        /// A reading has read processes.
         func processesRead() {
             lock.withLock {
                 endingAfterRead.forEach { processes[$0] = nil }
@@ -361,10 +355,8 @@ final class NetworkSnapshotTests: XCTestCase {
             set { lock.withLock { sockets = newValue } }
         }
 
-        /// Holds the next reading of the socket table at `gate`, once it has read the table.
         func holdNextTable(at gate: Gate) { lock.withLock { tableGate = gate } }
 
-        /// The socket table as a reading reads it.
         func readTable() -> [SocketEntry] {
             let (table, gate) = lock.withLock { () -> ([SocketEntry], Gate?) in
                 tableReads += 1
@@ -378,13 +370,10 @@ final class NetworkSnapshotTests: XCTestCase {
             return table
         }
 
-        /// How many readings read the socket table, and the most that read it at once.
         var tableReadings: (count: Int, mostAtOnce: Int) { lock.withLock { (tableReads, mostTablesAtOnce) } }
 
-        /// Every process read beyond its record, in order, repeats included.
         var readPids: [Int32] { lock.withLock { reads } }
 
-        /// Every process's record, as the kernel lists them in one go; nil when it will not.
         func records() -> ProcessRecords? {
             let records: [Int32: ProcessEntry]? = lock.withLock {
                 if unreadable { return nil }
@@ -398,8 +387,6 @@ final class NetworkSnapshotTests: XCTestCase {
             }
         }
 
-        /// The rest of a process, read from the system now: one that has exited since its record
-        /// was taken has no path.
         func entry(_ record: ProcessEntry) -> ProcessEntry? {
             lock.withLock {
                 reads.append(record.pid)
@@ -428,9 +415,6 @@ final class NetworkSnapshotTests: XCTestCase {
                     tcpState: SocketEntry.tcpEstablished, pid: pid, effectivePid: 0, uid: 501)
     }
 
-    /// Beyond the processes' records, a reading reads the owners it has not met and the lines
-    /// their apps can come from, not the table, and an owner it knows that still runs the same
-    /// program is not read again.
     @MainActor
     func testAReadingReadsOnlyNewOwnersAndTheirLines() async throws {
         let me = getpid()
@@ -449,9 +433,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(world.readPids.sorted(), [me, 9_000_002], "a known owner still running the same program is not read again")
     }
 
-    /// Two owners open connections in one reading, and every process in their lines exits as
-    /// soon as the first signature is read. Their lines were read with the table, so both
-    /// still reach their apps.
     @MainActor
     func testOwnersKeepTheirLinesWhenTheyExitWhileTheReadingResolvesThem() async throws {
         let line = [
@@ -469,8 +450,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(owners[9_000_021]?.app?.name, "Zoom")
     }
 
-    /// A helper's parent exits as the helper is read. The parent was running when the reading
-    /// began, so the helper still reaches the app above it.
     @MainActor
     func testAHelperWhoseParentExitsAsItIsReadKeepsItsApp() async throws {
         let world = World([
@@ -486,9 +465,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(owner.app?.name, "Slack")
     }
 
-    /// A known owner that has started another program opens a connection in the reading that
-    /// meets a new owner, and exits once the reading has read processes. It is read with the
-    /// new owner, with the table, so the program it started names it.
     @MainActor
     func testAnOwnerThatStartedAnotherProgramIsReadWithTheTable() async throws {
         let me = getpid()
@@ -506,7 +482,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(observer.snapshot?.connections.first { $0.connection.localPort == 40001 }?.owner.path, path)
     }
 
-    /// A process the kernel will not report on is not taken for one that exited.
     @MainActor
     func testAnOwnerTheKernelWillNotReadIsUnknownNotExited() async throws {
         let world = World([], unreadable: true)
@@ -516,8 +491,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(observer.snapshot?.connections.first?.owner, .unknown)
     }
 
-    /// Readings never overlap: one asked for while another runs waits for it, and however many
-    /// are asked for, one more runs after it, so the older table is folded first.
     @MainActor
     func testReadingsAskedForWhileOneRunsMakeOneMoreAfterIt() async throws {
         let database = try AppDatabase.inMemory()

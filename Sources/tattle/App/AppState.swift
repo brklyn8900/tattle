@@ -33,7 +33,6 @@ final class AppState {
     var panelSample: ResourceSample { panelIsShowing ? sampler.sample : heldSample }
     var panelNetworkSnapshot: NetworkSnapshot? { panelIsShowing ? network.snapshot : heldNetworkSnapshot }
 
-    /// `socketTable` is what the network readings read; tests pass their own.
     init(database: AppDatabase, socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() }) throws {
         rules = RuleStore(database: database)
         connections = ConnectionStore(database: database)

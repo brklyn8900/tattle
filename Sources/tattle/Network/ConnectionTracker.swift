@@ -156,15 +156,12 @@ struct ConnectionTracker: Sendable {
 
     var open: [Connection] { live.values.sorted { $0.firstSeen > $1.firstSeen } }
 
-    /// A socket the tracker takes for a connection: its key and scope, and whether the
-    /// connection opens with this reading, which it does when it is not live yet.
     private func connection(_ entry: SocketEntry) -> (key: String, scope: Connection.Scope, opens: Bool)? {
         guard let scope = entry.connectionScope else { return nil }
         let key = Connection.key(entry)
         return (key, scope, live[key] == nil)
     }
 
-    /// The pids whose connections `update` would open from `entries`.
     func openingPids(_ entries: [SocketEntry]) -> Set<Int32> {
         Set(entries.compactMap { entry in connection(entry)?.opens == true ? entry.pid : nil })
     }

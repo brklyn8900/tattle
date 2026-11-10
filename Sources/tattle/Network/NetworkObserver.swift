@@ -35,7 +35,6 @@ final class NetworkObserver {
     private var task: Task<Void, Never>?
     private var sniffer: Sniffer?
     private var isPolling = false
-    /// A reading was asked for while one was running.
     private var pollRequested = false
     private var promptPollScheduled = false
     private let processRecords: @Sendable () -> ProcessRecords?
@@ -46,8 +45,6 @@ final class NetworkObserver {
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
 
-    /// `socketTable`, `processRecords` and `signature` are what a reading asks the system; tests
-    /// pass their own.
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
          socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
          processRecords: @escaping @Sendable () -> ProcessRecords? = { ProcessTable.records() },
@@ -240,8 +237,6 @@ final class NetworkObserver {
                 let entries = try socketTable()
                 let opened = tracker.openingPids(entries)
                 guard !opened.isEmpty else { return (entries, [], ProcessLines()) }
-                // The records are taken before anything else, then the owners to resolve are
-                // decided: ones not met yet, or that have started another program.
                 let records = processRecords()
                 let unresolved = ConnectionOwner.unresolved(opened: opened, known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
                 return (entries, unresolved, records?.lines(unresolved))
@@ -254,8 +249,6 @@ final class NetworkObserver {
     }
 
     /// Takes one reading of the table into the tracker, the history and the snapshot.
-    /// `unresolved` are the pids whose owners the reading has to resolve, and `lines` what was
-    /// read of them with the table, nil when the kernel would not list processes.
     private func fold(entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines?, now: Date) async {
         let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 

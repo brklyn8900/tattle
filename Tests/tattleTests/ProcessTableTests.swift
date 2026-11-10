@@ -115,7 +115,6 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(records.lines([Int32.max]), ProcessLines(), "no such process")
     }
 
-    /// A helper under its app, and a service launchd started that an app answers for.
     private let lineTable: [Int32: ProcessEntry] = {
         func entry(_ pid: Int32, _ parent: Int32) -> ProcessEntry {
             ProcessEntry(pid: pid, parentPid: parent, uid: 501, name: "p\(pid)", path: "/x/p\(pid)", started: .distantPast)
@@ -123,8 +122,6 @@ final class ProcessTableTests: XCTestCase {
         return [30: entry(30, 20), 20: entry(20, 1), 40: entry(40, 1), 50: entry(50, 1), 60: entry(60, 1)]
     }()
 
-    /// The owners asked about are read before their lines: one may be exiting, and its record
-    /// alone names it only by the kernel's name, cut at 16 characters.
     func testOwnersAreReadBeforeTheirLines() {
         var table: [Int32: ProcessEntry] = [:]
         for owner: Int32 in [10, 20] {
@@ -153,7 +150,6 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(reads.sorted(), [20, 30, 40, 50], "each process once")
     }
 
-    /// A child not yet waited for stays in the table as a zombie once it exits.
     func testAZombieReadsAsExited() throws {
         var pid: pid_t = 0
         var argv: [UnsafeMutablePointer<CChar>?] = [strdup("/usr/bin/true"), nil]

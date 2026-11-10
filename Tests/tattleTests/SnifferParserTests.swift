@@ -330,7 +330,6 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertNil(DNS.parseReply(loop[...]))
     }
 
-    /// A record of 4 or 16 address bytes is an A or an AAAA; an alias is a CNAME to a name.
     private enum Record {
         case address(String, [UInt8])
         case alias(String, String)
@@ -340,7 +339,7 @@ final class SnifferParserTests: XCTestCase {
     /// already in the message ends in a pointer to it.
     private static func dnsReply(questions: [String], answers: [Record]) -> [UInt8] {
         var bytes: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, UInt8(questions.count), UInt8(answers.count >> 8), UInt8(answers.count & 0xff), 0, 0, 0, 0]
-        var offsets: [String: Int] = [:]  // where each suffix already written starts
+        var offsets: [String: Int] = [:]
         func name(_ text: String) {
             let labels = text.split(separator: ".")
             for i in labels.indices {
@@ -375,8 +374,6 @@ final class SnifferParserTests: XCTestCase {
         return bytes
     }
 
-    /// A resolver's reply carries the one question it answers, and RFC 9619 makes more than
-    /// one a malformed message. Each further question was a name to walk that nothing used.
     func testDNSRefusesAReplyWithMoreThanOneQuestion() {
         let answer = Record.address("www.example.com", [192, 0, 2, 1])
         let one = Self.dnsReply(questions: ["www.example.com"], answers: [answer])

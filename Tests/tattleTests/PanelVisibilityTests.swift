@@ -2,8 +2,6 @@ import Observation
 import XCTest
 @testable import tattle
 
-/// The panel's views stay alive when it closes, and the sampler and the network readings keep
-/// running for the menu bar label and the history. These hold what a closed panel's views see.
 @MainActor
 final class PanelVisibilityTests: XCTestCase {
     private final class Flag: @unchecked Sendable { var isSet = false }
