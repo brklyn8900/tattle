@@ -204,9 +204,27 @@ Preconditions:
   name or a reason.
 - The sniffer's DNS fallback names a connection from a UDP DNS reply it captured for
   that address in the last hour (the newest 4096 answers at most), if one of the Mac's resolvers sent it to this Mac and the
-  address's record is for the question name or a CNAME target reached from it. `connect` looks example.com up over TCP so the fallback
+  address's record is for the question name or a CNAME target reached from it. A reply with
+  more than one question, a name past 255 bytes, or more than 1,024 labels and pointers to
+  walk names nothing. `connect` looks example.com up over TCP so the fallback
   cannot name the garbage and silent connections; looking it up any other way first (a
   browser, `curl`, `nc example.com`) turns their outcome into `dns`.
+- DNS replies bounded, proven 2026-11-10 on the development Mac with the broker, dev copy at
+  `64da45c`, run `2026-11-10T163829`: `nc` to example.com shows `Name from the HTTP request`,
+  and with no traffic made for it an `ssh` to `140.82.113.3:22` was logged `notHandshake` and
+  kept as `github.com | dns`. It closed in 0.1 s, so the panel never showed it. A refused reply
+  cannot be sent to the Mac on demand: the refusals rest on
+  `testDNSRefusesAReplyWithMoreThanOneQuestion`, `testDNSRefusesANameLongerThan255Bytes` and
+  `testDNSRefusesAReplyThatWalksTooManyLabels`, full-sized replies on
+  `testDNSReadsFullRepliesWithCompressedNames`. Parse times on testmac, release build, median of
+  7 alternating runs a side against `6036ba4`: the fuzz review's 121-question reply 2.45 to
+  0.0001 ms; 99 answers pointing at one 127-label name 1.26 to 0.095 ms; 99 answers pointing at
+  one 255-byte name of four labels 0.26 ms on both, since the bound counts labels and pointers,
+  not bytes;
+  88 A records in 1,462 bytes 0.18 ms on both; the 63-byte reply 4.7 µs on both (15 runs a
+  side). The fuzz review's 20 frames from the resolver through `FlowNamer` under ASan: 246 to
+  0.11 ms, against 0.08 ms from another host. Scripts, inputs and runs in the chat
+  `2026-11-10--fix-13-dns-name-bound--ea8fcbfb`, `artifacts/2026-11-10-dns-bound/`.
 - `outcome ... arrived with no live connection` debug lines are normal: the sniffer often
   names a flow before the socket table shows it.
 - The history database proven 2026-11-10 on the development Mac with the broker. At `1233d86`,
