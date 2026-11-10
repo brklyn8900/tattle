@@ -130,6 +130,13 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(ProcessControl.whyNoQuit(uid: 65), "Runs as _mdnsresponder, so Tattle cannot quit it")
     }
 
+    func testOnlyAnAppGetsTheRegularQuit() {
+        XCTAssertTrue(ProcessControl.quitsAsApp(bundle: "/Applications/Slack.app"))
+        XCTAssertFalse(ProcessControl.quitsAsApp(bundle: "/opt/homebrew/bin/node"), "a command-line process Launch Services registered")
+        XCTAssertFalse(ProcessControl.quitsAsApp(bundle: "/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app"))
+        XCTAssertFalse(ProcessControl.quitsAsApp(bundle: nil))
+    }
+
     func testAttributionAndRollup() {
         let snapshot = ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, runningApp: running, takenAt: epoch)
         XCTAssertEqual(snapshot.items.count, machine.count)
