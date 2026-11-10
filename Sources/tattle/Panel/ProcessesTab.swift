@@ -7,7 +7,17 @@ struct ProcessesTab: View {
     var body: some View {
         Group {
             if let snapshot = state.processes.snapshot {
-                ProcessesList(snapshot: snapshot, sort: $sort, state: state)
+                VStack(alignment: .leading, spacing: 0) {
+                    // A reading that failed leaves the last one on screen.
+                    if let error = state.processes.error {
+                        Text("The processes could not be read, so this list is from \(snapshot.takenAt.formatted(date: .omitted, time: .standard)). \(error)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                    }
+                    ProcessesList(snapshot: snapshot, sort: $sort, state: state)
+                }
             } else if let error = state.processes.error {
                 Text(error).foregroundStyle(.secondary)
             } else {
