@@ -301,6 +301,7 @@ final class NetworkSnapshotTests: XCTestCase {
         private var sockets: [SocketEntry] = []
         private var reads: [Int32] = []
         private var endingWhenTaken: [Int32: [Int32]] = [:]
+        private var endingAfterRead: [Int32] = []
 
         /// `unreadable`: the kernel will not report on processes.
         init(_ processes: [ProcessEntry], unreadable: Bool = false) {
@@ -308,8 +309,22 @@ final class NetworkSnapshotTests: XCTestCase {
             self.unreadable = unreadable
         }
 
+        /// Starts these processes, or has these pids run these programs now.
+        func start(_ entries: [ProcessEntry]) { lock.withLock { entries.forEach { processes[$0.pid] = $0 } } }
+
         /// Ends `pids` as `pid`'s record is taken.
         func endWhenTaken(_ pid: Int32, ending pids: [Int32]) { lock.withLock { endingWhenTaken[pid] = pids } }
+
+        /// Ends `pids` once a reading has next read processes.
+        func endAfterNextRead(_ pids: [Int32]) { lock.withLock { endingAfterRead = pids } }
+
+        /// A reading has read processes.
+        func processesRead() {
+            lock.withLock {
+                endingAfterRead.forEach { processes[$0] = nil }
+                endingAfterRead = []
+            }
+        }
 
         var table: [SocketEntry] {
             get { lock.withLock { sockets } }
@@ -349,7 +364,10 @@ final class NetworkSnapshotTests: XCTestCase {
         return NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
                                settings: try AppSettings(store: SettingsStore(database: database)),
                                socketTable: { world.table },
-                               processLines: { ProcessTable.lines(of: $0, table: world.records, parent: \.parentPid, entry: world.entry, responsible: { _ in nil }) },
+                               processLines: { pids in
+                                   defer { world.processesRead() }
+                                   return ProcessTable.lines(of: pids, table: world.records, parent: \.parentPid, entry: world.entry, responsible: { _ in nil })
+                               },
                                signature: signature)
     }
 
@@ -416,6 +434,26 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(owner.app?.name, "Slack")
     }
 
+    /// A known owner that has started another program opens a connection in the reading that
+    /// meets a new owner, and exits once the reading has read processes. It is read with the
+    /// new owner, with the table, so the program it started names it.
+    @MainActor
+    func testAnOwnerThatStartedAnotherProgramIsReadWithTheTable() async throws {
+        let me = getpid()
+        let path = try XCTUnwrap(ProcessTable.pidPath(me))
+        let world = World([entry(me, 1, "/x/before-exec")])
+        let observer = try observer(in: world)
+        world.table = [socket(me, localPort: 40000)]
+        await observer.read()
+        XCTAssertEqual(observer.snapshot?.connections.first?.owner.path, "/x/before-exec")
+
+        world.start([entry(me, 1, path), entry(9_000_051, 1, "/x/newcomer")])
+        world.endAfterNextRead([me])
+        world.table = [socket(me, localPort: 40000), socket(me, localPort: 40001), socket(9_000_051, localPort: 40002)]
+        await observer.read()
+        XCTAssertEqual(observer.snapshot?.connections.first { $0.connection.localPort == 40001 }?.owner.path, path)
+    }
+
     /// A process the kernel will not report on is not taken for one that exited.
     @MainActor
     func testAnOwnerTheKernelWillNotReadIsUnknownNotExited() async throws {
@@ -437,7 +475,7 @@ final class NetworkSnapshotTests: XCTestCase {
         let now = Date()
         let socket = SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: 40000, remoteAddress: "17.1.1.1", remotePort: 443,
                                  tcpState: SocketEntry.tcpEstablished, pid: getpid(), effectivePid: 0, uid: 501)
-        let reading = Task { await observer.fold(entries: [socket], lines: ProcessLines(), now: now) }
+        let reading = Task { await observer.fold(entries: [socket], unresolved: [getpid()], lines: ProcessLines(), now: now) }
         await Task.yield()
         XCTAssertNil(observer.snapshot, "the reading is waiting for the owner")
         observer.confirmOutbound(FlowKey(proto: .tcp, localPort: 40000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443), openedAt: now)

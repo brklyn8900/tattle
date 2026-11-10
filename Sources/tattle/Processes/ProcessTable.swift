@@ -140,13 +140,6 @@ struct ProcessLines: Equatable, Sendable {
     /// The pids asked about when the kernel would not report on processes: none is known to
     /// have exited.
     var unreadable: Set<Int32> = []
-
-    /// Adds what a later reading found, keeping what this one already had.
-    mutating func add(_ other: ProcessLines) {
-        entries.merge(other.entries) { mine, _ in mine }
-        responsible.merge(other.responsible) { mine, _ in mine }
-        unreadable.formUnion(other.unreadable)
-    }
 }
 
 /// Reads every process without privileges. The list, parent, user and start time come

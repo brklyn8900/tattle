@@ -226,45 +226,44 @@ final class NetworkObserver {
         }
     }
 
-    /// Reads the socket table and, in the same moment, the lines of the owners not met yet: a
+    /// Reads the socket table and, in the same moment, the lines of the owners to resolve: a
     /// process can exit within milliseconds of opening a connection, so its line is read before
     /// the main actor or any signature read can hold it up.
     func read() async {
         let now = Date()
-        let known = Set(owners.keys)
-        let (socketTable, processLines) = (socketTable, processLines)
-        let reading: (entries: [SocketEntry], lines: ProcessLines)
+        // Readings never overlap, so the tracker and the owners are as the fold will find them.
+        let (socketTable, processLines, owners, live) = (socketTable, processLines, owners, tracker.live)
+        let reading: (entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines)
         do {
             reading = try await Task.detached(priority: .utility) {
                 let entries = try socketTable()
-                let new = Set(entries.filter { $0.connectionScope != nil }.map(\.pid)).subtracting(known)
-                return (entries, new.isEmpty ? ProcessLines() : processLines(new))
+                // The owners of the connections the tracker will take as opened that are not met
+                // yet, or have started another program.
+                let opened = Set(entries.filter { $0.connectionScope != nil && live[Connection.key($0)] == nil }.map(\.pid))
+                let unresolved = ConnectionOwner.unresolved(opened: opened, known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
+                return (entries, unresolved, unresolved.isEmpty ? ProcessLines() : processLines(unresolved))
             }.value
         } catch {
             self.error = String(describing: error)
             return
         }
-        await fold(entries: reading.entries, lines: reading.lines, now: now)
+        await fold(entries: reading.entries, unresolved: reading.unresolved, lines: reading.lines, now: now)
     }
 
-    /// Takes one reading of the table into the tracker, the history and the snapshot. `lines`
-    /// holds what was read of new owners with the table.
-    func fold(entries: [SocketEntry], lines: ProcessLines, now: Date) async {
+    /// Takes one reading of the table into the tracker, the history and the snapshot.
+    /// `unresolved` are the pids whose owners the reading has to resolve, and `lines` what was
+    /// read of them with the table.
+    func fold(entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines, now: Date) async {
         let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 
         // Owners are resolved once per pid and executable, off the main thread, from the lines
-        // read with the table. A known pid that has started another program is read again
-        // here. A pid whose connections all closed is forgotten so a reused pid is resolved
-        // afresh.
-        let unknown = ConnectionOwner.unresolved(opened: Set(changes.opened.map(\.pid)), known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
-        if !unknown.isEmpty {
-            let again = unknown.filter { owners[$0] != nil && lines.entries[$0] == nil }
-            let (signature, processLines) = (signature, processLines)
+        // read with the table. A pid whose connections all closed is forgotten so a reused pid
+        // is resolved afresh.
+        if !unresolved.isEmpty {
+            let signature = signature
             let resolved = await Task.detached(priority: .utility) { () -> [Int32: ConnectionOwner] in
-                var lines = lines
-                if !again.isEmpty { lines.add(processLines(again)) }
                 var result: [Int32: ConnectionOwner] = [:]
-                for pid in unknown {
+                for pid in unresolved {
                     result[pid] = lines.unreadable.contains(pid) ? .unknown : ConnectionOwner.resolve(
                         pid: pid, in: lines.entries,
                         runningApp: { NSRunningApplication(processIdentifier: $0)?.bundleURL?.path },

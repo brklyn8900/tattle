@@ -25,13 +25,13 @@ final class PanelVisibilityTests: XCTestCase {
 
     func testNetworkReadingsDoNotReachAClosedPanel() async throws {
         let state = try AppState(database: try AppDatabase.inMemory())
-        await state.network.fold(entries: [], lines: ProcessLines(), now: t0)
+        await state.network.fold(entries: [], unresolved: [], lines: ProcessLines(), now: t0)
         XCTAssertEqual(state.panelNetworkSnapshot?.takenAt, t0, "an open panel sees the latest reading")
 
         state.panelIsShowing = false
         let changed = watching { _ = state.panelNetworkSnapshot }
         let later = t0.addingTimeInterval(2)
-        await state.network.fold(entries: [], lines: ProcessLines(), now: later)
+        await state.network.fold(entries: [], unresolved: [], lines: ProcessLines(), now: later)
         XCTAssertFalse(changed.isSet, "a reading must not redraw a closed panel")
         XCTAssertEqual(state.panelNetworkSnapshot?.takenAt, t0)
         XCTAssertEqual(state.network.snapshot?.takenAt, later, "the readings themselves go on")
