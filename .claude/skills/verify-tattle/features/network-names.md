@@ -206,10 +206,12 @@ Preconditions:
   with the broker, dev copy at `9b482ba`, run `2026-11-09T234833`: `Herdr Core to example.com`,
   `Process nc (pid 18853)`, `App Herdr Core`, `Signed by Apple`, `App signed by Herdr, Inc.`, and
   in history `nc | example.com | http | Herdr Core | Apple | Herdr, Inc.`; the same at `ba0432b`,
-  run `2026-11-09T192354`. A 120-second Time Profiler trace of `9b482ba` with the panel never
-  opened, 30 new connections: no `ProcessTable.list`, `ProcessTable.lines` 43 ms in all, and
-  `URL(fileURLWithPath:)` only under `AppBundle.name`, 1 ms. Its six `pid <n>` rows were all `ssh`
-  to testmac's port 22. The short-lived recipe above, five alternating 120-second windows per side:
+  run `2026-11-09T192354`. A 120-second Time Profiler trace of `7d89bed` with the panel never
+  opened, 26 new connections, summary in the development Mac's
+  `build/verify/runs/2026-11-10T004954-trace/`: no `ProcessTable.list`; `ProcessTable.records`
+  46 ms in all, 34 of them the kernel's table; `ProcessTable.lines` 3 ms; `URL(fileURLWithPath:)`
+  only under `AppBundle.name`, 2 ms. Its one `pid <n>` row was `ssh` to testmac's port 22, as were
+  all six in the trace of `9b482ba`. The short-lived recipe above, five alternating 120-second windows per side:
   driven connections with no owner 1 of 150 at `7744536` and 0 of 149 at `ba0432b` (one `nc`
   exited with an error and left no row); all new rows with no owner 10 of 303 and 9 of 273,
   the rest TCP to the router's port 53, one per window as the driver's `dig +tcp` is, and to
@@ -217,18 +219,26 @@ Preconditions:
   about ones that exit sooner.
 - Owners of processes that exit within a reading, simulated on testmac (debug build, not the app):
   a helper connects to a loopback listener and exits 26 to 42 ms later; 20 ms after the accept
-  one reading is taken, with the helper's socket rewritten to a private address. 2026-11-10,
-  1,440 runs per side in twelve rounds alternating which side ran first: the helper read as
-  `pid <n>` 192 times at `7744536` and 162 at `9b482ba`, 9 to 26 and 6 to 24 a round; the tip's
-  count was lower in 9 rounds of 12, by 2.5 a round on average (standard deviation 5.3), which
-  is within the noise. Main has no reading seam, so its side ran the same test with main's
-  reading (the socket table and the whole process list in one task, then `fold`) in place of
-  `poll()`. 2026-11-09, 720 runs per side in rotating order: 112 at `7744536`, 126 at `b6c21c7`
-  and 174 at `ba0432b`, which read owners after the table. Whether a side ran first or last in a
-  round moved its count more than which side it was: two fixed-order sets of 480 gave 55 and 58
-  at `7744536`, 68 (run second) and 44 (run first) at `b6c21c7`. The simulation is `QuickExitSimulationTests`,
-  which runs only when `TATTLE_SIM_HELPER` names the helper built from `Tests/quick-exit-helper.c`;
-  compare two revisions in copies of each (`git archive`), alternating which runs first.
+  one reading is taken, with the helper's socket rewritten to a private address. The simulation
+  is `QuickExitSimulationTests`, which runs only when `TATTLE_SIM_HELPER` names the helper built
+  from `Tests/quick-exit-helper.c`; compare two revisions in copies of each (`git archive`),
+  alternating which runs first. Main has no reading seam, so its side runs the same test with
+  main's reading (the socket table and the whole process list in one task, then `fold`) in place
+  of `poll()`. The reading by owner is not detectably worse than main's sweep. The runs, newest
+  first, each against `7744536`:
+  - 2026-11-10, `7d89bed`, 1,440 runs per side in twelve rounds alternating which ran first,
+    counting apart the owners named without a path (read after the helper exited, by the
+    kernel's name alone): `pid <n>` 228 and 226, a paired difference of 0.17 a round (standard
+    deviation 5.9, so about −3.6 to +3.9 a round of 120); named without a path 42 and 138; no
+    `unknown process`, missing row or failed helper.
+  - 2026-11-10, `9b482ba`, a review's rerun, the same design, an owner named without a path
+    counted as named: `pid <n>` 214 and 219, −0.4 a round (standard deviation 7.3).
+  - 2026-11-10, `9b482ba`, the same design and counting: `pid <n>` 162 and 192, −2.5 a round
+    (standard deviation 5.3).
+  - 2026-11-09, 720 runs per side in rotating order: 112 at `7744536`, 126 at `b6c21c7` and 174
+    at `ba0432b`, which read owners after the table. Whether a side ran first or last in a
+    round moved its count more than which side it was: two fixed-order sets of 480 gave 55 and
+    58 at `7744536`, 68 (run second) and 44 (run first) at `b6c21c7`.
 - A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A home folder (`~`, `~user`) or a relative
