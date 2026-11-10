@@ -239,6 +239,22 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertEqual(sni, "example.com")
     }
 
+    /// The name is read from inside the extensions block, whatever length the extension claims.
+    func testAServerNamePastTheExtensionsBlockIsNotRead() {
+        let name = Array("evil.example".utf8)
+        let entry: [UInt8] = [0, 0, UInt8(name.count)] + name
+        let list: [UInt8] = [0, UInt8(entry.count)] + entry
+        let ext: [UInt8] = [0, 0, 0, UInt8(list.count)] + list
+        func hello(extensionsLength: Int) -> [UInt8] {
+            let body: [UInt8] = [3, 3] + [UInt8](repeating: 0xab, count: 32) + [0, 0, 2, 0x13, 0x01, 1, 0] + [0, UInt8(extensionsLength)] + ext
+            return [1, 0, 0, UInt8(body.count)] + body
+        }
+        guard case .hello(let whole) = TLS.clientHello(hello(extensionsLength: ext.count)),
+              case .hello(let cut) = TLS.clientHello(hello(extensionsLength: 4)) else { return XCTFail("both are ClientHellos") }
+        XCTAssertEqual(whole, "evil.example")
+        XCTAssertNil(cut, "the block ends after the extension's header")
+    }
+
     func testNotTLS() {
         guard case .notClientHello = TLS.clientHelloFromRecords(Array("GET / HTTP/1.1\r\n".utf8)) else { return XCTFail() }
         guard case .needMore = TLS.clientHelloFromRecords([]) else { return XCTFail() }

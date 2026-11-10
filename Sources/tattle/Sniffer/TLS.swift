@@ -27,7 +27,7 @@ enum TLS {
                 let type = try r.u16()
                 let length = Int(try r.u16())
                 if type == 0 {
-                    var e = ByteReader(data, from: r.pos, to: r.pos + length)
+                    var e = ByteReader(data, from: r.pos, to: min(r.end, r.pos + length))
                     try e.skip(2)  // list length
                     let nameType = try e.u8()
                     let nameLength = Int(try e.u16())
