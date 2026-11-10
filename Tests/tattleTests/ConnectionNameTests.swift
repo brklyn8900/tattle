@@ -258,6 +258,18 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .hidden, "the same user key was replaced")
     }
 
+    @MainActor
+    func testALookupThatFailedIsAskedAgain() throws {
+        let database = try AppDatabase.inMemory()
+        let rules = RuleStore(database: database)
+        let observer = try observer(rules: rules, database: database)
+        try rules.save(Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin))
+        try database.writer.write { try $0.execute(sql: "ALTER TABLE rule RENAME TO away") }
+        XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .destination)
+        try database.writer.write { try $0.execute(sql: "ALTER TABLE away RENAME TO rule") }
+        XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay)
+    }
+
     func testPromptFactsOfAConnectionCarryNoLoginOrCertificateName() {
         let login = String(cString: getpwuid(getuid()).pointee.pw_name)
         var mine = connection("17.253.144.10")

@@ -169,8 +169,15 @@ final class NetworkObserver {
         if let kind = kinds[name] { return kind }
         // Only Tattle's own and the user's rules say what a name is. A model's answer is free
         // text, and a confirmed one outranks the seed in a plain lookup.
-        let category = (try? rules.candidates(kind: .host, key: name))?
-            .first { Self.kindSources.contains($0.source) }?.category
+        let candidates: [Rule]
+        do {
+            candidates = try rules.candidates(kind: .host, key: name)
+        } catch {
+            // Not remembered: a lookup that failed says nothing about the name.
+            Log.app.error("rule lookup for a connection's name failed: \(error, privacy: .public)")
+            return .destination
+        }
+        let category = candidates.first { Self.kindSources.contains($0.source) }?.category
         let kind = ConnectionName.kind(forCategory: category)
         kinds[name] = kind
         return kind
