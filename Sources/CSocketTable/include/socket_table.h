@@ -6,7 +6,7 @@
 //
 // The sysctl returns one xinpgen header, then a sequence of records each starting with a
 // length and a kind (XSO_*), 8-byte aligned. A socket is described by consecutive records:
-// XSO_SOCKET, XSO_RCVBUF, XSO_SNDBUF, XSO_STATS, XSO_INPCB and, for TCP, XSO_TCPCB.
+// XSO_INPCB, XSO_SOCKET, XSO_RCVBUF, XSO_SNDBUF, XSO_STATS and, for TCP, XSO_TCPCB.
 
 #ifndef TATTLE_SOCKET_TABLE_H
 #define TATTLE_SOCKET_TABLE_H
