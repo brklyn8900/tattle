@@ -135,11 +135,19 @@ struct ProcessUsage: Equatable, Sendable {
 }
 
 /// What the owners of new connections are named from, read with the socket table
-/// (`ProcessTable.lines(of:)`).
+/// (`ProcessRecords`).
 struct ProcessLines: Equatable, Sendable {
     var entries: [Int32: ProcessEntry] = [:]
     /// The process macOS holds responsible for an entry launchd started, when it is another.
     var responsible: [Int32: Int32] = [:]
+}
+
+/// One reading of every process's kernel record, taken with the socket table, through which
+/// new owners' lines are then walked (`ProcessTable.records()`).
+struct ProcessRecords {
+    /// The lines of these pids, walked through the records
+    /// (`ProcessTable.lines(of:in:parent:entry:responsible:)`).
+    let lines: (Set<Int32>) -> ProcessLines
 }
 
 /// Reads every process without privileges. The list, parent, user and start time come
@@ -182,12 +190,12 @@ enum ProcessTable {
         // One argmax-sized scratch buffer for the command lines: allocating a
         // megabyte per process made a sweep of 1,600 take over a second.
         var scratch: [UInt8] = []
-        return try records().compactMap { entry($0, scratch: &scratch, signature: signature) }
+        return try kernelRecords().compactMap { entry($0, scratch: &scratch, signature: signature) }
     }
 
     /// The kernel's record of every process, in one read: pid, parent, user, start time and
     /// command name, with no path or command line.
-    private static func records() throws -> [kinfo_proc] {
+    private static func kernelRecords() throws -> [kinfo_proc] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         let stride = MemoryLayout<kinfo_proc>.stride
         // Processes start between the size query and the read, so ask for room to spare
@@ -207,36 +215,36 @@ enum ProcessTable {
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
-    /// The lines of `pids` as the kernel has them now, named without signatures; nil when the
-    /// kernel would not list processes.
-    static func lines(of pids: Set<Int32>) -> ProcessLines? {
-        var scratch: [UInt8] = []
-        return lines(of: pids, table: {
-            var byPid: [Int32: kinfo_proc] = [:]
-            for record in try records() where Int32(record.kp_proc.p_stat) != SZOMB { byPid[record.kp_proc.p_pid] = record }
-            return byPid
-        }, parent: { $0.kp_eproc.e_ppid }, entry: { entry($0, scratch: &scratch, signature: { _ in nil }) },
-        responsible: ResponsibleProcess.pid(for:))
+    /// Every process's kernel record now, whose lines are named without signatures; nil when
+    /// the kernel would not list processes.
+    static func records() -> ProcessRecords? {
+        let records: [kinfo_proc]
+        do {
+            records = try kernelRecords()
+        } catch {
+            Log.app.error("the process table could not be read: \(error, privacy: .public)")
+            return nil
+        }
+        // Zombies are left out, as from the list.
+        var byPid: [Int32: kinfo_proc] = [:]
+        for record in records where Int32(record.kp_proc.p_stat) != SZOMB { byPid[record.kp_proc.p_pid] = record }
+        return ProcessRecords { pids in
+            var scratch: [UInt8] = []
+            return lines(of: pids, in: byPid, parent: { $0.kp_eproc.e_ppid }, entry: { entry($0, scratch: &scratch, signature: { _ in nil }) },
+                         responsible: ResponsibleProcess.pid(for:))
+        }
     }
 
     /// Each pid's line: the process, every ancestor up to the one launchd started, and for that
     /// one, the process macOS holds responsible for it. Which of them names the app depends on
     /// signatures read later (`ProcessSnapshot.app`), so the whole line is read. The lines are
-    /// walked through one reading of every process's record (`table`, by pid, with no zombies), as
-    /// the full list is, so a process that exits while they are read keeps its place on them; then
-    /// `entry` reads the rest of each process on a line. `table` throws when the kernel cannot be
-    /// asked, and there are no lines then.
+    /// walked through one reading of every process's record (`records`, by pid, with no
+    /// zombies), as the full list is, so a process that exits while they are read keeps its place
+    /// on them; then `entry` reads the rest of each process on a line.
     static func lines<Record>(
-        of pids: Set<Int32>, table: () throws -> [Int32: Record], parent: (Record) -> Int32,
+        of pids: Set<Int32>, in records: [Int32: Record], parent: (Record) -> Int32,
         entry: (Record) -> ProcessEntry?, responsible: (Int32) -> Int32?
-    ) -> ProcessLines? {
-        let records: [Int32: Record]
-        do {
-            records = try table()
-        } catch {
-            Log.app.error("the process table could not be read: \(error, privacy: .public)")
-            return nil
-        }
+    ) -> ProcessLines {
         var lines = ProcessLines()
         var walked: [Int32: Record] = [:]
         var pending = Array(pids)

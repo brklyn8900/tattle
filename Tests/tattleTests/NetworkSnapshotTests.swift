@@ -294,7 +294,6 @@ final class NetworkSnapshotTests: XCTestCase {
     /// resolves owners. Pids from 9,000,000 up are ones no process can have, so the real calls
     /// behind a reading find nothing of their own for them.
     private final class World: @unchecked Sendable {
-        struct Unreadable: Error {}
         private let lock = NSLock()
         private var processes: [Int32: ProcessEntry]
         private let unreadable: Bool
@@ -334,12 +333,17 @@ final class NetworkSnapshotTests: XCTestCase {
         /// Every process read beyond its record, in order, repeats included.
         var readPids: [Int32] { lock.withLock { reads } }
 
-        /// Every process's record, as the kernel lists them in one go.
-        func records() throws -> [Int32: ProcessEntry] {
-            try lock.withLock {
-                if unreadable { throw Unreadable() }
+        /// Every process's record, as the kernel lists them in one go; nil when it will not.
+        func records() -> ProcessRecords? {
+            let records: [Int32: ProcessEntry]? = lock.withLock {
+                if unreadable { return nil }
                 defer { for pid in processes.keys { endingWhenTaken[pid]?.forEach { processes[$0] = nil } } }
                 return processes
+            }
+            guard let records else { return nil }
+            return ProcessRecords { pids in
+                defer { self.processesRead() }
+                return ProcessTable.lines(of: pids, in: records, parent: \.parentPid, entry: self.entry, responsible: { _ in nil })
             }
         }
 
@@ -364,10 +368,7 @@ final class NetworkSnapshotTests: XCTestCase {
         return NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
                                settings: try AppSettings(store: SettingsStore(database: database)),
                                socketTable: { world.table },
-                               processLines: { pids in
-                                   defer { world.processesRead() }
-                                   return ProcessTable.lines(of: pids, table: world.records, parent: \.parentPid, entry: world.entry, responsible: { _ in nil })
-                               },
+                               processRecords: { world.records() },
                                signature: signature)
     }
 

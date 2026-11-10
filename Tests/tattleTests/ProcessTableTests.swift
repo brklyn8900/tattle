@@ -103,7 +103,8 @@ final class ProcessTableTests: XCTestCase {
     }
 
     func testALineReadsAsTheListHasIt() throws {
-        let lines = try XCTUnwrap(ProcessTable.lines(of: [getpid(), 0]))
+        let records = try XCTUnwrap(ProcessTable.records())
+        let lines = records.lines([getpid(), 0])
         let listed = Dictionary(try ProcessTable.list(signature: { _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         XCTAssertNotNil(lines.entries[getppid()], "the parent is read with the process")
         XCTAssertTrue(lines.entries.values.contains { $0.parentPid == 1 }, "and every ancestor up to the one launchd started")
@@ -111,7 +112,7 @@ final class ProcessTableTests: XCTestCase {
         for (pid, entry) in lines.entries {
             XCTAssertEqual(entry, listed[pid], "pid \(pid)")
         }
-        XCTAssertEqual(ProcessTable.lines(of: [Int32.max]), ProcessLines(), "no such process")
+        XCTAssertEqual(records.lines([Int32.max]), ProcessLines(), "no such process")
     }
 
     /// A helper under its app, and a service launchd started that an app answers for.
@@ -133,7 +134,7 @@ final class ProcessTableTests: XCTestCase {
             }
         }
         var order: [Int32] = []
-        _ = ProcessTable.lines(of: [10, 20], table: { table }, parent: \.parentPid, entry: { found in
+        _ = ProcessTable.lines(of: [10, 20], in: table, parent: \.parentPid, entry: { found in
             order.append(found.pid)
             return found
         }, responsible: { _ in nil })
@@ -141,18 +142,15 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(Set(order.prefix(2)), [10, 20], "\(order)")
     }
 
-    func testALineFollowsParentsAndTheResponsibleProcess() throws {
+    func testALineFollowsParentsAndTheResponsibleProcess() {
         var reads: [Int32] = []
-        let lines = try XCTUnwrap(ProcessTable.lines(of: [30, 40, 20, 70], table: { lineTable }, parent: \.parentPid, entry: { found in
+        let lines = ProcessTable.lines(of: [30, 40, 20, 70], in: lineTable, parent: \.parentPid, entry: { found in
             reads.append(found.pid)
             return found
-        }, responsible: { $0 == 40 ? 50 : nil }))
+        }, responsible: { $0 == 40 ? 50 : nil })
         XCTAssertEqual(Set(lines.entries.keys), [20, 30, 40, 50], "not the bystander, nor a pid with no record")
         XCTAssertEqual(lines.responsible, [40: 50])
         XCTAssertEqual(reads.sorted(), [20, 30, 40, 50], "each process once")
-
-        XCTAssertNil(ProcessTable.lines(of: [30, 40], table: { () throws -> [Int32: ProcessEntry] in throw ProcessTable.ReadError.sysctl(errno: EINVAL) },
-                                        parent: \.parentPid, entry: { $0 }, responsible: { _ in nil }), "the kernel would not list processes")
     }
 
     /// A child not yet waited for stays in the table as a zombie once it exits.
@@ -166,7 +164,7 @@ final class ProcessTableTests: XCTestCase {
         while ProcessTable.commandName(pid) != nil, Date() < deadline { usleep(10_000) }
         XCTAssertEqual(kill(pid, 0), 0, "still in the table")
         XCTAssertNil(ProcessTable.commandName(pid))
-        XCTAssertEqual(ProcessTable.lines(of: [pid]), ProcessLines())
+        XCTAssertEqual(ProcessTable.records()?.lines([pid]), ProcessLines())
         XCTAssertFalse(try ProcessTable.list(signature: { _ in nil }).contains { $0.pid == pid })
     }
 
@@ -221,7 +219,7 @@ final class ProcessTableTests: XCTestCase {
             }
             XCTAssertEqual(spawned, 0)
             XCTAssertEqual(ProcessTable.arguments(pid: pid), argv, "\(path) \(argv)")
-            XCTAssertEqual(ProcessTable.lines(of: [pid])?.entries[pid]?.name, (path as NSString).lastPathComponent, "\(path) \(argv)")
+            XCTAssertEqual(ProcessTable.records()?.lines([pid]).entries[pid]?.name, (path as NSString).lastPathComponent, "\(path) \(argv)")
         }
     }
 

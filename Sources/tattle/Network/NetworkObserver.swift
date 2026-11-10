@@ -38,7 +38,7 @@ final class NetworkObserver {
     /// A reading was asked for while one was running.
     private var pollRequested = false
     private var promptPollScheduled = false
-    private let processLines: @Sendable (Set<Int32>) -> ProcessLines?
+    private let processRecords: @Sendable () -> ProcessRecords?
 
     /// Rule sources whose category may decide a connection's kind.
     private static let kindSources = SeedLoader.seedSources.union([.user])
@@ -46,17 +46,17 @@ final class NetworkObserver {
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
 
-    /// `socketTable`, `processLines` and `signature` are what a reading asks the system; tests
+    /// `socketTable`, `processRecords` and `signature` are what a reading asks the system; tests
     /// pass their own.
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
          socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
-         processLines: @escaping @Sendable (Set<Int32>) -> ProcessLines? = { ProcessTable.lines(of: $0) },
+         processRecords: @escaping @Sendable () -> ProcessRecords? = { ProcessTable.records() },
          signature: (@Sendable (String) -> CodeSignature?)? = nil) {
         self.store = store
         self.rules = rules
         self.settings = settings
         self.socketTable = socketTable
-        self.processLines = processLines
+        self.processRecords = processRecords
         let signatures = SignatureCache()
         self.signature = signature ?? { signatures.signature(at: $0) }
     }
@@ -233,16 +233,18 @@ final class NetworkObserver {
     private func read() async {
         let now = Date()
         // Readings never overlap, so the tracker and the owners are as the fold will find them.
-        let (socketTable, processLines, owners, tracker) = (socketTable, processLines, owners, tracker)
+        let (socketTable, processRecords, owners, tracker) = (socketTable, processRecords, owners, tracker)
         let reading: (entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines?)
         do {
             reading = try await Task.detached(priority: .utility) {
                 let entries = try socketTable()
-                // The owners of the connections the update will open that are not met yet, or
-                // have started another program.
                 let opened = tracker.openingPids(entries)
+                guard !opened.isEmpty else { return (entries, [], ProcessLines()) }
+                // The records are taken before anything else, then the owners to resolve are
+                // decided: ones not met yet, or that have started another program.
+                let records = processRecords()
                 let unresolved = ConnectionOwner.unresolved(opened: opened, known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
-                return (entries, unresolved, unresolved.isEmpty ? ProcessLines() : processLines(unresolved))
+                return (entries, unresolved, records?.lines(unresolved))
             }.value
         } catch {
             self.error = String(describing: error)
