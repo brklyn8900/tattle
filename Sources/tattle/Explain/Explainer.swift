@@ -44,7 +44,9 @@ final class Explainer {
     }
 
     /// Asks the model and stores its answer, unless nothing could tell a later item by this
-    /// key from this one: then the answer is returned with no id, for this view alone. Called
+    /// key from this one: then the answer is returned with no id, for this view alone. That is
+    /// code with no identity, and a host the model was not shown as it is: a private address
+    /// goes out redacted, and on another network it is another device. Called
     /// only from the explain button. Throws `RuleStoreError.alreadyConfirmed`, before any model
     /// call, when the user has confirmed the stored answer for the item: replacing it would
     /// need a rule editor.
@@ -53,10 +55,12 @@ final class Explainer {
         if let asked = request.identity { known = await stored(asked) }
         let identity = known ?? ""
         let key = Rule(kind: request.kind, match: .exact, pattern: request.key, purpose: "", source: .llm, identity: identity)
-        let isKept = !key.needsIdentity || known != nil
+        let redactor = makeRedactor()
+        let isShown = request.kind != .host || redactor.redact(request.key, as: Redactor.Context(request.kind)) == request.key
+        let isKept = isShown && (!key.needsIdentity || known != nil)
         if isKept, let kept = try store.confirmedRule(replacedBy: key) { throw RuleStoreError.alreadyConfirmed(kept.id!) }
         let provider = makeProvider(settings.providerCommand)
-        let prompt = Prompt.build(instructions: settings.promptInstructions, request: request, redactor: makeRedactor())
+        let prompt = Prompt.build(instructions: settings.promptInstructions, request: request, redactor: redactor)
         lastPrompt = prompt
         let output = try await provider.explain(prompt)
         let answer = try LLMAnswer.parse(output)

@@ -1041,15 +1041,22 @@ final class ExplainerTests: XCTestCase {
     }
 
     /// The sniffer never names a local-network destination, so an unnamed connection's key is
-    /// its address. The rule still keys on the address itself.
-    func testAnUnnamedConnectionsPrivateAddressDoesNotGoOutAsTheKey() async throws {
+    /// its address. The model is not shown it, and on another network it is another device, so
+    /// the answer is not kept.
+    func testAnUnnamedConnectionsPrivateAddressDoesNotGoOutAsTheKeyAndItsAnswerIsNotKept() async throws {
         let provider = FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#)
         let explainer = explainer(provider)
         for address in ["192.168.1.37", "fd12:3456::1"] {
             let rule = try await explainer.ask(ExplainRequest(kind: .host, key: address,
                                                               facts: [Fact(name: "Destination", value: address)]))
             XCTAssertEqual(rule.pattern, address)
+            XCTAssertNil(rule.id)
+            let found = try await explainer.lookup(ExplainRequest(kind: .host, key: address))
+            XCTAssertNil(found)
         }
+        let shown = try await explainer.ask(ExplainRequest(kind: .host, key: "17.253.144.10"))
+        XCTAssertNotNil(shown.id, "a public address goes out as it is, and its answer is kept")
+        provider.seen.prompts.removeLast()
         XCTAssertEqual(provider.seen.prompts.count, 2)
         for sent in provider.seen.prompts {
             XCTAssertTrue(sent.contains(#""item":{"key":"<private-ip>","kind":"host"}"#), sent)
