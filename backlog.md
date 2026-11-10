@@ -27,6 +27,27 @@
   `ConnectionOwner.unresolved` compares only the executable's path. It needs the pid to come
   round again while a connection of the earlier process is still listed. The process's start
   time (`ProcessEntry.started`) would tell the two apart.
+- Resolve owners in the reading's own task. The reading already holds the owners to resolve
+  and their lines, so `fold` could become synchronous: update, merge, record, publish. That
+  removes the second hop off the main actor and the reread of the tracker's copy of an opened
+  connection; an opening seen while owners resolve is still caught by `tracker.update`'s
+  `outboundSeen`.
+- `NetworkObserver.poll()` reruns itself by recursion, so under sustained traffic each
+  deferred reading nests another call. A loop around the reading would not.
+- Whether a known pid started another program is decided by real `proc_pidpath` and
+  `KERN_PROC_PID` calls (`ConnectionOwner.unresolved` in `NetworkObserver.read()`), so tests
+  steer it through the test process's own path, and the deleted-file branch has no test
+  through `poll()`. Inject `executable` and `commandName` with the process records.
+- The line walk (`ProcessTable.lines(of:in:parent:entry:responsible:)`) repeats
+  `ProcessSnapshot.app(of:)`'s rules for which processes an app can come from. A test over
+  randomized tables, resolving over the lines' entries and over the full table, would keep
+  them in step.
+- An owner read as `unknown process`, because the process table could not be read, is read
+  again only when its pid opens another connection; its existing rows keep that owner.
+- About 15% of processes that exit 26 to 42 ms after connecting lose their owner, with the
+  full process sweep and with the reading by owner alike (quick-exit simulation on testmac,
+  2026-11-10). The loss follows the lifetime, which points at the 20 ms prompt-poll delay
+  (`NetworkObserver.promptPollDelay`), not at the reading.
 - Inline code that calls a file is pinned by its line: `sh -c /x/agent` keeps its answer when
   `agent` changes.
 - The host prompt still carries per-connection facts (`Protocol`, `Since`), and the model can
