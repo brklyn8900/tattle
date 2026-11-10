@@ -132,6 +132,12 @@ Preconditions:
   listener: no tag, headed `<app> with <address>`, `Peer`, `Local port`, no `First contact`.
   `$V db "select direction, scope, count(*) from connection where ended is null group by
   direction, scope"`.
+- **Owners of short-lived connections.** With the broker and the panel never opened. Run the
+  `connect named` bytes with no hold (`{ printf '<its GET>'; sleep 0; } | nc -G 5 -p <port> <ip>
+  80`) from a script, every 4 s for 120 s; `nc` lives 47 to 140 ms. Count the rows opened in
+  the window with no owner: `select count(*) from connection where firstSeen >= '<start>' and
+  firstSeen < '<end>' and (processName like 'pid %' or processName = 'unknown process')`, with
+  and without `localPort in (<the ports>)`. `firstSeen` is UTC.
 - **Incoming connections and a Tailscale peer.** On testmac, with `IP` its `inet 100.` address:
   `sleep 1700 | nc -lk $IP 18091 > /dev/null &` and `sleep 1700 | nc $IP 18091 > /dev/null &`,
   from a script in a terminal app. `-k` keeps the listener, which is what tells the accepted
@@ -193,6 +199,21 @@ Preconditions:
   names a flow before the socket table shows it.
 - Connections already open when the dev copy started have no name (`open since before
   Tattle started`).
+- Owners read one pid at a time proven 2026-11-09 on the development Mac with the broker, dev
+  copy at `ba0432b`, run `2026-11-09T192354`: `Herdr Core to example.com`, `Process nc (pid
+  89678)`, `App Herdr Core`, `Signed by Apple`, `App signed by Herdr, Inc.`, and in history `nc |
+  example.com | http | Herdr Core | Apple | Herdr, Inc.`. Over five alternating 120-second
+  windows per side, driven connections with no owner: 1 of 150 at `7744536`, 0 of 149 at
+  `ba0432b` (one `nc` exited with an error and left no row). All new rows with no owner: 10 of
+  303 and 9 of 273; apart from that one driven row they are TCP to the router's port 53, one
+  per window as the driver's `dig +tcp` is, and to testmac's port 22, on both sides.
+- A process's own name for itself proven 2026-11-09, run `2026-11-09T192510`: `exec -a` with
+  `.`, `..` and `~` reads as that text in the row and in `processName`, with no dependence on
+  the app's working directory or home. An empty `argv[0]` is not reachable in the app:
+  `ProcessTable.parseArguments` takes it for the padding after the executable's path, so such
+  a process is named after its next argument (`G` for `nc -G 5 ...`), and its environment
+  shifts into the arguments. The empty string therefore rests on
+  `testTheNameAProcessStartedUnderIsNotAPathToResolve`, which calls `ProcessEntry.name`.
 - A connection's own signer proven 2026-11-08 on testmac, dev copy at `ebf12ca`, run
   `2026-11-08T105543`, copied to `build/verify/runs/testmac-2026-11-08/`.
 - The relay and OHTTP rules read from the `rule` table at `969e6d3` on testmac, run
