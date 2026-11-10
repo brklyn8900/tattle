@@ -122,6 +122,25 @@ final class ProcessTableTests: XCTestCase {
         return [30: entry(30, 20), 20: entry(20, 1), 40: entry(40, 1), 50: entry(50, 1), 60: entry(60, 1)]
     }()
 
+    /// The owners asked about are read before their lines: one may be exiting, and its record
+    /// alone names it only by the kernel's name, cut at 16 characters.
+    func testOwnersAreReadBeforeTheirLines() {
+        var table: [Int32: ProcessEntry] = [:]
+        for owner: Int32 in [10, 20] {
+            for step: Int32 in 0..<6 {
+                let pid = owner + step
+                table[pid] = ProcessEntry(pid: pid, parentPid: step == 5 ? 1 : pid + 1, uid: 501, name: "p\(pid)", path: "/x/p\(pid)", started: .distantPast)
+            }
+        }
+        var order: [Int32] = []
+        _ = ProcessTable.lines(of: [10, 20], table: { table }, parent: \.parentPid, entry: { found in
+            order.append(found.pid)
+            return found
+        }, responsible: { _ in nil })
+        XCTAssertEqual(order.count, 12)
+        XCTAssertEqual(Set(order.prefix(2)), [10, 20], "\(order)")
+    }
+
     func testALineFollowsParentsAndTheResponsibleProcess() {
         var reads: [Int32] = []
         let lines = ProcessTable.lines(of: [30, 40, 20, 70], table: { lineTable }, parent: \.parentPid, entry: { found in

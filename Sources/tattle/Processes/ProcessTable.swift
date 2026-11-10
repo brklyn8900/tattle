@@ -253,7 +253,10 @@ enum ProcessTable {
                 pending.append(owner)
             }
         }
-        for (pid, record) in walked { lines.entries[pid] = entry(record) }
+        // The owners first: one may be exiting, and its record alone names it only by the
+        // kernel's name, cut at 16 characters.
+        let owners = pids.filter { walked[$0] != nil }
+        for pid in owners + walked.keys.filter({ !pids.contains($0) }) { lines.entries[pid] = walked[pid].flatMap(entry) }
         return lines
     }
 
