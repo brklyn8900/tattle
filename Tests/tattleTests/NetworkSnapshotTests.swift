@@ -290,6 +290,33 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertFalse(snapshot.confirmOutbound(id: "other", isNew: true))
     }
 
+    /// Holds the first thread that reaches it until the test opens it.
+    private final class Gate: @unchecked Sendable {
+        struct NotReached: Error {}
+        private let lock = NSLock()
+        private let opened = DispatchSemaphore(value: 0)
+        private var reached = false
+
+        func hold() {
+            let first = lock.withLock { () -> Bool in
+                defer { reached = true }
+                return !reached
+            }
+            if first { opened.wait() }
+        }
+
+        /// Returns once something has reached the gate, without holding the main actor.
+        func waitUntilReached() async throws {
+            let deadline = Date().addingTimeInterval(10)
+            while !lock.withLock({ reached }) {
+                guard Date() < deadline else { throw NotReached() }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+        }
+
+        func open() { opened.signal() }
+    }
+
     /// The processes and sockets a reading finds. A test can end processes while the reading
     /// resolves owners. Pids from 9,000,000 up are ones no process can have, so the real calls
     /// behind a reading find nothing of their own for them.
@@ -301,6 +328,10 @@ final class NetworkSnapshotTests: XCTestCase {
         private var reads: [Int32] = []
         private var endingWhenTaken: [Int32: [Int32]] = [:]
         private var endingAfterRead: [Int32] = []
+        private var tableGate: Gate?
+        private var tableReads = 0
+        private var tablesBeingRead = 0
+        private var mostTablesAtOnce = 0
 
         /// `unreadable`: the kernel will not report on processes.
         init(_ processes: [ProcessEntry], unreadable: Bool = false) {
@@ -329,6 +360,26 @@ final class NetworkSnapshotTests: XCTestCase {
             get { lock.withLock { sockets } }
             set { lock.withLock { sockets = newValue } }
         }
+
+        /// Holds the next reading of the socket table at `gate`, once it has read the table.
+        func holdNextTable(at gate: Gate) { lock.withLock { tableGate = gate } }
+
+        /// The socket table as a reading reads it.
+        func readTable() -> [SocketEntry] {
+            let (table, gate) = lock.withLock { () -> ([SocketEntry], Gate?) in
+                tableReads += 1
+                tablesBeingRead += 1
+                mostTablesAtOnce = max(mostTablesAtOnce, tablesBeingRead)
+                defer { tableGate = nil }
+                return (sockets, tableGate)
+            }
+            gate?.hold()
+            lock.withLock { tablesBeingRead -= 1 }
+            return table
+        }
+
+        /// How many readings read the socket table, and the most that read it at once.
+        var tableReadings: (count: Int, mostAtOnce: Int) { lock.withLock { (tableReads, mostTablesAtOnce) } }
 
         /// Every process read beyond its record, in order, repeats included.
         var readPids: [Int32] { lock.withLock { reads } }
@@ -363,11 +414,11 @@ final class NetworkSnapshotTests: XCTestCase {
     }
 
     @MainActor
-    private func observer(in world: World, signature: @escaping @Sendable (String) -> CodeSignature? = { _ in nil }) throws -> NetworkObserver {
-        let database = try AppDatabase.inMemory()
+    private func observer(in world: World, database: AppDatabase? = nil, signature: @escaping @Sendable (String) -> CodeSignature? = { _ in nil }) throws -> NetworkObserver {
+        let database = try database ?? AppDatabase.inMemory()
         return NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
                                settings: try AppSettings(store: SettingsStore(database: database)),
-                               socketTable: { world.table },
+                               socketTable: { world.readTable() },
                                processRecords: { world.records() },
                                signature: signature)
     }
@@ -465,21 +516,49 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(observer.snapshot?.connections.first?.owner, .unknown)
     }
 
+    /// Readings never overlap: one asked for while another runs waits for it, and however many
+    /// are asked for, one more runs after it, so the older table is folded first.
+    @MainActor
+    func testReadingsAskedForWhileOneRunsMakeOneMoreAfterIt() async throws {
+        let database = try AppDatabase.inMemory()
+        let world = World([entry(9_000_061, 1, "/x/first"), entry(9_000_062, 1, "/x/second")])
+        let observer = try observer(in: world, database: database)
+        let gate = Gate()
+        defer { gate.open() }
+        world.table = [socket(9_000_061, localPort: 40000)]
+        world.holdNextTable(at: gate)
+        let first = Task { await observer.poll() }
+        try await gate.waitUntilReached()
+        world.table = [socket(9_000_062, localPort: 40001)]
+        await observer.poll()
+        await observer.poll()
+        gate.open()
+        await first.value
+        XCTAssertEqual(world.tableReadings.count, 2, "the readings asked for meanwhile make one more")
+        XCTAssertEqual(world.tableReadings.mostAtOnce, 1)
+        XCTAssertEqual(observer.snapshot?.connections.map(\.connection.pid), [9_000_062], "the newer table is folded last")
+        let older = try ConnectionStore(database: database).history(remoteAddress: "17.1.1.1").first { $0.pid == 9_000_061 }
+        XCTAssertNotNil(older?.ended, "the older table was folded, then closed by the newer")
+    }
+
     /// A reading waits off the main actor for a new pid's owner, and the SYN's event can land
     /// in that gap, before the row and its history exist.
     @MainActor
     func testAnOpeningSeenWhileAReadingResolvesOwnersReachesTheRowAndItsHistory() async throws {
         let database = try AppDatabase.inMemory()
         let store = ConnectionStore(database: database)
-        let observer = NetworkObserver(store: store, rules: RuleStore(database: database),
-                                       settings: try AppSettings(store: SettingsStore(database: database)))
-        let now = Date()
+        let gate = Gate()
+        defer { gate.open() }
         let socket = SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: 40000, remoteAddress: "17.1.1.1", remotePort: 443,
                                  tcpState: SocketEntry.tcpEstablished, pid: getpid(), effectivePid: 0, uid: 501)
-        let reading = Task { await observer.fold(entries: [socket], unresolved: [getpid()], lines: ProcessLines(), now: now) }
-        await Task.yield()
+        let observer = NetworkObserver(store: store, rules: RuleStore(database: database),
+                                       settings: try AppSettings(store: SettingsStore(database: database)),
+                                       socketTable: { [socket] }, signature: { _ in gate.hold(); return nil })
+        let reading = Task { await observer.poll() }
+        try await gate.waitUntilReached()
         XCTAssertNil(observer.snapshot, "the reading is waiting for the owner")
-        observer.confirmOutbound(FlowKey(proto: .tcp, localPort: 40000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443), openedAt: now)
+        observer.confirmOutbound(FlowKey(proto: .tcp, localPort: 40000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443), openedAt: Date())
+        gate.open()
         await reading.value
         let row = try XCTUnwrap(observer.snapshot?.connections.first)
         XCTAssertEqual(row.connection.direction, .outbound)

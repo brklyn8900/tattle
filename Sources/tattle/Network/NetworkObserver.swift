@@ -256,7 +256,7 @@ final class NetworkObserver {
     /// Takes one reading of the table into the tracker, the history and the snapshot.
     /// `unresolved` are the pids whose owners the reading has to resolve, and `lines` what was
     /// read of them with the table, nil when the kernel would not list processes.
-    func fold(entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines?, now: Date) async {
+    private func fold(entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines?, now: Date) async {
         let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 
         // Owners are resolved once per pid and executable, off the main thread, from the lines

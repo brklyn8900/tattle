@@ -33,12 +33,13 @@ final class AppState {
     var panelSample: ResourceSample { panelIsShowing ? sampler.sample : heldSample }
     var panelNetworkSnapshot: NetworkSnapshot? { panelIsShowing ? network.snapshot : heldNetworkSnapshot }
 
-    init(database: AppDatabase) throws {
+    /// `socketTable` is what the network readings read; tests pass their own.
+    init(database: AppDatabase, socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() }) throws {
         rules = RuleStore(database: database)
         connections = ConnectionStore(database: database)
         settings = try AppSettings(store: SettingsStore(database: database))
         explainer = Explainer(store: rules, settings: settings)
-        network = NetworkObserver(store: connections, rules: rules, settings: settings)
+        network = NetworkObserver(store: connections, rules: rules, settings: settings, socketTable: socketTable)
         if let resources = Bundle.main.resourceURL {
             SeedLoader(rules: rules, settings: SettingsStore(database: database))
                 .load(from: resources.appending(path: "knowledge"))
