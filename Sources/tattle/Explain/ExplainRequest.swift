@@ -13,6 +13,16 @@ struct ExplainRequest: Equatable, Sendable {
     /// host, which is its own name, and for code nothing tells apart.
     var identity: CodeIdentity?
 
+    /// What an answer is about: the item and its code, without the facts, which change from
+    /// one reading to the next.
+    struct Subject: Equatable, Sendable {
+        var kind: Rule.Kind
+        var key: String
+        var identity: CodeIdentity?
+    }
+
+    var subject: Subject { Subject(kind: kind, key: key, identity: identity) }
+
     init(kind: Rule.Kind, key: String, facts: [Fact] = [], isApplesProgram: Bool = false, identity: CodeIdentity? = nil) {
         self.kind = kind
         self.key = Rule.normalize(key, for: kind)

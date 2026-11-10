@@ -8,9 +8,9 @@ struct ExplainSection: View {
     @State private var rule: Rule?
     /// The code `rule` was asked about, when the answer was the model's in this view.
     @State private var answered: CodeIdentity?
-    /// The code on screen. A running task sees the `request` it started with, so an answer
+    /// The item on screen. A running task sees the `request` it started with, so an answer
     /// that arrives late is checked against this.
-    @State private var shown: CodeIdentity?
+    @State private var shown: ExplainRequest.Subject?
     @State private var busy = false
     @State private var error: String?
 
@@ -64,7 +64,7 @@ struct ExplainSection: View {
     }
 
     private func load() async {
-        shown = request.identity
+        shown = request.subject
         let unkept = Self.unkept(rule, givenFor: answered, request: request)
         let found = try? await state.explainer.lookup(request)
         guard !Task.isCancelled else { return }
@@ -81,14 +81,14 @@ struct ExplainSection: View {
     private func ask() {
         busy = true
         error = nil
-        let asked = request.identity
+        let asked = request.subject
         Task {
             defer { busy = false }
             do {
                 let answer = try await state.explainer.ask(request)
                 guard shown == asked else { return }
                 rule = answer
-                answered = asked
+                answered = asked.identity
             } catch {
                 self.error = describe(error)
             }

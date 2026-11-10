@@ -1006,6 +1006,15 @@ final class ExplainerTests: XCTestCase {
         XCTAssertNil(ExplainSection.unkept(kept, givenFor: nil, request: nothing), "the knowledge base speaks for a kept one")
     }
 
+    /// A late answer is shown only when the item on screen is still the one asked about: a
+    /// connection named during the call has another key and, like the first, no identity.
+    func testASubjectIsTheItemAndItsCodeWhateverItsFacts() {
+        let asked = ExplainRequest(kind: .host, key: "17.253.144.10", facts: [Fact(name: "Sent", value: "1 KB")])
+        XCTAssertEqual(asked.subject, ExplainRequest(kind: .host, key: "17.253.144.10", facts: [Fact(name: "Sent", value: "2 KB")]).subject)
+        XCTAssertNotEqual(asked.subject, ExplainRequest(kind: .host, key: "www.apple.com").subject)
+        XCTAssertNotEqual(ExplainRequest(kind: .process, key: "node", identity: "team:A:x").subject, ExplainRequest(kind: .process, key: "node").subject)
+    }
+
     func testAHostAnswerIsAboutTheHostWhoeverConnects() async throws {
         let explainer = explainer(FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#))
         let rule = try await explainer.ask(ExplainRequest(kind: .host, key: "a.example"))
