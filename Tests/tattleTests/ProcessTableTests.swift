@@ -158,6 +158,40 @@ final class ProcessTableTests: XCTestCase {
         }
         XCTAssertEqual(ProcessTable.parseArguments(bytes[...]), ["node", "/tmp/server.js", "--port"])
         XCTAssertNil(ProcessTable.parseArguments([1, 0][...]))
+
+        // A path whose NUL ends on the pointer boundary has no padding, and an empty argv[0]
+        // follows it straight away.
+        let unpadded: [UInt8] = [2, 0, 0, 0] + Array("/bin/ls".utf8) + [0] + [0] + Array("x".utf8) + [0] + Array("HOME=/x".utf8) + [0]
+        XCTAssertEqual(ProcessTable.parseArguments(unpadded[...]), ["", "x"])
+    }
+
+    /// A process started with an empty argv[0], as `exec -a ""` starts one: the kernel pads the
+    /// executable's path with NULs, and the empty argument is one more NUL.
+    func testAnEmptyFirstArgumentIsReadAsOne() throws {
+        for (path, argv) in [("/bin/cat", [""]), ("/bin/sleep", ["", "30"]), ("/bin/sleep", ["sleep", "30"])] {
+            // cat waits on a pipe nobody writes to.
+            var input: [Int32] = [0, 0]
+            XCTAssertEqual(pipe(&input), 0)
+            var actions: posix_spawn_file_actions_t?
+            posix_spawn_file_actions_init(&actions)
+            posix_spawn_file_actions_adddup2(&actions, input[0], 0)
+            let arguments = argv.map { strdup($0) } + [nil]
+            let environment = [strdup("TATTLE_FIRST=not-an-argument"), nil]
+            var pid: pid_t = 0
+            let spawned = posix_spawn(&pid, path, &actions, nil, arguments, environment)
+            defer {
+                if spawned == 0 {
+                    kill(pid, SIGKILL)
+                    waitpid(pid, nil, 0)
+                }
+                input.forEach { close($0) }
+                posix_spawn_file_actions_destroy(&actions)
+                (arguments + environment).forEach { free($0) }
+            }
+            XCTAssertEqual(spawned, 0)
+            XCTAssertEqual(ProcessTable.arguments(pid: pid), argv, "\(path) \(argv)")
+            XCTAssertEqual(ProcessTable.lines(of: [pid]).entries[pid]?.name, (path as NSString).lastPathComponent, "\(path) \(argv)")
+        }
     }
 
     func testOwnUsageMatchesGetrusage() {

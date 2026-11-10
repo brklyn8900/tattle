@@ -293,8 +293,9 @@ enum ProcessTable {
     }()
 
     /// The command line, through KERN_PROCARGS2, which answers only for the user's own
-    /// processes. The buffer holds argc, the executable path, padding, then the
-    /// arguments and the environment, all NUL-separated.
+    /// processes. The buffer holds argc, the executable path, NULs padding the path to a
+    /// multiple of the pointer size, then the arguments and the environment, all
+    /// NUL-separated.
     static func arguments(pid: Int32) -> [String]? {
         var scratch: [UInt8] = []
         return arguments(pid: pid, scratch: &scratch)
@@ -313,10 +314,12 @@ enum ProcessTable {
     static func parseArguments(_ bytes: ArraySlice<UInt8>) -> [String]? {
         guard bytes.count > 4 else { return nil }
         let argc = Int(bytes[bytes.startIndex..<bytes.startIndex + 4].withUnsafeBytes { $0.loadUnaligned(as: Int32.self) })
-        var cursor = bytes.startIndex + 4
-        // Skip the executable path and the NULs padding it.
+        let path = bytes.startIndex + 4
+        var cursor = path
         while cursor < bytes.endIndex, bytes[cursor] != 0 { cursor += 1 }
-        while cursor < bytes.endIndex, bytes[cursor] == 0 { cursor += 1 }
+        // Skip the padding by its length, not by skipping NULs: an empty argv[0] is a NUL too.
+        let pointer = MemoryLayout<UnsafeRawPointer>.size
+        cursor = path + (cursor - path + 1 + pointer - 1) / pointer * pointer
         var arguments: [String] = []
         while arguments.count < argc, cursor < bytes.endIndex {
             let start = cursor

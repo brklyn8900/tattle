@@ -215,11 +215,12 @@ Preconditions:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A name that ends in a folder (`.`, `..`,
   `~`, `~user`) now reads as the program's file; that rests on
-  `testTheNameAProcessStartedUnderIsNotAPathToResolve`. An empty `argv[0]` is not reachable in the app:
-  `ProcessTable.parseArguments` takes it for the padding after the executable's path, so such
-  a process is named after its next argument (`G` for `nc -G 5 ...`), and its environment
-  shifts into the arguments. The empty string therefore rests on
-  `testTheNameAProcessStartedUnderIsNotAPathToResolve`, which calls `ProcessEntry.name`.
+  `testTheNameAProcessStartedUnderIsNotAPathToResolve`. At `ba0432b` an empty `argv[0]` did not
+  reach the naming: `ProcessTable.parseArguments` took it for the padding after the executable's
+  path, so the process was named after its next argument (`G` for `nc -G 5 ...`), or after its
+  first environment string when it had none, and that string joined its arguments. The parser
+  now skips the padding by its length; a real process with an empty `argv[0]` rests on
+  `testAnEmptyFirstArgumentIsReadAsOne`, not yet on a run in the app.
 - A connection's own signer proven 2026-11-08 on testmac, dev copy at `ebf12ca`, run
   `2026-11-08T105543`, copied to `build/verify/runs/testmac-2026-11-08/`.
 - The relay and OHTTP rules read from the `rule` table at `969e6d3` on testmac, run
