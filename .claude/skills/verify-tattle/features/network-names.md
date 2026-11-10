@@ -217,7 +217,9 @@ Preconditions:
   720 runs per side, in rotating order, the helper read as `pid <n>` 112 times at `7744536`, 126
   at `b6c21c7` and 174 at `ba0432b`. Whether a side ran first or last in a round moved its count
   more than which side it was: two fixed-order sets of 480 gave 55 and 58 at `7744536`, 68
-  (run second) and 44 (run first) at `b6c21c7`. The harness was not kept.
+  (run second) and 44 (run first) at `b6c21c7`. The simulation is `QuickExitSimulationTests`,
+  which runs only when `TATTLE_SIM_HELPER` names the helper built from `Tests/quick-exit-helper.c`;
+  compare two revisions in copies of each (`git archive`), alternating which runs first.
 - A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A home folder (`~`, `~user`) or a relative
