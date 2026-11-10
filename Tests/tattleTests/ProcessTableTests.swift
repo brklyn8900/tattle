@@ -89,7 +89,7 @@ final class ProcessTableTests: XCTestCase {
         func started(_ first: String) -> String {
             ProcessEntry.name(path: "/x/tool", arguments: [first], command: "tool").name
         }
-        XCTAssertEqual(started(""), "tool", "a process that cleared its title goes by its file")
+        XCTAssertEqual(started(""), "tool", "an empty name goes by the file")
         XCTAssertEqual(started("."), ".")
         XCTAssertEqual(started(".."), "..")
         XCTAssertEqual(started("~"), "~")
