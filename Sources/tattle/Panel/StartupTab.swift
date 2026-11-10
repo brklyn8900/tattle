@@ -110,16 +110,22 @@ private struct StartupDetail: View {
     let state: AppState
     @State private var actionError: String?
 
-    /// The row as it is after a refresh, so an action's effect shows without going back.
-    private var current: StartupItem {
-        state.startup.snapshot?.items.first { $0.id == item.id } ?? item
+    /// The row as it is after a refresh, so an action's effect shows without going back; the
+    /// one opened stays readable once it is gone.
+    private var current: StartupItem? {
+        state.startup.snapshot?.items.first { $0.id == item.id }
     }
 
     var body: some View {
-        let item = current
+        let item = current ?? self.item
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text(item.name).font(.headline)
+                if current == nil {
+                    Text("No longer installed.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 FactsGrid(facts: item.facts)
                 Divider()
                 if item.canExplain {
@@ -138,7 +144,7 @@ private struct StartupDetail: View {
                         }
                     }
                     Spacer()
-                    controls(item)
+                    if current != nil { controls(item) }
                 }
                 .controlSize(.small)
                 if let actionError {
