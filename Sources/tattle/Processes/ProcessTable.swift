@@ -319,9 +319,15 @@ enum ProcessTable {
         let path = bytes.startIndex + 4
         var cursor = path
         while cursor < bytes.endIndex, bytes[cursor] != 0 { cursor += 1 }
-        // Skip the padding by its length, not by skipping NULs: an empty argv[0] is a NUL too.
+        // Skip the padding by its length, not by skipping NULs: an empty argv[0] is a NUL too. A
+        // byte other than NUL in that length means another layout, and the NULs are skipped.
         let pointer = MemoryLayout<UnsafeRawPointer>.size
-        cursor = path + (cursor - path + 1 + pointer - 1) / pointer * pointer
+        let padded = path + (cursor - path + 1 + pointer - 1) / pointer * pointer
+        if padded <= bytes.endIndex, bytes[cursor..<padded].allSatisfy({ $0 == 0 }) {
+            cursor = padded
+        } else {
+            while cursor < bytes.endIndex, bytes[cursor] == 0 { cursor += 1 }
+        }
         var arguments: [String] = []
         while arguments.count < argc, cursor < bytes.endIndex {
             let start = cursor

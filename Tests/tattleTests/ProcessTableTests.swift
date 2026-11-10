@@ -173,6 +173,10 @@ final class ProcessTableTests: XCTestCase {
         // follows it straight away.
         let unpadded: [UInt8] = [2, 0, 0, 0] + Array("/bin/ls".utf8) + [0] + [0] + Array("x".utf8) + [0] + Array("HOME=/x".utf8) + [0]
         XCTAssertEqual(ProcessTable.parseArguments(unpadded[...]), ["", "x"])
+
+        // An argument where the padding should be means another layout: the NULs are skipped.
+        let unaligned: [UInt8] = [1, 0, 0, 0] + Array("/bin/l".utf8) + [0] + Array("ls".utf8) + [0] + Array("HOME=/x".utf8) + [0]
+        XCTAssertEqual(ProcessTable.parseArguments(unaligned[...]), ["ls"])
     }
 
     /// A process started with an empty argv[0], as `exec -a ""` starts one: the kernel pads the
