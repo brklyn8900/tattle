@@ -124,6 +124,15 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: "pid:9000")?.leader?.pid, 9000)
     }
 
+    /// A system app's own path names a bundle, so it does not take its parent's app; started by
+    /// a publisher's app, it still belongs with that app, not in a row of its own named for it.
+    func testASystemAppStartedByAnAppSitsInThatAppsRow() {
+        let entries = machine + [entry(102, 100, "/System/Library/CoreServices/Foo.app/Contents/MacOS/Foo", memory: 1)]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: sign, runningApp: running, responsible: { _ in nil }, takenAt: epoch)
+        XCTAssertNil(snapshot.group(id: "pid:100"), "no second row named Slack")
+        XCTAssertEqual(snapshot.group(id: "/Applications/Slack.app")?.members.map(\.pid).sorted(), [100, 101, 102])
+    }
+
     /// Root's process can be anyone's code, so the words say whose process it is.
     func testNoQuitSaysWhoseProcessItIs() {
         XCTAssertEqual(ProcessControl.whyNoQuit(uid: 0), "Runs as root, so Tattle cannot quit it")

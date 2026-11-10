@@ -399,6 +399,9 @@ struct ProcessSnapshot: Equatable, Sendable {
             if !current.isPartOfMacOS { root = current }
             cursor = current.parentPid > 1 ? byPid[current.parentPid] : nil
         }
+        // A system app started by a publisher's app keeps its own bundle, so it reaches here
+        // with that app's process as its root: it joins the app's row.
+        if let app = root?.app, !app.isSystem { return GroupKey(id: app.path, kind: .app(app), name: app.name) }
         if let root { return GroupKey(id: "pid:\(root.pid)", kind: .process, name: root.name, root: root) }
         return GroupKey(id: ProcessGroup.systemID, kind: .system, name: "macOS")
     }
