@@ -60,7 +60,7 @@ struct ExplainSection: View {
     }
 
     private var providerConfigured: Bool {
-        !state.settings.providerCommand.trimmingCharacters(in: .whitespaces).isEmpty
+        !state.settings.providerCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func load() async {
