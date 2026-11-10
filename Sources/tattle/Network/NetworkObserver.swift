@@ -211,8 +211,9 @@ final class NetworkObserver {
 
     /// One reading of the socket table. Readings never overlap: a reading that would
     /// have, runs after the current one, so an older table is never folded in after a
-    /// newer one and closes connections that are still there.
-    private func poll() async {
+    /// newer one and closes connections that are still there. Tests take their readings here,
+    /// under the same rule.
+    func poll() async {
         guard !isPolling else {
             pollRequested = true
             return
@@ -229,7 +230,7 @@ final class NetworkObserver {
     /// Reads the socket table and, in the same moment, the lines of the owners to resolve: a
     /// process can exit within milliseconds of opening a connection, so its line is read before
     /// the main actor or any signature read can hold it up.
-    func read() async {
+    private func read() async {
         let now = Date()
         // Readings never overlap, so the tracker and the owners are as the fold will find them.
         let (socketTable, processLines, owners, live) = (socketTable, processLines, owners, tracker.live)

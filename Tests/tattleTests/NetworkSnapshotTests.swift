@@ -389,11 +389,11 @@ final class NetworkSnapshotTests: XCTestCase {
         ])
         let observer = try observer(in: world)
         world.table = [socket(me, localPort: 40000)]
-        await observer.read()
+        await observer.poll()
         XCTAssertEqual(world.readPids.sorted(), [me, 9_000_002], "the owner and its line, each once")
 
         world.table = [socket(me, localPort: 40000), socket(me, localPort: 40001)]
-        await observer.read()
+        await observer.poll()
         XCTAssertEqual(world.readPids.sorted(), [me, 9_000_002], "a known owner still running the same program is not read again")
     }
 
@@ -409,7 +409,7 @@ final class NetworkSnapshotTests: XCTestCase {
         let world = World(line)
         let observer = try observer(in: world, signature: { _ in world.end(line.map(\.pid)); return nil })
         world.table = [socket(9_000_011, localPort: 40000), socket(9_000_021, localPort: 40001)]
-        await observer.read()
+        await observer.poll()
         let owners = Dictionary((observer.snapshot?.connections ?? []).map { ($0.connection.pid, $0.owner) }, uniquingKeysWith: { a, _ in a })
         XCTAssertEqual(owners[9_000_011]?.processName, "helper-a")
         XCTAssertEqual(owners[9_000_011]?.app?.name, "Slack")
@@ -428,7 +428,7 @@ final class NetworkSnapshotTests: XCTestCase {
         world.endWhenTaken(9_000_041, ending: [9_000_042])
         let observer = try observer(in: world)
         world.table = [socket(9_000_041, localPort: 40000)]
-        await observer.read()
+        await observer.poll()
         let owner = try XCTUnwrap(observer.snapshot?.connections.first?.owner)
         XCTAssertEqual(owner.processName, "helper")
         XCTAssertEqual(owner.app?.name, "Slack")
@@ -444,13 +444,13 @@ final class NetworkSnapshotTests: XCTestCase {
         let world = World([entry(me, 1, "/x/before-exec")])
         let observer = try observer(in: world)
         world.table = [socket(me, localPort: 40000)]
-        await observer.read()
+        await observer.poll()
         XCTAssertEqual(observer.snapshot?.connections.first?.owner.path, "/x/before-exec")
 
         world.start([entry(me, 1, path), entry(9_000_051, 1, "/x/newcomer")])
         world.endAfterNextRead([me])
         world.table = [socket(me, localPort: 40000), socket(me, localPort: 40001), socket(9_000_051, localPort: 40002)]
-        await observer.read()
+        await observer.poll()
         XCTAssertEqual(observer.snapshot?.connections.first { $0.connection.localPort == 40001 }?.owner.path, path)
     }
 
@@ -460,7 +460,7 @@ final class NetworkSnapshotTests: XCTestCase {
         let world = World([], unreadable: true)
         let observer = try observer(in: world)
         world.table = [socket(9_000_031, localPort: 40000)]
-        await observer.read()
+        await observer.poll()
         XCTAssertEqual(observer.snapshot?.connections.first?.owner, .unknown)
     }
 
