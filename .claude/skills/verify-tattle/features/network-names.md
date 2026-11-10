@@ -211,9 +211,11 @@ Preconditions:
   the rest TCP to the router's port 53, one per window as the driver's `dig +tcp` is, and to
   testmac's port 22. That shows no difference for processes that live 47 ms or more, and nothing
   about ones that exit sooner.
-- A process's own name for itself proven 2026-11-09, run `2026-11-09T192510`: `exec -a` with
-  `.`, `..` and `~` reads as that text in the row and in `processName`, with no dependence on
-  the app's working directory or home. An empty `argv[0]` is not reachable in the app:
+- A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
+  `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
+  dependence on the app's working directory or home. A name that ends in a folder (`.`, `..`,
+  `~`, `~user`) now reads as the program's file; that rests on
+  `testTheNameAProcessStartedUnderIsNotAPathToResolve`. An empty `argv[0]` is not reachable in the app:
   `ProcessTable.parseArguments` takes it for the padding after the executable's path, so such
   a process is named after its next argument (`G` for `nc -G 5 ...`), and its environment
   shifts into the arguments. The empty string therefore rests on

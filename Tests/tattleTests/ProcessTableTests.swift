@@ -84,15 +84,18 @@ final class ProcessTableTests: XCTestCase {
     }
 
     /// The name a process started under is read as text: a URL would resolve these against the
-    /// app's own working directory and home folder and name the process after those.
+    /// app's own working directory and home folder and name the process after those. A name
+    /// that ends in a folder says nothing about the program, so the file names it.
     func testTheNameAProcessStartedUnderIsNotAPathToResolve() {
         func started(_ first: String) -> String {
             ProcessEntry.name(path: "/x/tool", arguments: [first], command: "tool").name
         }
-        XCTAssertEqual(started(""), "tool", "an empty name goes by the file")
-        XCTAssertEqual(started("."), ".")
-        XCTAssertEqual(started(".."), "..")
-        XCTAssertEqual(started("~"), "~")
+        for folder in ["", ".", "..", "~", "~/", "~user", "~user/", "./", ".//", "../", "a/.", "a/..", "a/./", "a/../", "-.", "/x/~"] {
+            XCTAssertEqual(started(folder), "tool", "[\(folder)]")
+        }
+        XCTAssertEqual(started("~/bin/agent"), "agent", "a file under a folder is still named")
+        XCTAssertEqual(started("./agent"), "agent")
+        XCTAssertEqual(started("~ maintenance"), "~ maintenance", "a title is kept as written")
     }
 
     func testALineReadsAsTheListHasIt() throws {
