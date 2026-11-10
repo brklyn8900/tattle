@@ -36,6 +36,18 @@ final class ConnectionTrackerTests: XCTestCase {
         XCTAssertNil(udp(1, 5353, "0.0.0.0", 0).connectionScope, "an unconnected UDP socket has no peer")
     }
 
+    /// The pids a reading would open, asked before the update, are those of the connections the
+    /// update opens: the owners to resolve are decided before it runs.
+    func testThePidsAReadingWouldOpenAreTheOnesItOpens() {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [tcp(1, 50000, "17.1.1.1")], at: t0)
+        let entries = [tcp(1, 50000, "17.1.1.1"), tcp(2, 50001, "17.1.1.2"), tcp(2, 50001, "17.1.1.2"), tcp(3, 50002, "127.0.0.1"),
+                       tcp(4, 443, "0.0.0.0", 0, state: SocketEntry.tcpListen), udp(5, 5353, "224.0.0.251", 5353)]
+        let opening = tracker.openingPids(entries)
+        XCTAssertEqual(opening, Set(tracker.update(entries: entries, at: t0.addingTimeInterval(2)).opened.map(\.pid)))
+        XCTAssertEqual(opening, [2, 5])
+    }
+
     func testOpenPersistCloseAndPreExisting() {
         var tracker = ConnectionTracker()
         let first = tracker.update(entries: [tcp(100, 50000, "17.1.1.1"), udp(200, 60000, "8.8.8.8", 53)], at: t0)

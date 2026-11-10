@@ -156,6 +156,19 @@ struct ConnectionTracker: Sendable {
 
     var open: [Connection] { live.values.sorted { $0.firstSeen > $1.firstSeen } }
 
+    /// A socket the tracker takes for a connection: its key and scope, and whether the
+    /// connection opens with this reading, which it does when it is not live yet.
+    private func connection(_ entry: SocketEntry) -> (key: String, scope: Connection.Scope, opens: Bool)? {
+        guard let scope = entry.connectionScope else { return nil }
+        let key = Connection.key(entry)
+        return (key, scope, live[key] == nil)
+    }
+
+    /// The pids whose connections `update` would open from `entries`.
+    func openingPids(_ entries: [SocketEntry]) -> Set<Int32> {
+        Set(entries.compactMap { entry in connection(entry)?.opens == true ? entry.pid : nil })
+    }
+
     /// Folds one reading of the table in. On the first reading every connection is
     /// pre-existing: it was there before Tattle looked. `outboundSeen` says whether this Mac
     /// was just seen opening a flow, which settles a new connection's direction over any
@@ -165,10 +178,9 @@ struct ConnectionTracker: Sendable {
         var seen = Set<String>()
         let listeners = TCPListeners(entries)
         for entry in entries {
-            guard let scope = entry.connectionScope else { continue }
-            let key = Connection.key(entry)
-            guard seen.insert(key).inserted else { continue }
-            if var existing = live[key] {
+            guard let found = connection(entry), seen.insert(found.key).inserted else { continue }
+            let key = found.key
+            if !found.opens, var existing = live[key] {
                 existing.lastSeen = now
                 existing.tcpState = entry.tcpState
                 live[key] = existing
@@ -176,7 +188,7 @@ struct ConnectionTracker: Sendable {
                 var connection = Connection(
                     id: key, proto: entry.proto, pid: entry.pid, uid: entry.uid,
                     localPort: entry.localPort, remoteAddress: entry.remoteAddress, remotePort: entry.remotePort,
-                    isIPv6: entry.isIPv6, scope: scope, tcpState: entry.tcpState,
+                    isIPv6: entry.isIPv6, scope: found.scope, tcpState: entry.tcpState,
                     firstSeen: now, lastSeen: now, ended: nil, preExisting: !hasPolled)
                 // macOS gives a connecting socket a port from the ephemeral range, so with no
                 // listener on it the port stands in for a SYN Tattle did not see. An accepted

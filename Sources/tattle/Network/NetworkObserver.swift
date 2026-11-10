@@ -233,14 +233,14 @@ final class NetworkObserver {
     private func read() async {
         let now = Date()
         // Readings never overlap, so the tracker and the owners are as the fold will find them.
-        let (socketTable, processLines, owners, live) = (socketTable, processLines, owners, tracker.live)
+        let (socketTable, processLines, owners, tracker) = (socketTable, processLines, owners, tracker)
         let reading: (entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines)
         do {
             reading = try await Task.detached(priority: .utility) {
                 let entries = try socketTable()
-                // The owners of the connections the tracker will take as opened that are not met
-                // yet, or have started another program.
-                let opened = Set(entries.filter { $0.connectionScope != nil && live[Connection.key($0)] == nil }.map(\.pid))
+                // The owners of the connections the update will open that are not met yet, or
+                // have started another program.
+                let opened = tracker.openingPids(entries)
                 let unresolved = ConnectionOwner.unresolved(opened: opened, known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
                 return (entries, unresolved, unresolved.isEmpty ? ProcessLines() : processLines(unresolved))
             }.value
