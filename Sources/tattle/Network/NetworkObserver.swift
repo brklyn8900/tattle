@@ -75,8 +75,8 @@ final class NetworkObserver {
             }
         }
         let sniffer = Sniffer(
-            onEvents: { events in Task { @MainActor [weak self] in self?.handle(events) } },
-            onStatus: { status in Task { @MainActor [weak self] in self?.captureStatus = status } })
+            onEvents: { [weak self] events in Task { @MainActor in self?.handle(events) } },
+            onStatus: { [weak self] status in Task { @MainActor in self?.captureStatus = status } })
         sniffer.start()
         self.sniffer = sniffer
     }
