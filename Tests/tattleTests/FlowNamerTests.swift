@@ -218,6 +218,17 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.flowCount, 1)
     }
 
+    func testBytesAfterAnInitialDoNotEndTheFlowAsAnotherVersion() {
+        var n = namer()
+        let hello = SnifferParserTests.clientHello(sni: Array("example.org".utf8))
+        let half = hello.count / 2
+        let rest = hello.count - half
+        let first = SnifferParserTests.sealInitial([0x06, 0x00, 0x40 | UInt8(half >> 8), UInt8(half & 0xff)] + hello[..<half])
+        let second = SnifferParserTests.sealInitial([0x06, 0x40 | UInt8(half >> 8), UInt8(half & 0xff), 0x40 | UInt8(rest >> 8), UInt8(rest & 0xff)] + hello[half...])
+        XCTAssertEqual(n.observe(udp(first + [0xc0, 0, 0, 0, 2, 0, 0]), at: t0), [FlowEvent(key: udpKey, kind: .opened)])
+        XCTAssertEqual(n.observe(udp(second), at: t0 + 0.1), [FlowEvent(key: udpKey, kind: .named("example.org", .quic))])
+    }
+
     func testShortHeaderDoesNotStartAFlow() {
         var n = namer()
         XCTAssertEqual(n.observe(udp([0x41, 1, 2, 3]), at: t0), [], "a connection open before capture started")

@@ -336,9 +336,12 @@ struct FlowNamer: Sendable {
                     flow.quicAssembly = QUICAssembly()
                     return sni.map { .named($0, .quic) } ?? .unnamed(.noServerName)
                 }
-            case .failure(.unsupportedVersion):
-                // Not a version whose Initial can be read; nothing more will come of it.
+            case .failure(.unsupportedVersion) where offset == 0:
+                // Not a version whose Initial can be read; nothing more will come of it. Only
+                // the datagram's first packet says so: bytes after an Initial that was read
+                // are not the connection's version.
                 flow.quicDone = true
+                flow.quicAssembly = QUICAssembly()
                 return .unnamed(.quic(.unsupportedVersion))
             case .failure:
                 // A later Initial may still complete the handshake; the timeout reports
