@@ -140,9 +140,6 @@ struct ProcessLines: Equatable, Sendable {
     var entries: [Int32: ProcessEntry] = [:]
     /// The process macOS holds responsible for an entry launchd started, when it is another.
     var responsible: [Int32: Int32] = [:]
-    /// The pids asked about when the kernel would not report on processes: none is known to
-    /// have exited.
-    var unreadable: Set<Int32> = []
 }
 
 /// Reads every process without privileges. The list, parent, user and start time come
@@ -210,8 +207,9 @@ enum ProcessTable {
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
-    /// The lines of `pids` as the kernel has them now, named without signatures.
-    static func lines(of pids: Set<Int32>) -> ProcessLines {
+    /// The lines of `pids` as the kernel has them now, named without signatures; nil when the
+    /// kernel would not list processes.
+    static func lines(of pids: Set<Int32>) -> ProcessLines? {
         var scratch: [UInt8] = []
         return lines(of: pids, table: {
             var byPid: [Int32: kinfo_proc] = [:]
@@ -227,17 +225,17 @@ enum ProcessTable {
     /// walked through one reading of every process's record (`table`, by pid, with no zombies), as
     /// the full list is, so a process that exits while they are read keeps its place on them; then
     /// `entry` reads the rest of each process on a line. `table` throws when the kernel cannot be
-    /// asked, and every pid is then unreadable.
+    /// asked, and there are no lines then.
     static func lines<Record>(
         of pids: Set<Int32>, table: () throws -> [Int32: Record], parent: (Record) -> Int32,
         entry: (Record) -> ProcessEntry?, responsible: (Int32) -> Int32?
-    ) -> ProcessLines {
+    ) -> ProcessLines? {
         let records: [Int32: Record]
         do {
             records = try table()
         } catch {
             Log.app.error("the process table could not be read: \(error, privacy: .public)")
-            return ProcessLines(unreadable: pids)
+            return nil
         }
         var lines = ProcessLines()
         var walked: [Int32: Record] = [:]

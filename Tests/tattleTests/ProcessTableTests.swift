@@ -103,7 +103,7 @@ final class ProcessTableTests: XCTestCase {
     }
 
     func testALineReadsAsTheListHasIt() throws {
-        let lines = ProcessTable.lines(of: [getpid(), 0])
+        let lines = try XCTUnwrap(ProcessTable.lines(of: [getpid(), 0]))
         let listed = Dictionary(try ProcessTable.list(signature: { _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
         XCTAssertNotNil(lines.entries[getppid()], "the parent is read with the process")
         XCTAssertTrue(lines.entries.values.contains { $0.parentPid == 1 }, "and every ancestor up to the one launchd started")
@@ -141,20 +141,18 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(Set(order.prefix(2)), [10, 20], "\(order)")
     }
 
-    func testALineFollowsParentsAndTheResponsibleProcess() {
+    func testALineFollowsParentsAndTheResponsibleProcess() throws {
         var reads: [Int32] = []
-        let lines = ProcessTable.lines(of: [30, 40, 20, 70], table: { lineTable }, parent: \.parentPid, entry: { found in
+        let lines = try XCTUnwrap(ProcessTable.lines(of: [30, 40, 20, 70], table: { lineTable }, parent: \.parentPid, entry: { found in
             reads.append(found.pid)
             return found
-        }, responsible: { $0 == 40 ? 50 : nil })
+        }, responsible: { $0 == 40 ? 50 : nil }))
         XCTAssertEqual(Set(lines.entries.keys), [20, 30, 40, 50], "not the bystander, nor a pid with no record")
         XCTAssertEqual(lines.responsible, [40: 50])
-        XCTAssertEqual(lines.unreadable, [])
         XCTAssertEqual(reads.sorted(), [20, 30, 40, 50], "each process once")
 
-        let unreadable = ProcessTable.lines(of: [30, 40], table: { () throws -> [Int32: ProcessEntry] in throw ProcessTable.ReadError.sysctl(errno: EINVAL) },
-                                            parent: \.parentPid, entry: { $0 }, responsible: { _ in nil })
-        XCTAssertEqual(unreadable, ProcessLines(unreadable: [30, 40]), "the kernel would not list processes")
+        XCTAssertNil(ProcessTable.lines(of: [30, 40], table: { () throws -> [Int32: ProcessEntry] in throw ProcessTable.ReadError.sysctl(errno: EINVAL) },
+                                        parent: \.parentPid, entry: { $0 }, responsible: { _ in nil }), "the kernel would not list processes")
     }
 
     /// A child not yet waited for stays in the table as a zombie once it exits.
@@ -223,7 +221,7 @@ final class ProcessTableTests: XCTestCase {
             }
             XCTAssertEqual(spawned, 0)
             XCTAssertEqual(ProcessTable.arguments(pid: pid), argv, "\(path) \(argv)")
-            XCTAssertEqual(ProcessTable.lines(of: [pid]).entries[pid]?.name, (path as NSString).lastPathComponent, "\(path) \(argv)")
+            XCTAssertEqual(ProcessTable.lines(of: [pid])?.entries[pid]?.name, (path as NSString).lastPathComponent, "\(path) \(argv)")
         }
     }
 
