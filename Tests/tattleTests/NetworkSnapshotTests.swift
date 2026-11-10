@@ -331,7 +331,7 @@ final class NetworkSnapshotTests: XCTestCase {
         return NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
                                settings: try AppSettings(store: SettingsStore(database: database)),
                                socketTable: { world.table },
-                               processLines: { ProcessTable.lines(of: $0, read: world.read, responsible: { _ in nil }) },
+                               processLines: { ProcessTable.lines(of: $0, record: world.read, entry: { $0 }, responsible: { _ in nil }) },
                                signature: signature)
     }
 

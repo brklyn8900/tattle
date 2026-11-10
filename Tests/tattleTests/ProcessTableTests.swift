@@ -110,18 +110,38 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(ProcessTable.lines(of: [Int32.max]), ProcessLines(), "no such process")
     }
 
-    func testALineFollowsParentsAndTheResponsibleProcess() {
+    /// A helper under its app, and a service launchd started that an app answers for.
+    private let lineTable: [Int32: ProcessEntry] = {
         func entry(_ pid: Int32, _ parent: Int32) -> ProcessEntry {
             ProcessEntry(pid: pid, parentPid: parent, uid: 501, name: "p\(pid)", path: "/x/p\(pid)", started: .distantPast)
         }
-        // A helper under its app, and a service launchd started that an app answers for.
-        let table: [Int32: ProcessEntry] = [30: entry(30, 20), 20: entry(20, 1), 40: entry(40, 1), 50: entry(50, 1), 60: entry(60, 1)]
+        return [30: entry(30, 20), 20: entry(20, 1), 40: entry(40, 1), 50: entry(50, 1), 60: entry(60, 1)]
+    }()
+
+    /// Every owner's record is taken before any line is walked: an owner that exits while
+    /// another's line is read has already been seen.
+    func testEveryOwnerIsReadBeforeAnyLine() {
+        let table = lineTable
+        var steps: [String] = []
+        _ = ProcessTable.lines(of: [30, 40], record: { pid in
+            steps.append("record \(pid)")
+            return table[pid]
+        }, entry: { found in
+            steps.append("entry \(found.pid)")
+            return found
+        }, responsible: { $0 == 40 ? 50 : nil })
+        XCTAssertEqual(Set(steps.prefix(2)), ["record 30", "record 40"], "\(steps)")
+        XCTAssertEqual(steps.filter { $0.hasPrefix("record") }.count, 4, "each process once")
+    }
+
+    func testALineFollowsParentsAndTheResponsibleProcess() {
+        let table = lineTable
         var reads: [Int32] = []
-        let lines = ProcessTable.lines(of: [30, 40, 20, 70], read: { pid in
+        let lines = ProcessTable.lines(of: [30, 40, 20, 70], record: { pid in
             reads.append(pid)
             if pid == 70 { throw ProcessTable.ReadError.sysctl(errno: EINVAL) }
             return table[pid]
-        }, responsible: { $0 == 40 ? 50 : nil })
+        }, entry: { $0 }, responsible: { $0 == 40 ? 50 : nil })
         XCTAssertEqual(Set(lines.entries.keys), [20, 30, 40, 50], "not the bystander")
         XCTAssertEqual(lines.responsible, [40: 50])
         XCTAssertEqual(lines.unreadable, [70])

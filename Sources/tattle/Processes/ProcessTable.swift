@@ -209,39 +209,45 @@ enum ProcessTable {
     /// The lines of `pids` as the kernel has them now, named without signatures.
     static func lines(of pids: Set<Int32>) -> ProcessLines {
         var scratch: [UInt8] = []
-        return lines(of: pids, read: { pid in
-            try kernelRecord(pid).flatMap { entry($0, scratch: &scratch, signature: { _ in nil }) }
-        }, responsible: ResponsibleProcess.pid(for:))
+        return lines(of: pids, record: kernelRecord, entry: { entry($0, scratch: &scratch, signature: { _ in nil }) },
+                     responsible: ResponsibleProcess.pid(for:))
     }
 
     /// Each pid's line, read in one go: the process, every ancestor up to the one launchd
     /// started, and for that one, the process macOS holds responsible for it. Which of them names the app
     /// depends on signatures read later (`ProcessSnapshot.app`), so the whole line is read.
-    /// `read` answers nil for a process that has exited or is a zombie, and throws when the
-    /// kernel cannot be asked.
-    static func lines(of pids: Set<Int32>, read: (Int32) throws -> ProcessEntry?, responsible: (Int32) -> Int32?) -> ProcessLines {
+    /// `record` takes a process's record, nil for one that has exited, and throws when the kernel
+    /// cannot be asked; `entry` reads the rest, nil for a zombie. Every pid's record is taken
+    /// before any line is walked: one can exit while another's line is read, and its record is
+    /// what names it then.
+    static func lines<Record>(
+        of pids: Set<Int32>, record: (Int32) throws -> Record?, entry: (Record) -> ProcessEntry?, responsible: (Int32) -> Int32?
+    ) -> ProcessLines {
         var lines = ProcessLines()
-        var pending = Array(pids)
         var asked = Set<Int32>()
-        while let pid = pending.popLast() {
-            guard asked.insert(pid).inserted else { continue }
-            let found: ProcessEntry?
+        var pending: [Int32] = []
+        func take(_ pid: Int32) -> Record? {
+            guard asked.insert(pid).inserted else { return nil }
             do {
-                found = try read(pid)
+                return try record(pid)
             } catch {
                 lines.unreadable.insert(pid)
                 Log.app.error("process \(pid) could not be read: \(error, privacy: .public)")
-                continue
+                return nil
             }
-            guard let entry = found else { continue }
-            lines.entries[pid] = entry
-            if entry.parentPid > 1 {
-                if entry.parentPid != pid { pending.append(entry.parentPid) }
+        }
+        func add(_ pid: Int32, _ found: Record?) {
+            guard let found, let read = entry(found) else { return }
+            lines.entries[pid] = read
+            if read.parentPid > 1 {
+                if read.parentPid != pid { pending.append(read.parentPid) }
             } else if let owner = responsible(pid) {
                 lines.responsible[pid] = owner
                 pending.append(owner)
             }
         }
+        for (pid, found) in pids.map({ ($0, take($0)) }) { add(pid, found) }
+        while let pid = pending.popLast() { add(pid, take(pid)) }
         return lines
     }
 
