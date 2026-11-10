@@ -9,8 +9,9 @@ import XCTest
 /// and exits a set time later. The accept stands in for the sniffer seeing the opening, and one
 /// reading is taken the prompt poll's delay after it, with the helper's socket made to look like a
 /// connection on the local network. Prints, for each lifetime, how many of the helper's rows read
-/// `pid <n>`, were named, or were missing; it asserts nothing about them, since the count depends
-/// on the machine and its load. Runs only when `TATTLE_SIM_HELPER` names the built helper;
+/// `pid <n>`, were named without a path (the helper exited after its record was taken, so only
+/// the kernel's name for it was read), read `unknown process`, were named, or were missing; it
+/// asserts nothing about them, since the counts depend on the machine and its load. Runs only when `TATTLE_SIM_HELPER` names the built helper;
 /// `TATTLE_SIM_RUNS` sets the runs per lifetime (20) and `TATTLE_SIM_LABEL` the printed label.
 final class QuickExitSimulationTests: XCTestCase {
     @MainActor
@@ -42,7 +43,7 @@ final class QuickExitSimulationTests: XCTestCase {
         await observer.poll()
         await observer.poll()
         for lifetime in [26, 29, 32, 35, 38, 42] {
-            var exited = 0, named = 0, missing = 0, failed = 0
+            var exited = 0, pathless = 0, unknown = 0, named = 0, missing = 0, failed = 0
             for _ in 0..<runs {
                 var pid: pid_t = 0
                 let argv = [strdup(helper), strdup(String(port)), strdup(String(lifetime)), nil]
@@ -60,10 +61,18 @@ final class QuickExitSimulationTests: XCTestCase {
                 let connection = Darwin.accept(listener, nil, nil)
                 try await Task.sleep(for: NetworkObserver.promptPollDelay)
                 await observer.poll()
-                switch observer.snapshot?.connections.first(where: { $0.connection.pid == pid })?.owner.processName {
-                case nil: missing += 1
-                case "pid \(pid)": exited += 1
-                default: named += 1
+                if let owner = observer.snapshot?.connections.first(where: { $0.connection.pid == pid })?.owner {
+                    if owner == .unknown {
+                        unknown += 1
+                    } else if owner.processName == "pid \(pid)" {
+                        exited += 1
+                    } else if owner.path == nil {
+                        pathless += 1
+                    } else {
+                        named += 1
+                    }
+                } else {
+                    missing += 1
                 }
                 Darwin.close(connection)
                 var status: Int32 = 0
@@ -71,7 +80,7 @@ final class QuickExitSimulationTests: XCTestCase {
                 if status != 0 { failed += 1 }
                 try await Task.sleep(for: .milliseconds(30))
             }
-            print("SIM \(label) lifetime \(lifetime) ms: runs \(runs), pid-N \(exited), named \(named), missing \(missing), helper failures \(failed)")
+            print("SIM \(label) lifetime \(lifetime) ms: runs \(runs), pid-N \(exited), no path \(pathless), unknown \(unknown), named \(named), missing \(missing), helper failures \(failed)")
         }
     }
 
