@@ -310,7 +310,7 @@ extension CaptureBroker {
         /bin/chmod 644 "$stage/plist"
         "$launchctl" bootout system/\(label) 2>/dev/null || true
         if ! stopped; then
-            echo 'The installed broker would not stop. Nothing was changed.' >&2
+            echo 'The installed broker was told to stop and had not within two seconds, so its files were left as they are. Try again.' >&2
             exit 3
         fi
         replacing=1
@@ -329,7 +329,7 @@ extension CaptureBroker {
         \(stoppedFunction)
         "$launchctl" bootout system/\(label) 2>/dev/null || true
         if ! stopped; then
-            echo 'The packet-access broker would not stop. Nothing was removed.' >&2
+            echo 'The packet-access broker was told to stop and had not within two seconds, so its files were left in place. Try again.' >&2
             exit 3
         fi
         # Each removal is tried whatever the one before did; one that failed fails the script.
