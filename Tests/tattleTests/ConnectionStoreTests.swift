@@ -49,21 +49,70 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try queue.read { try String.fetchOne($0, sql: "SELECT direction FROM connection") }, "outbound")
     }
 
-    /// Each poll's writes append to a log that is folded into the file now and then, instead
-    /// of rewriting the file and a rollback journal, synced, at every commit. A file from
-    /// before is switched when the app opens it.
-    func testHistoryOnDiskIsWrittenAhead() throws {
+    /// A file for one test, removed when the test ends.
+    private func historyFile() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-history-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let url = folder.appending(path: "tattle.sqlite")
-        try AppDatabase.migrator.migrate(try DatabaseQueue(path: url.path))
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        return folder.appending(path: "tattle.sqlite")
+    }
+
+    /// A history from before the flow index, in a rollback journal, keeps every row and setting
+    /// when the app opens it, gains the index, and is written ahead from then on: each poll's
+    /// writes append to a log that is folded into the file now and then.
+    func testAHistoryFromBeforeKeepsItsRowsAndIsWrittenAhead() throws {
+        let url = try historyFile()
+        let rows: [Row]
+        let settings: [Row]
+        do {
+            let queue = try DatabaseQueue(path: url.path)
+            try AppDatabase.migrator.migrate(queue, upTo: "v7-connection-direction")
+            try queue.write { db in
+                for (i, address) in ["17.1.1.1", "::ffff:17.1.1.1", "2001:db8::1", "17.1.1.1"].enumerated() {
+                    try db.execute(sql: """
+                        INSERT INTO connection (key, proto, pid, uid, processName, localPort, remoteAddress, remotePort, isIPv6, scope, firstSeen, lastSeen, ended, preExisting, name, nameSource, direction)
+                        VALUES (?, ?, 1, 501, 'x', 50000, ?, 443, 0, 'remote', ?, ?, ?, 0, 'a.example', 'sni', 'outbound')
+                        """, arguments: ["k\(i)", i == 2 ? "udp" : "tcp", address, t0 + Double(i), t0 + Double(i), i == 2 ? nil : t0 + 9])
+                }
+                try db.execute(sql: "INSERT INTO setting (key, value) VALUES ('provider.command', 'mine')")
+            }
+            rows = try queue.read { try Row.fetchAll($0, sql: "SELECT * FROM connection ORDER BY id") }
+            settings = try queue.read { try Row.fetchAll($0, sql: "SELECT * FROM setting ORDER BY key") }
+            XCTAssertEqual(try queue.read { try String.fetchOne($0, sql: "PRAGMA journal_mode") }, "delete")
+        }
 
         let database = try AppDatabase(at: url)
         try database.writer.read { db in
+            XCTAssertEqual(try Row.fetchAll(db, sql: "SELECT * FROM connection ORDER BY id"), rows)
+            XCTAssertEqual(try Row.fetchAll(db, sql: "SELECT * FROM setting ORDER BY key"), settings)
+            XCTAssertEqual(try String.fetchAll(db, sql: "SELECT name FROM pragma_index_info('connection_flow')"),
+                           ["remoteAddress", "localPort", "remotePort", "proto"])
             XCTAssertEqual(try String.fetchOne(db, sql: "PRAGMA journal_mode"), "wal")
             XCTAssertEqual(try Int.fetchOne(db, sql: "PRAGMA synchronous"), 1, "NORMAL: synced at checkpoints")
+            XCTAssertEqual(try Int.fetchOne(db, sql: "PRAGMA journal_size_limit"), AppDatabase.logSizeLimit)
         }
+    }
+
+    /// The switch to the log is not a condition for starting. When it fails, here because
+    /// another process is writing the file, the run keeps the rollback journal and still writes
+    /// history; the next launch switches.
+    func testAFailedSwitchToTheLogLeavesTheFileOpenAndWritable() throws {
+        let url = try historyFile()
+        try AppDatabase.migrator.migrate(try DatabaseQueue(path: url.path))
+        let other = try DatabaseQueue(path: url.path)
+        let database = try other.inDatabase { db in
+            try db.execute(sql: "BEGIN IMMEDIATE")
+            defer { try? db.execute(sql: "ROLLBACK") }
+            return try AppDatabase(at: url)
+        }
+        XCTAssertEqual(try database.writer.read { try String.fetchOne($0, sql: "PRAGMA journal_mode") }, "delete")
+        let history = ConnectionStore(database: database)
+        try history.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari"))
+        XCTAssertEqual(try history.count(), 1)
+
+        let next = try AppDatabase(at: url)
+        XCTAssertEqual(try next.writer.read { try String.fetchOne($0, sql: "PRAGMA journal_mode") }, "wal")
+        XCTAssertEqual(try ConnectionStore(database: next).count(), 1)
     }
 
     func testOpenCloseAndHistory() throws {

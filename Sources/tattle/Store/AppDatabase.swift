@@ -12,13 +12,36 @@ struct AppDatabase: Sendable {
         // fail the write at once.
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
-        // History writes a few rows per poll. A rollback journal wrote over 100 KB, synced, per
-        // row; the log appends a few pages and syncs at checkpoints. Synchronous NORMAL, which
-        // comes with it, can lose the last commits to a power cut, not corrupt the file.
-        configuration.journalMode = .wal
         let queue = try DatabaseQueue(path: url.path, configuration: configuration)
         try Self.migrator.migrate(queue)
+        Self.writeAhead(queue)
         writer = queue
+    }
+
+    /// The size the log is cut back to once a checkpoint has folded it into the file, so a
+    /// large transaction (the flow index's build, a big prune) does not leave it that large.
+    static let logSizeLimit = 32768
+
+    /// History writes a few rows per poll. A rollback journal wrote over 100 KB, synced, per
+    /// row; the write-ahead log appends a few pages and syncs at checkpoints. Synchronous
+    /// NORMAL syncs nothing between checkpoints, so a power cut or kernel panic loses whatever
+    /// was written since the last checkpoint and not yet written back by the OS; it does not
+    /// corrupt the file. The switch is not a condition for starting: where it fails (another
+    /// process writing the file, a full or read-only disk) the run keeps the rollback journal,
+    /// and a later launch switches.
+    private static func writeAhead(_ queue: DatabaseQueue) {
+        do {
+            try queue.writeWithoutTransaction { db in
+                let mode = try String.fetchOne(db, sql: "PRAGMA journal_mode = WAL")
+                guard mode == "wal" else {
+                    throw DatabaseError(message: "the journal mode stayed \(mode ?? "unknown")")
+                }
+                try db.execute(sql: "PRAGMA synchronous = NORMAL")
+                try db.execute(sql: "PRAGMA journal_size_limit = \(logSizeLimit)")
+            }
+        } catch {
+            Log.app.error("history keeps the rollback journal this run: switching to the write-ahead log failed: \(error, privacy: .public)")
+        }
     }
 
     /// An in-memory database for tests.
