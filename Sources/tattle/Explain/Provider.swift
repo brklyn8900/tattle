@@ -21,6 +21,8 @@ enum ProviderError: Error, Equatable {
 struct ShellProvider: ExplainProvider {
     var command: String
     var timeout: TimeInterval = 120
+    /// The user's shell. Tests name another.
+    var shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
     struct Preset: Identifiable, Sendable {
         let id: String
@@ -50,8 +52,7 @@ struct ShellProvider: ExplainProvider {
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { throw ProviderError.notConfigured }
         let expanded = command.replacingOccurrences(of: "{schema}", with: Self.shellQuote(OutputContract.schema))
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        let timeout = timeout
+        let (shell, timeout) = (shell, timeout)
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 continuation.resume(with: Result {
@@ -59,6 +60,12 @@ struct ShellProvider: ExplainProvider {
                 })
             }
         }
+    }
+
+    /// A login shell runs the command. csh and tcsh take -l only when it is the one flag, and
+    /// read ~/.cshrc, where their PATH is set, for every shell, so they run it without.
+    static func shellArguments(shell: String, command: String) -> [String] {
+        ["csh", "tcsh"].contains(URL(fileURLWithPath: shell).lastPathComponent) ? ["-c", command] : ["-l", "-c", command]
     }
 
     private static func run(shell: String, command: String, input: String, timeout: TimeInterval) throws -> String {
@@ -71,7 +78,7 @@ struct ShellProvider: ExplainProvider {
         guard queue != -1 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { close(queue) }
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
-        let pid = try spawn(shell, ["-l", "-c", command], in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
+        let pid = try spawn(shell, shellArguments(shell: shell, command: command), in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
         let result = exchange(with: pid, on: queue, input: Data(input.utf8), stdin: stdin.fileHandleForWriting,
                               stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading,
                               until: .now() + timeout)

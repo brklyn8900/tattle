@@ -1105,6 +1105,15 @@ final class ShellProviderTests: XCTestCase {
         XCTAssertEqual(output, "hello")
     }
 
+    /// tcsh and csh refuse -l beside another flag.
+    func testTheCommandRunsInACShell() async throws {
+        for shell in ["/bin/tcsh", "/bin/csh"] {
+            let output = try await ShellProvider(command: "cat", shell: shell).explain("hello")
+            XCTAssertEqual(output, "hello", shell)
+        }
+        XCTAssertEqual(ShellProvider.shellArguments(shell: "/bin/zsh", command: "cat"), ["-l", "-c", "cat"])
+    }
+
     /// The prompt carries captured data, which can carry instructions: an agent preset runs
     /// with every tool off, so the model can only answer.
     func testCodexPresetTurnsEveryToolOff() throws {
