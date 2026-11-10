@@ -345,8 +345,11 @@ final class CaptureBrokerScriptTests: XCTestCase {
             let process = Process()
             process.executableURL = URL(filePath: "/usr/bin/chflags")
             process.arguments = ["-R", "nouchg", root!.path]
-            try? process.run()
-            process.waitUntilExit()
+            guard (try? process.run()) != nil else { return }
+            // Bounded like waitForExit, which a teardown block cannot call.
+            let deadline = Date().addingTimeInterval(60)
+            while process.isRunning && Date() < deadline { usleep(20_000) }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         }
     }
 
