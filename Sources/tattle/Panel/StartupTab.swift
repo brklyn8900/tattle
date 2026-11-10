@@ -156,9 +156,8 @@ private struct StartupDetail: View {
     @ViewBuilder
     private func controls(_ item: StartupItem) -> some View {
         if let scope = item.launchdScope, let plist = item.plistURL {
-            if item.id == CaptureBroker.label {
-                // Tattle's own daemon: the one system job Tattle removes, through the
-                // administrator dialog (ADR-0003).
+            if item.isCaptureBroker {
+                // Removed through the administrator dialog.
                 Button("Remove") {
                     actionError = nil
                     Task {

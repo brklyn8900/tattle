@@ -93,6 +93,16 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(account?.promptValue, "you", file: file, line: line)
     }
 
+    func testOnlyTheDaemonWithTheBrokersLabelIsTattlesBroker() {
+        let launchd = LaunchdReader.Result(items: [
+            job(CaptureBroker.label, scope: .daemon, plist: "/Library/LaunchDaemons/\(CaptureBroker.label).plist"),
+            job(CaptureBroker.label, scope: .userAgent),
+            job("com.other.daemon", scope: .daemon),
+        ], appleCount: 0, unreadable: [])
+        let items = StartupSnapshot.build(launchd: launchd, loginItems: [], state: LaunchctlState(), signature: { _ in nil }).items
+        XCTAssertEqual(items.filter(\.isCaptureBroker).map(\.launchdScope), [.daemon])
+    }
+
     func testStartupFactKeepsTheCertificateNameOutOfItsPromptValue() throws {
         let snapshot = StartupSnapshot.build(
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, unreadable: []),

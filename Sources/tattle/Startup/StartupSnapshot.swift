@@ -92,6 +92,10 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
     var explainKey: String { id }
 
+    /// Tattle's own daemon, the one system job Tattle removes (ADR-0003). An agent that
+    /// carries its label is someone else's job.
+    var isCaptureBroker: Bool { id == CaptureBroker.label && launchdScope == .daemon }
+
     var isUnlistedFolder: Bool {
         if case .unlisted = state { return true }
         return false
