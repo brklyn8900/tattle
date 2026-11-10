@@ -54,9 +54,12 @@ enum DNS {
 
     // Reads a name with RFC 1035 compression; the reader advances past the name as it
     // appears in the sequential stream, not past any pointer target. Nil for a name that is
-    // not a host name; a label holding a dot is one, since joining would hide it.
+    // not a host name; a label holding a dot is one, since joining would hide it. Throws for
+    // a name past RFC 1035's 255 bytes: the walk stops inside it, so where the name ends in
+    // the stream is unknown.
     private static func readName(_ bytes: [UInt8], _ r: inout ByteReader) throws -> HostName? {
         var labels: [ArraySlice<UInt8>] = []
+        var length = 1  // on the wire, the root's zero byte included
         var pos = r.pos
         var jumped = false
         var hops = 0
@@ -79,6 +82,8 @@ enum DNS {
                 continue
             }
             guard pos + 1 + len <= bytes.count else { throw ByteReader.ParseError.short }
+            length += 1 + len
+            guard length <= 255 else { throw ByteReader.ParseError.short }
             labels.append(bytes[(pos + 1)..<(pos + 1 + len)])
             pos += 1 + len
         }

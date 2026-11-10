@@ -385,6 +385,21 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertNil(DNS.parseReply(two[...]))
     }
 
+    /// RFC 1035 caps a name at 255 bytes on the wire, its length bytes and the root's zero
+    /// included: 253 as text, HostName's limit. A walk past it stops there, which leaves the
+    /// reader inside the name, so the whole reply is refused.
+    func testDNSRefusesANameLongerThan255Bytes() {
+        let a63 = String(repeating: "a", count: 63)
+        let longest = [a63, a63, a63, String(repeating: "b", count: 61)].joined(separator: ".")
+        let tooLong = [a63, a63, a63, String(repeating: "b", count: 62)].joined(separator: ".")
+        let atLimit = Self.dnsReply(questions: [longest], answers: [.address(longest, [192, 0, 2, 1])])
+        XCTAssertEqual(DNS.parseReply(atLimit[...])?.addresses.map(\.text), ["192.0.2.1"], "255 bytes")
+        let past = Self.dnsReply(questions: ["www.example.com"], answers: [
+            .address("www.example.com", [192, 0, 2, 1]), .address(tooLong, [192, 0, 2, 2]),
+        ])
+        XCTAssertNil(DNS.parseReply(past[...]), "256 bytes")
+    }
+
     // MARK: Packets
 
     func testParsesIPv4UDPOverEthernet() {
