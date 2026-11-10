@@ -139,6 +139,13 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertEqual(ProcessControl.whyNoQuit(uid: 65), "Runs as _mdnsresponder, so Tattle cannot quit it")
     }
 
+    func testErrorsThePanelShowsReadAsSentences() {
+        XCTAssertEqual(String(describing: ProcessControl.ControlError.failed(errno: ESRCH)), "The process could not be signalled: No such process.")
+        XCTAssertEqual(String(describing: ProcessTable.ReadError.sysctl(errno: ENOMEM)), "The process table could not be read: Cannot allocate memory.")
+        XCTAssertEqual(String(describing: SocketTable.ReadError.sysctl(name: "net.inet.tcp.pcblist_n", errno: EPERM)),
+                       "The socket table (net.inet.tcp.pcblist_n) could not be read: Operation not permitted.")
+    }
+
     func testOnlyAnAppGetsTheRegularQuit() {
         XCTAssertTrue(ProcessControl.quitsAsApp(bundle: "/Applications/Slack.app"))
         XCTAssertFalse(ProcessControl.quitsAsApp(bundle: "/opt/homebrew/bin/node"), "a command-line process Launch Services registered")

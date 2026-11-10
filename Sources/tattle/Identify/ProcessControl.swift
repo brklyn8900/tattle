@@ -3,9 +3,17 @@ import Foundation
 
 /// Asking a process to quit. Only processes of the current user can be signalled.
 enum ProcessControl {
-    enum ControlError: Error, Equatable {
+    enum ControlError: Error, Equatable, CustomStringConvertible {
         case notYours
         case failed(errno: Int32)
+
+        /// What the panel shows.
+        var description: String {
+            switch self {
+            case .notYours: "The process runs as another user, so Tattle cannot quit it."
+            case .failed(let errno): "The process could not be signalled: \(String(cString: strerror(errno)))."
+            }
+        }
     }
 
     static func canQuit(uid: UInt32) -> Bool { uid == getuid() }

@@ -149,8 +149,15 @@ struct ProcessRecords {
 /// processes, which is all libproc will give an unprivileged caller, and from one run of
 /// `ps`, which is setuid root, for the rest.
 enum ProcessTable {
-    enum ReadError: Error, Equatable {
+    enum ReadError: Error, Equatable, CustomStringConvertible {
         case sysctl(errno: Int32)
+
+        /// What the panel shows.
+        var description: String {
+            switch self {
+            case .sysctl(let errno): "The process table could not be read: \(String(cString: strerror(errno)))."
+            }
+        }
     }
 
     /// Every process with its usage. `fallback` is asked once for the pids libproc

@@ -42,8 +42,15 @@ struct SocketEntry: Equatable, Sendable {
 /// pid comes with each socket, which the per-process libproc route cannot give for other
 /// users' processes.
 enum SocketTable {
-    enum ReadError: Error, Equatable {
+    enum ReadError: Error, Equatable, CustomStringConvertible {
         case sysctl(name: String, errno: Int32)
+
+        /// What the panel shows.
+        var description: String {
+            switch self {
+            case .sysctl(let name, let errno): "The socket table (\(name)) could not be read: \(String(cString: strerror(errno)))."
+            }
+        }
     }
 
     static func read() throws -> [SocketEntry] {
