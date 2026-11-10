@@ -43,7 +43,9 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
 - `net-reach`: `Reach` reads `this network` for private, link-local and shared (100.64/10,
   Tailscale's) addresses.
 - `net-history`: the same outcome in the `connection` table, written even when the
-  connection closed before the outcome arrived.
+  connection closed before the outcome arrived. The database is written ahead, with
+  `tattle.sqlite-wal` and `tattle.sqlite-shm` beside it, and an outcome finds its row by the
+  whole flow, through the `connection_flow` index.
 - `net-names-off`: without packet access, the header says `Destinations are addresses:
   names need packet access, which Tattle does not have yet`.
 
@@ -83,6 +85,14 @@ Preconditions:
   http`, `| none:not-handshake`, `| none:timeout`.
 - **Log.** `$V log "<port1>|<port2>|<port3>"`: `no name for tcp/<port>><ip>:80:
   notHandshake` and `...: timeout` lines.
+- **History database.** doctor's migrations end in `v8-connection-flow-index`. `$V db "pragma
+  journal_mode"`: `wal`, with `tattle.sqlite-wal` and `tattle.sqlite-shm` in the data folder.
+  `$V db "explain query plan select * from connection where proto = 'tcp' and localPort = 1
+  and remotePort = 80 and (remoteAddress = 'x' or remoteAddress = '::ffff:' || 'x') order by id
+  desc"`: `SEARCH connection USING INDEX connection_flow (remoteAddress=? AND localPort=? AND
+  remotePort=? AND proto=?)`, the lookup a name makes. For a name on the newest row of a reused
+  four-tuple: once the named connection has closed and 30 s have passed, `$V connect named
+  --port <its port>`; the history query by that port shows the new row named too.
 
 - **A connection's own signer.** Every connection here goes to the Mac's own LAN address,
   so nothing leaves it and no packet access is needed. With `IP=$(ipconfig getifaddr en0)`,
@@ -199,6 +209,38 @@ Preconditions:
   browser, `curl`, `nc example.com`) turns their outcome into `dns`.
 - `outcome ... arrived with no live connection` debug lines are normal: the sniffer often
   names a flow before the socket table shows it.
+- The history database proven 2026-11-10 on the development Mac with the broker. At `1233d86`,
+  run `2026-11-10T151852`, the dev copy's own data as main left it (20,034 rows, rollback
+  journal): the first launch switched it to WAL and ran `v8-connection-flow-index`, the rows
+  kept, the index on its four columns, the lookup's plan on `connection_flow`, and a named
+  connection's row `example.com | http`. `Quit Tattle` left 3.9 MB in `tattle.sqlite-wal` and
+  `tattle.sqlite` as it was at launch: the app does not close the database on quit, so the log
+  is not folded in at exit. The rest is from `77d7315`, the first version of `1233d86`, whose
+  index also listed `id`. Run `2026-11-10T105220`, with a copy of the release build's history
+  (211,609 rows) in place of the dev copy's data: the first launch switched it to WAL and ran
+  `v8-connection-flow-index`, 507 ms from process start to the startup log line against 296 ms
+  for `c056427` on the same data (run `2026-11-10T104816`), one launch each. doctor read it with
+  `sqlite3 -readonly` while the copy ran, and a read after cleanup worked too. `Herdr Core to
+  example.com`, `Name from the HTTP request`, history row 211865 `example.com | http`; on the
+  same four-tuple after it closed, the new row 211918 `example.com | http`. A 120-second Time
+  Profiler trace in each run, panel closed, `trace-summary.txt` in each folder:
+  `ConnectionStore.record` 471 of 788 main-thread ms for 50 outcomes, 30 of them to addresses
+  holding 2,547 and 26,873 rows, against 20 of 213 ms for 22 outcomes to light addresses, most
+  of it GRDB preparing the statement; `open` 108 ms for 57 rows against 13 for 23, `close` 64
+  for 35 against 22 for 32, `fsync` on the main thread 43 ms against none.
+- History write volume measured 2026-11-10 on testmac, dev copy with its own data and no broker,
+  panel never opened, 90 minutes each after 2 minutes' warm-up: `c056427` 573 row changes
+  (opens and closes), `77d7315` (the index with `id`) 665. Logical bytes written 41.85 against
+  18.02 MB, 0.073 against 0.027 MB a row change (15-minute slices 0.067 to 0.080 and 0.023 to
+  0.030). `tattle.sqlite` changed 279 times against 4 checkpoints, about 25 minutes apart after
+  the first. The app's charged disk writes read 32.56 against 1.44 MB, but they leave out the
+  kernel's background writeback, which is how the log reaches the disk: 720 commits 250 ms
+  apart wrote 8.8 MB and were charged none. Compare logical bytes.
+- `sqlite3 -readonly` needs `tattle.sqlite-wal` and `tattle.sqlite-shm` beside the file. macOS's
+  SQLite keeps both after the app quits, so `$V db` works with the copy stopped. A copy of
+  `tattle.sqlite` alone misses the changes still in the log, fails opened read-only with `unable
+  to open database file (14)`, and put back beside another state's `-wal` reads as malformed.
+  Move the folder whole, as `--fresh` does, or copy with `.backup`.
 - Connections already open when the dev copy started have no name (`open since before
   Tattle started`).
 - An owner and its app read with the socket table, its line walked through one reading of every

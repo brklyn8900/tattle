@@ -44,7 +44,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   why Tattle could not tell, and who signed the process and its app. Proven 2026-10-25; a
   connection's own signer, rows with differing signers, a file put in a bundle and a process
   that replaces itself, incoming connections and a Tailscale peer's reach 2026-11-08; an
-  owner and its app read with the socket table and a process's own name for itself 2026-11-09.
+  owner and its app read with the socket table and a process's own name for itself 2026-11-09;
+  the history database written ahead and a name found by its flow 2026-11-10.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build; a
