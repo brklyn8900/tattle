@@ -330,6 +330,61 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertNil(DNS.parseReply(loop[...]))
     }
 
+    /// A record of 4 or 16 address bytes is an A or an AAAA; an alias is a CNAME to a name.
+    private enum Record {
+        case address(String, [UInt8])
+        case alias(String, String)
+    }
+
+    /// A reply compressed as servers compress them (RFC 1035 4.1.4): a name whose suffix is
+    /// already in the message ends in a pointer to it.
+    private static func dnsReply(questions: [String], answers: [Record]) -> [UInt8] {
+        var bytes: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, UInt8(questions.count), UInt8(answers.count >> 8), UInt8(answers.count & 0xff), 0, 0, 0, 0]
+        var offsets: [String: Int] = [:]  // where each suffix already written starts
+        func name(_ text: String) {
+            let labels = text.split(separator: ".")
+            for i in labels.indices {
+                let suffix = labels[i...].joined(separator: ".")
+                if let at = offsets[suffix] {
+                    bytes += [0xc0 | UInt8(at >> 8), UInt8(at & 0xff)]
+                    return
+                }
+                offsets[suffix] = bytes.count
+                bytes += [UInt8(labels[i].utf8.count)] + Array(labels[i].utf8)
+            }
+            bytes.append(0)
+        }
+        for question in questions {
+            name(question)
+            bytes += [0, 1, 0, 1]
+        }
+        for record in answers {
+            switch record {
+            case let .address(owner, address):
+                name(owner)
+                bytes += [0, address.count == 4 ? 1 : 28, 0, 1, 0, 0, 0x0e, 0x10, 0, UInt8(address.count)] + address
+            case let .alias(owner, target):
+                name(owner)
+                bytes += [0, 5, 0, 1, 0, 0, 0x0e, 0x10, 0, 0]
+                let start = bytes.count
+                name(target)
+                bytes[start - 2] = UInt8((bytes.count - start) >> 8)
+                bytes[start - 1] = UInt8((bytes.count - start) & 0xff)
+            }
+        }
+        return bytes
+    }
+
+    /// A resolver's reply carries the one question it answers, and RFC 9619 makes more than
+    /// one a malformed message. Each further question was a name to walk that nothing used.
+    func testDNSRefusesAReplyWithMoreThanOneQuestion() {
+        let answer = Record.address("www.example.com", [192, 0, 2, 1])
+        let one = Self.dnsReply(questions: ["www.example.com"], answers: [answer])
+        XCTAssertEqual(DNS.parseReply(one[...])?.addresses.map(\.text), ["192.0.2.1"])
+        let two = Self.dnsReply(questions: ["www.example.com", "example.com"], answers: [answer])
+        XCTAssertNil(DNS.parseReply(two[...]))
+    }
+
     // MARK: Packets
 
     func testParsesIPv4UDPOverEthernet() {

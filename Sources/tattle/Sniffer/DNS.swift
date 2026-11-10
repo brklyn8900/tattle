@@ -19,13 +19,10 @@ enum DNS {
             let questions = Int(try r.u16())
             let answers = Int(try r.u16())
             try r.skip(4)
-            guard questions >= 1 else { return nil }
+            // A resolver answers one question, and RFC 9619 makes more a malformed message.
+            guard questions == 1 else { return nil }
             guard let qname = try readName(bytes, &r) else { return nil }
             try r.skip(4)
-            for _ in 1..<max(questions, 1) {
-                _ = try readName(bytes, &r)
-                try r.skip(4)
-            }
             var records: [(owner: String, address: IPAddress)] = []
             var aliases: [String: [String]] = [:]
             for _ in 0..<answers {
