@@ -19,10 +19,11 @@ enum Prompt {
     static let dataEnd = "END CAPTURED DATA"
 
     /// The item and facts go out as one JSON line between two markers. JSON escapes line
-    /// breaks and quotes inside a value, so a value cannot pass for a fact or for the end
-    /// of the block. The key and the fact values get one redaction: a fact usually repeats
-    /// the key, so a key redacted less would undo it. The default instructions hold nothing of
-    /// the user's and go out as written; edited ones can name the user.
+    /// breaks and quotes inside a value, and the three line separators it leaves as they are
+    /// are escaped here, so a value cannot pass for a fact or for the end of the block. The
+    /// key and the fact values get one redaction: a fact usually repeats the key, so a key
+    /// redacted less would undo it. The default instructions hold nothing of the user's and
+    /// go out as written; edited ones can name the user.
     static func build(instructions: String, request: ExplainRequest, redactor: Redactor) -> String {
         let redact = { redactor.redact($0, as: Redactor.Context(request.kind)) }
         let captured: [String: Any] = [
@@ -36,12 +37,20 @@ enum Prompt {
             written == defaultInstructions ? written : redactor.redact(written, as: .instructions),
             "",
             dataBegin,
-            String(decoding: json, as: UTF8.self),
+            escapingLineSeparators(String(decoding: json, as: UTF8.self)),
             dataEnd,
             "",
             "Answer with one JSON object matching this schema:",
             OutputContract.schema,
         ].joined(separator: "\n")
+    }
+
+    /// Next line, line separator and paragraph separator, which JSON allows unescaped inside
+    /// a string and many readers show as a line break. The JSON holds them only inside strings.
+    private static func escapingLineSeparators(_ json: String) -> String {
+        json.replacingOccurrences(of: "\u{85}", with: "\\u0085")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
     static func label(for kind: Rule.Kind) -> String {
