@@ -258,3 +258,11 @@ what stays)
   (`AppState.swift`, `NetworkTab.swift`, `PanelView.swift`).
 - `PortsObserver.refresh` has no overlap guard: a fast close and reopen can run two sweeps,
   and the older one can land last, for up to five seconds (`PortsObserver.swift`).
+- History statements are prepared again on every call: `fetchAll(db, sql:)` and
+  `execute(sql:)` compile the SQL each time, with GRDB's authorizer called for every column.
+  It is most of what naming a connection still costs on the main actor: 13 of 20 ms for 22
+  names in a 120-second trace (2026-11-10). Cached statements would skip it
+  (`ConnectionStore.swift`).
+- The app never closes the database, so quitting does not fold the log into the file: after
+  `Quit Tattle` the latest changes stay in `tattle.sqlite-wal` until a later checkpoint, and
+  `tattle.sqlite` alone lacks them (`AppDatabase.swift`, `TattleApp.swift`).
