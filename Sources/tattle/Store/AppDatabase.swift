@@ -154,6 +154,15 @@ struct AppDatabase: Sendable {
             // is measured against them.
             try db.alter(table: "connection") { $0.add(column: "direction", .text).notNull().defaults(to: Connection.Direction.outbound.rawValue) }
         }
+        migrator.registerMigration("v8-connection-flow-index") { db in
+            // Naming a flow, on the main actor, found its rows by address and read each one,
+            // tens of thousands for a client that talks to one address all day. The address
+            // index stays: knownAddresses scans it at launch, and scans this wider one slower.
+            // No `id` column: every index entry already ends in the row id, so listing it
+            // would store it twice.
+            try db.create(index: "connection_flow", on: "connection",
+                          columns: ["remoteAddress", "localPort", "remotePort", "proto"])
+        }
         return migrator
     }
 }

@@ -140,6 +140,31 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try store.history(remoteAddress: "17.1.1.1").map(\.name), ["new.example.com", "old.example.com"])
     }
 
+    /// A name is written on the main actor, and a client that talks to one address all day
+    /// leaves tens of thousands of rows for it, so the rows are found by the whole flow, not
+    /// by the address and then read one by one.
+    func testNamingAFlowSearchesByTheWholeFlow() throws {
+        final class Statements: @unchecked Sendable { var sql: [String] = [] }
+        let statements = Statements()
+        let database = try AppDatabase.inMemory()
+        try database.writer.writeWithoutTransaction { db in
+            db.trace { event in
+                if case .statement(let statement) = event { statements.sql.append(statement.expandedSQL) }
+            }
+        }
+        let flow = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        try ConnectionStore(database: database).record(.unnamed(.timeout), flow: flow, openedAt: t0)
+
+        let select = try XCTUnwrap(statements.sql.first { $0.contains("SELECT * FROM connection") })
+        let plan = try database.writer.read { db in
+            try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN " + select).map { $0["detail"] as String }
+        }
+        let search = try XCTUnwrap(plan.first { $0.hasPrefix("SEARCH connection") }, "plan: \(plan)")
+        for column in ["remoteAddress=?", "localPort=?", "remotePort=?", "proto=?"] {
+            XCTAssertTrue(search.contains(column), "\(column) not in \(search)")
+        }
+    }
+
     func testTouchStaleAndPrune() throws {
         let a = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "a"))
         try store.open(ConnectionRecord(connection(200, "2.2.2.2", at: t0 + 5), processName: "b"))
