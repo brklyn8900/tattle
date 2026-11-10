@@ -36,6 +36,25 @@ final class ConnectionTrackerTests: XCTestCase {
         XCTAssertNil(udp(1, 5353, "0.0.0.0", 0).connectionScope, "an unconnected UDP socket has no peer")
     }
 
+    /// The table names the process that used a socket last. A child that writes to its
+    /// parent's socket does not close one connection and open another.
+    func testASocketAnotherProcessUsedLastIsTheSameConnection() {
+        var tracker = ConnectionTracker()
+        _ = tracker.update(entries: [], at: t0)
+        let opened = tracker.update(entries: [tcp(100, 50000, "17.253.144.10")], at: t0 + 1).opened
+        XCTAssertEqual(opened.map(\.pid), [100])
+        XCTAssertEqual(tracker.update(entries: [tcp(101, 50000, "17.253.144.10")], at: t0 + 2), ConnectionTracker.Changes())
+        XCTAssertEqual(tracker.open.map(\.id), opened.map(\.id))
+        XCTAssertEqual(tracker.open.first?.pid, 100)
+        XCTAssertEqual(tracker.open.first?.lastSeen, t0 + 2)
+        XCTAssertEqual(tracker.update(entries: [tcp(100, 50000, "17.253.144.10")], at: t0 + 3), ConnectionTracker.Changes())
+
+        // Two sockets on one flow at once (two local addresses) are two connections.
+        let both = tracker.update(entries: [tcp(100, 50000, "17.253.144.10"), tcp(101, 50000, "17.253.144.10", localAddress: "10.0.0.2")], at: t0 + 4)
+        XCTAssertEqual(both.opened.map(\.pid), [101])
+        XCTAssertEqual(both.closed, [])
+    }
+
     func testThePidsAReadingWouldOpenAreTheOnesItOpens() {
         var tracker = ConnectionTracker()
         _ = tracker.update(entries: [tcp(1, 50000, "17.1.1.1")], at: t0)

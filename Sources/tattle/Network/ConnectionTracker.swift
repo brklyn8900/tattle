@@ -20,8 +20,10 @@ struct Connection: Equatable, Sendable, Identifiable {
         case local
     }
 
-    /// Process, protocol, local port and peer: stable for the socket's life. A reused
-    /// local port to the same peer from the same pid is treated as the same connection.
+    /// Process, protocol, local port and peer: stable for the socket's life. The process is
+    /// the first one seen using the socket: the table names the last to use it, which changes
+    /// while processes share it (a parent and the child it forked). A reused local port to
+    /// the same peer from the same pid is treated as the same connection.
     var id: String
     var proto: SocketEntry.Proto
     var pid: Int32
@@ -61,6 +63,10 @@ struct Connection: Equatable, Sendable, Identifiable {
 
     /// What the sniffer sees of this connection (`FlowKey.text`): the key without the pid.
     var flowKey: String { "\(proto.rawValue)/\(localPort)>\(wireAddress):\(remotePort)" }
+
+    static func flowKey(_ entry: SocketEntry) -> String {
+        "\(entry.proto.rawValue)/\(entry.localPort)>\(wireAddress(entry.remoteAddress)):\(entry.remotePort)"
+    }
 
     /// The peer's address as the wire shows it. An IPv6 socket talking IPv4 shows a mapped
     /// address; the wire shows IPv4, and both are one peer.
@@ -177,8 +183,15 @@ struct ConnectionTracker: Sendable {
         var changes = Changes()
         var seen = Set<String>()
         let listeners = TCPListeners(entries)
+        // A live connection whose key is missing from this reading may be a socket another
+        // process used last: the same flow under another pid is that socket, not a new one.
+        let present = Set(entries.compactMap { $0.connectionScope == nil ? nil : Connection.key($0) })
+        var passedOn: [String: String] = [:]
+        for (key, connection) in live where !present.contains(key) { passedOn[connection.flowKey] = key }
         for entry in entries {
-            guard let found = connection(entry), seen.insert(found.key).inserted else { continue }
+            guard var found = connection(entry) else { continue }
+            if found.opens, let key = passedOn[Connection.flowKey(entry)] { found = (key, found.scope, false) }
+            guard seen.insert(found.key).inserted else { continue }
             let key = found.key
             if !found.opens, var existing = live[key] {
                 existing.lastSeen = now
