@@ -211,6 +211,13 @@ Preconditions:
   the rest TCP to the router's port 53, one per window as the driver's `dig +tcp` is, and to
   testmac's port 22. That shows no difference for processes that live 47 ms or more, and nothing
   about ones that exit sooner.
+- Owners of processes that exit within a reading, simulated 2026-11-09 on testmac (debug build,
+  not the app): a helper connects to a loopback listener and exits 26 to 42 ms later; 20 ms after
+  the accept one reading is taken, with the helper's socket rewritten to a private address. In
+  720 runs per side, in rotating order, the helper read as `pid <n>` 112 times at `7744536`, 126
+  at `b6c21c7` and 174 at `ba0432b`. Whether a side ran first or last in a round moved its count
+  more than which side it was: two fixed-order sets of 480 gave 55 and 58 at `7744536`, 68
+  (run second) and 44 (run first) at `b6c21c7`. The harness was not kept.
 - A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A name that ends in a folder (`.`, `..`,
