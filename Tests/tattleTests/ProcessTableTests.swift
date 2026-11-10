@@ -182,11 +182,18 @@ final class ProcessTableTests: XCTestCase {
 
         // A path whose NUL ends on the pointer boundary has no padding, and an empty argv[0]
         // follows it straight away.
-        let unpadded: [UInt8] = [2, 0, 0, 0] + Array("/bin/ls".utf8) + [0] + [0] + Array("x".utf8) + [0] + Array("HOME=/x".utf8) + [0]
+        var unpadded: [UInt8] = [2, 0, 0, 0]
+        unpadded += Array("/bin/ls".utf8) + [0]
+        unpadded += [0]
+        unpadded += Array("x".utf8) + [0]
+        unpadded += Array("HOME=/x".utf8) + [0]
         XCTAssertEqual(ProcessTable.parseArguments(unpadded[...]), ["", "x"])
 
         // An argument where the padding should be means another layout: the NULs are skipped.
-        let unaligned: [UInt8] = [1, 0, 0, 0] + Array("/bin/l".utf8) + [0] + Array("ls".utf8) + [0] + Array("HOME=/x".utf8) + [0]
+        var unaligned: [UInt8] = [1, 0, 0, 0]
+        unaligned += Array("/bin/l".utf8) + [0]
+        unaligned += Array("ls".utf8) + [0]
+        unaligned += Array("HOME=/x".utf8) + [0]
         XCTAssertEqual(ProcessTable.parseArguments(unaligned[...]), ["ls"])
     }
 
