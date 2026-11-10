@@ -49,6 +49,23 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try queue.read { try String.fetchOne($0, sql: "SELECT direction FROM connection") }, "outbound")
     }
 
+    /// Each poll's writes append to a log that is folded into the file now and then, instead
+    /// of rewriting the file and a rollback journal, synced, at every commit. A file from
+    /// before is switched when the app opens it.
+    func testHistoryOnDiskIsWrittenAhead() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-history-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "tattle.sqlite")
+        try AppDatabase.migrator.migrate(try DatabaseQueue(path: url.path))
+
+        let database = try AppDatabase(at: url)
+        try database.writer.read { db in
+            XCTAssertEqual(try String.fetchOne(db, sql: "PRAGMA journal_mode"), "wal")
+            XCTAssertEqual(try Int.fetchOne(db, sql: "PRAGMA synchronous"), 1, "NORMAL: synced at checkpoints")
+        }
+    }
+
     func testOpenCloseAndHistory() throws {
         let a = try store.open(ConnectionRecord(connection(100, "17.1.1.1"), processName: "Safari", appName: "Safari", appPath: "/Applications/Safari.app", signer: "Apple"))
         XCTAssertNotNil(a.id)

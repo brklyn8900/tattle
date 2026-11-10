@@ -85,7 +85,9 @@ days. Tattle uses the record to mark an address it has not reached before; no sc
 it yet.
 
 The file is not encrypted, and every process you run can read it: the names the broker keeps
-from them are in it, for as long as the rows last. Spotlight does not index the folder, and
+from them are in it, for as long as the rows last. The same holds for `tattle.sqlite-wal` and
+`tattle.sqlite-shm` beside it, where SQLite keeps the latest changes and their index until it
+folds them into the file. Spotlight does not index the folder, and
 Time Machine backs it up unless you exclude it.
 
 ## Explain

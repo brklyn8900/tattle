@@ -1,8 +1,9 @@
 import Foundation
 import GRDB
 
-/// The app's SQLite database: one file under Application Support, opened through GRDB
-/// with versioned migrations. Tests open an in-memory instance.
+/// The app's SQLite database under Application Support: one file and the write-ahead log
+/// and its index beside it (`-wal`, `-shm`), opened through GRDB with versioned migrations.
+/// Tests open an in-memory instance.
 struct AppDatabase: Sendable {
     let writer: any DatabaseWriter
 
@@ -11,6 +12,10 @@ struct AppDatabase: Sendable {
         // fail the write at once.
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
+        // History writes a few rows per poll. A rollback journal wrote over 100 KB, synced, per
+        // row; the log appends a few pages and syncs at checkpoints. Synchronous NORMAL, which
+        // comes with it, can lose the last commits to a power cut, not corrupt the file.
+        configuration.journalMode = .wal
         let queue = try DatabaseQueue(path: url.path, configuration: configuration)
         try Self.migrator.migrate(queue)
         writer = queue
