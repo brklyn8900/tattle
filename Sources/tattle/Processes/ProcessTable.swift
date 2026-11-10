@@ -39,9 +39,10 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// the file belongs to; running other code or a folder, it is still marked as the
     /// interpreter, and so is one launchd started reading its standard input, which is then
     /// a file or a pipe, not a person at a terminal. Otherwise the name the process was
-    /// started under wins over the executable's file name, unless it ends in a folder ("."
-    /// or "~"): a multi-call binary at a version-numbered path is "claude" or "ugrep", a login
-    /// shell "-zsh" is zsh, and a node process that set its title keeps it.
+    /// started under wins over the executable's file name, unless it is a home folder ("~" or
+    /// "~user") or a relative path ending in "." or "..": a multi-call binary at a
+    /// version-numbered path is "claude" or "ugrep", a login shell "-zsh" is zsh, and a node
+    /// process that set its title keeps it.
     static func name(
         path: String?, arguments: [String]?, command: String, signature: CodeSignature? = nil, startedByLaunchd: Bool = false
     ) -> (name: String, interpreter: String?, runsUnnamedCode: Bool, script: String?) {
@@ -67,8 +68,10 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
             // like one ("/Users/u/Library/Application Support/x/server").
             let isTitle = first.contains(" ") && !first.hasPrefix("/")
             let started = (isTitle ? Substring(first) : Substring((first as NSString).lastPathComponent)).drop { $0 == "-" }
-            let endsInFolder = !isTitle && (started == "." || started == ".." || started.hasPrefix("~"))
-            if !started.isEmpty, !endsInFolder { return (String(started), interpreter, runsUnnamedCode, nil) }
+            let isHomeFolder = first.hasPrefix("~") && first.drop { $0 != "/" }.allSatisfy { $0 == "/" }
+            let isRelativeFolder = !first.hasPrefix("/") && (started == "." || started == "..")
+            let namesFolder = !isTitle && (isHomeFolder || isRelativeFolder)
+            if !started.isEmpty, !namesFolder { return (String(started), interpreter, runsUnnamedCode, nil) }
         }
         return (executable ?? command, interpreter, runsUnnamedCode, nil)
     }

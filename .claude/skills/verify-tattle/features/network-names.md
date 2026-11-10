@@ -220,9 +220,9 @@ Preconditions:
   (run second) and 44 (run first) at `b6c21c7`. The harness was not kept.
 - A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
-  dependence on the app's working directory or home. A name that ends in a folder (`.`, `..`,
-  `~`, `~user`) now reads as the program's file; that rests on
-  `testTheNameAProcessStartedUnderIsNotAPathToResolve`. At `ba0432b` an empty `argv[0]` did not
+  dependence on the app's working directory or home. A home folder (`~`, `~user`) or a relative
+  path ending in `.` or `..` now reads as the program's file, and an absolute path keeps its last
+  component as before; that rests on `testTheNameAProcessStartedUnderIsNotAPathToResolve`. At `ba0432b` an empty `argv[0]` did not
   reach the naming: `ProcessTable.parseArguments` took it for the padding after the executable's
   path, so the process was named after its next argument (`G` for `nc -G 5 ...`), or after its
   first environment string when it had none, and that string joined its arguments. The parser

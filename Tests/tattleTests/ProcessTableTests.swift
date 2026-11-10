@@ -84,14 +84,18 @@ final class ProcessTableTests: XCTestCase {
     }
 
     /// The name a process started under is read as text: a URL would resolve these against the
-    /// app's own working directory and home folder and name the process after those. A name
-    /// that ends in a folder says nothing about the program, so the file names it.
+    /// app's own working directory and home folder and name the process after those. A home
+    /// folder, or a relative path ending in "." or "..", says nothing about the program, so the
+    /// file names it. An absolute path names the process as it always has.
     func testTheNameAProcessStartedUnderIsNotAPathToResolve() {
         func started(_ first: String) -> String {
             ProcessEntry.name(path: "/x/tool", arguments: [first], command: "tool").name
         }
-        for folder in ["", ".", "..", "~", "~/", "~user", "~user/", "./", ".//", "../", "a/.", "a/..", "a/./", "a/../", "-.", "/x/~"] {
+        for folder in ["", ".", "..", "~", "~/", "~user", "~user/", "~user//", "./", ".//", "../", "a/.", "a/..", "a/./", "a/../", "-."] {
             XCTAssertEqual(started(folder), "tool", "[\(folder)]")
+        }
+        for absolute in ["/x/~", "/x/~/", "/x/~foo", "/x/.", "/x/./", "/x/.."] {
+            XCTAssertEqual(started(absolute), URL(fileURLWithPath: absolute).lastPathComponent, "[\(absolute)]")
         }
         XCTAssertEqual(started("~/bin/agent"), "agent", "a file under a folder is still named")
         XCTAssertEqual(started("./agent"), "agent")
