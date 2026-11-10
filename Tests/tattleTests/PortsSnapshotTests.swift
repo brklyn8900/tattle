@@ -55,6 +55,11 @@ final class PortsSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items(in: .ephemeral).map(\.port), [60000])
     }
 
+    func testAListenerOnMappedLoopbackIsNotReachableFromTheNetwork() {
+        XCTAssertTrue(entry(.tcp, "::ffff:127.0.0.1", 8021, pid: 1, v6: true).isLoopback)
+        XCTAssertFalse(entry(.tcp, "::ffff:192.168.1.5", 8021, pid: 1, v6: true).isLoopback)
+    }
+
     /// What the panel shows differs from what a prompt carries: a development certificate is
     /// named after the developer, and the user's account after their login.
     private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {

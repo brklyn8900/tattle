@@ -32,7 +32,7 @@ struct SocketEntry: Equatable, Sendable {
 
     /// Unspecified address: reachable on every interface, including from the network.
     var isBoundToAllInterfaces: Bool { localAddress == "0.0.0.0" || localAddress == "::" }
-    var isLoopback: Bool { localAddress.hasPrefix("127.") || localAddress == "::1" }
+    var isLoopback: Bool { Self.isLoopback(localAddress) }
 
     var acceptsIPv4: Bool { !isIPv6 || isDualStack }
     var acceptsIPv6: Bool { isIPv6 }
