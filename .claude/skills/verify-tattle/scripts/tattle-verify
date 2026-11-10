@@ -219,9 +219,14 @@ cmd_doctor() {
     info "commit $(git -C "$REPO" rev-parse --short HEAD), $(git -C "$REPO" status --porcelain | grep -c . || true) uncommitted paths"
 
     if [ -f "$DB" ]; then
-        local migrations
-        migrations=$(sqlite3 -readonly -cmd ".timeout 3000" "$DB" "select group_concat(identifier, ' ') from grdb_migrations" 2>&1)
-        ok "database $DB, migrations: $migrations"
+        local migrations registered
+        registered=$(sed -n 's/.*registerMigration("\([^"]*\)").*/\1/p' "$REPO/Sources/tattle/Store/AppDatabase.swift" | tr '\n' ' ' | sed 's/ $//')
+        if migrations=$(sqlite3 -readonly -cmd ".timeout 3000" "$DB" "select group_concat(identifier, ' ') from grdb_migrations" 2>&1); then
+            [ "$migrations" = "$registered" ] && ok "database $DB has the source's migrations: $migrations" \
+                || no "database $DB has migrations '$migrations'; the source registers '$registered'"
+        else
+            no "database $DB could not be read: $migrations"
+        fi
     else
         no "no database at $DB"
     fi
