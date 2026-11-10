@@ -266,3 +266,22 @@ what stays)
 - The app never closes the database, so quitting does not fold the log into the file: after
   `Quit Tattle` the latest changes stay in `tattle.sqlite-wal` until a later checkpoint, and
   `tattle.sqlite` alone lacks them (`AppDatabase.swift`, `TattleApp.swift`).
+- Migrations run on the main thread inside `TattleApp.init`, before the menu bar item exists.
+  The flow index (`v8-connection-flow-index`) took 0.25 s on testmac at 221,007 rows and 4.2 s
+  at 3.98M, 365 days at the development Mac's rate (the real history replicated, warm cache);
+  random synthetic data took 11.4 to 12.5 s at 3.8M (2026-11-10). No install can reach that
+  before v8 runs, since every history is under a month old, but an index added later to a long
+  history would need building after launch, from a background write (`AppDatabase.swift`).
+- A large prune got slower on the main actor with the flow index and the write-ahead log. On
+  testmac at 3.98M rows, one run per size: 1,434 rows 792 against 1,277 ms, 11,884 rows 1,602
+  against 2,424 ms, 14,482 rows 1,500 against 2,545 ms; an hour's worth (291 rows) 787 against
+  794 ms (2026-11-10). Most of each is the scan of every row for the cutoff, which no index
+  serves. Large prunes follow a lowered retention or a long time with the app off
+  (`ConnectionStore.swift`, `NetworkObserver.swift`).
+- `knownAddresses` as a table scan (`NOT INDEXED`) took 0.11 s against 0.34 s through
+  `connection_remote` on testmac at 221,007 rows, the same 5,576 addresses (2026-11-10). Then
+  `connection_remote` serves nothing `connection_flow` cannot, and dropping it saves a write per
+  insert and prune (12.6% fewer log frames per insert, measured by a reviewer) and about 5.4 MB
+  per 211,000 rows. Dropped without the table scan, `knownAddresses` is 10% slower (327 to 339
+  against 360 to 375 ms). `history(remoteAddress:)` could then order rows that share a
+  `firstSeen` differently (`ConnectionStore.swift`, `AppDatabase.swift`).
