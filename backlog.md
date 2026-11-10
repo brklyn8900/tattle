@@ -23,6 +23,10 @@
 - A process that replaces itself and keeps the path is not read again: `exec /bin/bash b.sh`
   from `a.sh`, or a file replaced at its path and then exec'd. Its new connections carry the
   old owner (`ConnectionOwner.unresolved`).
+- A reused pid running the same program keeps the earlier process's owner, app included:
+  `ConnectionOwner.unresolved` compares only the executable's path. It needs the pid to come
+  round again while a connection of the earlier process is still listed. The process's start
+  time (`ProcessEntry.started`) would tell the two apart.
 - Inline code that calls a file is pinned by its line: `sh -c /x/agent` keeps its answer when
   `agent` changes.
 - The host prompt still carries per-connection facts (`Protocol`, `Since`), and the model can
