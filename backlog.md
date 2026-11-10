@@ -294,3 +294,9 @@ what stays)
   88 A records in 1,462 bytes cost 0.18 ms on testmac, so about 5,500 such replies a second fill
   it (2026-11-10). Any host on the network can forge the resolver's address (`FlowNamer.swift`,
   `DNS.swift`).
+- `ByteReader.ParseError.short` means the reply ran out of bytes, but `readName` also throws it
+  for a reply over a limit: the walk limit (`DNS.swift:83`), the 64-pointer limit (`:91`) and
+  the 255-byte name (`:96`). Nothing catches `.short` on its own, so the reply is refused the
+  same either way; a separate case would say which.
+- `ProcessTable.arguments(pid:)`, the overload without `scratch`, is called only by
+  `ProcessTableTests`.
