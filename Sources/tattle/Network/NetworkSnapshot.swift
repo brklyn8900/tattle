@@ -211,7 +211,7 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         if seconds < 60 { return "\(Int(seconds)) s ago" }
         if seconds < 3600 { return "\(Int(seconds / 60)) min ago" }
         if seconds < 86400 { return "\(Int(seconds / 3600)) h ago" }
-        return date.formatted(.relative(presentation: .named))
+        return "\(Int(seconds / 86400)) d ago"
     }
 }
 

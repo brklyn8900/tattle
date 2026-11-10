@@ -714,5 +714,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(facts["First contact"], "no, seen before")
         XCTAssertEqual(snapshot.connections[0].facts(now: t0 + 10).first { $0.name == "Since" }?.value, "9 s ago")
         XCTAssertEqual(LiveConnection.ago(t0, now: t0 + 125), "2 min ago")
+        XCTAssertEqual(LiveConnection.ago(t0, now: t0 + 3 * 86400 + 5), "3 d ago", "measured from the reading, not from the clock")
     }
 }
