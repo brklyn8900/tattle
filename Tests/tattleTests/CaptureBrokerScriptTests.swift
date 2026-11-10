@@ -374,6 +374,16 @@ final class CaptureBrokerScriptTests: XCTestCase {
         XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))
     }
 
+    /// A locked plist stands for any file rm cannot delete.
+    func testRemoveFailsWhenTheBrokersPlistStays() throws {
+        unlockAllAtTeardown()
+        try install()
+        try setLocked(true, URL(filePath: layout.plistPath))
+        XCTAssertThrowsError(try remove())
+        XCTAssertNotNil(contents(layout.plistPath))
+        XCTAssertNil(contents(layout.helperPath), "what can be removed still is")
+    }
+
     func testRemoveSweepsAStageHoldingALockedFile() throws {
         unlockAllAtTeardown()
         let stage = URL(filePath: layout.helperDirectory).appending(path: ".\(CaptureBroker.label).crashed")

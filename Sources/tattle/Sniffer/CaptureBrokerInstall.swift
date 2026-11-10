@@ -332,10 +332,13 @@ extension CaptureBroker {
             echo 'The packet-access broker would not stop. Nothing was removed.' >&2
             exit 3
         fi
-        /bin/rm -f \(shell(layout.plistPath))
-        /bin/rm -f \(shell(layout.helperPath))
+        # Each removal is tried whatever the one before did; one that failed fails the script.
+        status=0
+        /bin/rm -f \(shell(layout.plistPath)) || status=1
+        /bin/rm -f \(shell(layout.helperPath)) || status=1
         \(purgeFunction)
-        purge \(shell(layout.helperDirectory))/.\(label).*
+        purge \(shell(layout.helperDirectory))/.\(label).* || status=1
+        exit "$status"
         """
     }
 
