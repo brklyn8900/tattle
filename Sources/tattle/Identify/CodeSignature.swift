@@ -138,9 +138,11 @@ struct CodeSignature: Equatable, Sendable {
         }
         var error: Unmanaged<CFError>?
         let validity = SecStaticCodeCheckValidityWithErrors(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), nil, &error)
+        // Taken whatever the verdict: the error is this caller's to release.
+        let failure = error?.takeRetainedValue()
         if validity == errSecCSUnsigned { return CodeSignature(signer: .unsigned) }
         if validity != errSecSuccess {
-            let message = error?.takeRetainedValue().localizedDescription
+            let message = failure?.localizedDescription
                 ?? (SecCopyErrorMessageString(validity, nil) as String?) ?? "OSStatus \(validity)"
             return CodeSignature(signer: .invalid(message))
         }
