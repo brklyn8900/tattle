@@ -92,6 +92,8 @@ struct Packet {
         switch first >> 4 {
         case 4:
             let headerLength = Int(first & 0x0f) * 4
+            // A length short of the fixed header would move the cursor back into it.
+            guard headerLength >= 20 else { return nil }
             try r.skip(1)
             let total = Int(try r.u16())
             try r.skip(2)
@@ -128,7 +130,7 @@ struct Packet {
             try r.skip(4)
             let dataOffset = Int(try r.u8() >> 4) * 4
             let flags = try r.u8()
-            guard transportStart + dataOffset <= r.end else { return nil }
+            guard dataOffset >= 20, transportStart + dataOffset <= r.end else { return nil }
             r.pos = transportStart + dataOffset
             return Packet(src: src, dst: dst, srcPort: sport, dstPort: dport,
                           proto: .tcp, tcpFlags: flags, tcpSeq: seq, payload: r.rest, uncaptured: max(0, declaredEnd - r.end))

@@ -483,6 +483,19 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertEqual(Packet.parse([30, 0, 0, 0] + v6 + tcp + captured, dlt: PacketCapture.linkNull)?.uncaptured, 2900)
     }
 
+    func testRefusesAHeaderLengthShorterThanTheHeader() {
+        func frame(headerWords: UInt8, dataOffsetWords: UInt8) -> [UInt8] {
+            let tcp: [UInt8] = [0xd4, 0x31, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, dataOffsetWords << 4, 0x18, 0xff, 0xff, 0, 0, 0, 0, 0x16, 0x03]
+            let total = 20 + tcp.count
+            let ip: [UInt8] = [0x40 | headerWords, 0, UInt8(total >> 8), UInt8(total & 0xff), 0, 0, 0x40, 0, 64, 6, 0, 0,
+                               192, 168, 1, 5, 17, 253, 144, 10] + tcp
+            return [UInt8](repeating: 0xaa, count: 12) + [0x08, 0x00] + ip
+        }
+        XCTAssertEqual(Packet.parse(frame(headerWords: 5, dataOffsetWords: 5), dlt: PacketCapture.linkEthernet)?.payload.count, 2)
+        XCTAssertNil(Packet.parse(frame(headerWords: 2, dataOffsetWords: 5), dlt: PacketCapture.linkEthernet), "an IPv4 header of 8 bytes")
+        XCTAssertNil(Packet.parse(frame(headerWords: 5, dataOffsetWords: 2), dlt: PacketCapture.linkEthernet), "a TCP header of 8 bytes")
+    }
+
     func testParsesIPv6TCPOverNullLink() {
         let tcp: [UInt8] = [0xd4, 0x31, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
         var ip: [UInt8] = [0x60, 0, 0, 0, 0, UInt8(tcp.count), 6, 64]
