@@ -9,9 +9,16 @@ enum DNS {
         let addresses: [IPAddress]
     }
 
+    /// The labels and pointers one reply may walk, over all its names. Compression lets every
+    /// name point into one run of labels, so names within 255 bytes each can still make a
+    /// 1,472-byte reply walk about 12,700; 122 A records for a six-label name, as many as the
+    /// capture holds, walk 860.
+    private static let walkLimit = 1024
+
     static func parseReply(_ payload: ArraySlice<UInt8>) -> Reply? {
         let bytes = Array(payload)
         var r = ByteReader(bytes)
+        var walk = walkLimit
         do {
             try r.skip(2)
             let flags = try r.u16()
@@ -21,12 +28,12 @@ enum DNS {
             try r.skip(4)
             // A resolver answers one question, and RFC 9619 makes more a malformed message.
             guard questions == 1 else { return nil }
-            guard let qname = try readName(bytes, &r) else { return nil }
+            guard let qname = try readName(bytes, &r, &walk) else { return nil }
             try r.skip(4)
             var records: [(owner: String, address: IPAddress)] = []
             var aliases: [String: [String]] = [:]
             for _ in 0..<answers {
-                let owner = try readName(bytes, &r)
+                let owner = try readName(bytes, &r, &walk)
                 let type = try r.u16()
                 try r.skip(6)
                 let rdlen = Int(try r.u16())
@@ -37,7 +44,7 @@ enum DNS {
                     records.append((owner.text, IPAddress(bytes: Array(rdata))))
                 } else if type == 5 {
                     var target = ByteReader(bytes, from: start, to: start + rdlen)
-                    if let alias = try readName(bytes, &target) { aliases[owner.text, default: []].append(alias.text) }
+                    if let alias = try readName(bytes, &target, &walk) { aliases[owner.text, default: []].append(alias.text) }
                 }
             }
             // Every name the question reaches through CNAMEs, each visited once.
@@ -54,10 +61,11 @@ enum DNS {
 
     // Reads a name with RFC 1035 compression; the reader advances past the name as it
     // appears in the sequential stream, not past any pointer target. Nil for a name that is
-    // not a host name; a label holding a dot is one, since joining would hide it. Throws for
-    // a name past RFC 1035's 255 bytes: the walk stops inside it, so where the name ends in
-    // the stream is unknown.
-    private static func readName(_ bytes: [UInt8], _ r: inout ByteReader) throws -> HostName? {
+    // not a host name; a label holding a dot is one, since joining would hide it. Each label
+    // and pointer spends one of the reply's `walk`. Throws for a name past RFC 1035's 255
+    // bytes or a walk past the reply's limit: the walk stops inside the name, so where it
+    // ends in the stream is unknown.
+    private static func readName(_ bytes: [UInt8], _ r: inout ByteReader, _ walk: inout Int) throws -> HostName? {
         var labels: [ArraySlice<UInt8>] = []
         var length = 1  // on the wire, the root's zero byte included
         var pos = r.pos
@@ -71,6 +79,8 @@ enum DNS {
                 if !jumped { r.pos = pos }
                 break
             }
+            walk -= 1
+            guard walk >= 0 else { throw ByteReader.ParseError.short }
             if len & 0xc0 == 0xc0 {
                 guard pos + 1 < bytes.count else { throw ByteReader.ParseError.short }
                 let target = ((len & 0x3f) << 8) | Int(bytes[pos + 1])

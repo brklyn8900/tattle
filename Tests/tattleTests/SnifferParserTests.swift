@@ -400,6 +400,56 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertNil(DNS.parseReply(past[...]), "256 bytes")
     }
 
+    /// One question for "a", then `count` records whose owners, or whose CNAME targets, point
+    /// at one run of 127 one-letter labels: 255 bytes, the most a name may be.
+    private static func fanOut(_ count: Int, aliases: Bool) -> [UInt8] {
+        let run = 12 + 7 + count * (aliases ? 14 : 12)
+        let pointer: [UInt8] = [0xc0 | UInt8(run >> 8), UInt8(run & 0xff)]
+        var bytes: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, 1, UInt8(count >> 8), UInt8(count & 0xff), 0, 0, 0, 0, 1, 0x61, 0, 0, 1, 0, 1]
+        for _ in 0..<count {
+            bytes += aliases
+                ? [0xc0, 0x0c, 0, 5, 0, 1, 0, 0, 0x0e, 0x10, 0, 2] + pointer  // a CNAME <run>
+                : pointer + [0, 16, 0, 1, 0, 0, 0x0e, 0x10, 0, 0]  // <run> TXT, empty
+        }
+        return bytes + (0..<127).flatMap { _ in [UInt8(1), 0x61] } + [0]
+    }
+
+    /// Compression lets every name point into one run of labels, so names that are each
+    /// valid can still make one reply walk thousands of labels. These fill 1,472 bytes, the
+    /// most a 1,500-byte packet carries: 99 owners or 85 CNAME targets of 127 labels each.
+    func testDNSRefusesAReplyThatWalksTooManyLabels() {
+        let owners = Self.fanOut(99, aliases: false)
+        XCTAssertLessThanOrEqual(owners.count, 1472)
+        XCTAssertNil(DNS.parseReply(owners[...]), "owners")
+        let targets = Self.fanOut(85, aliases: true)
+        XCTAssertLessThanOrEqual(targets.count, 1472)
+        XCTAssertNil(DNS.parseReply(targets[...]), "CNAME targets")
+    }
+
+    /// Replies as large as real ones still parse whole: a CNAME chain through a CDN, and as
+    /// many A or AAAA records for a six-label name as the capture holds (its 2,048-byte snap
+    /// length leaves 2,006 bytes for the reply).
+    func testDNSReadsFullRepliesWithCompressedNames() {
+        let chain = Self.dnsReply(questions: ["www.shop.example"], answers: [
+            .alias("www.shop.example", "www.shop.example.edgekey.net"),
+            .alias("www.shop.example.edgekey.net", "www.shop.example.edgekey.net.globalredir.akadns.net"),
+            .alias("www.shop.example.edgekey.net.globalredir.akadns.net", "e6858.dsce9.akamaiedge.net"),
+            .address("e6858.dsce9.akamaiedge.net", [192, 0, 2, 10]),
+            .address("e6858.dsce9.akamaiedge.net", [192, 0, 2, 11]),
+        ])
+        XCTAssertEqual(DNS.parseReply(chain[...])?.addresses.map(\.text), ["192.0.2.10", "192.0.2.11"])
+
+        let pool = "pool-7.lb.us-east-1.edge.example.net"
+        let a = Self.dnsReply(questions: [pool], answers: (0..<122).map { .address(pool, [198, 51, 100, UInt8($0)]) })
+        XCTAssertEqual(a.count, 2006)
+        XCTAssertEqual(DNS.parseReply(a[...])?.addresses.count, 122)
+        let aaaa = Self.dnsReply(questions: [pool], answers: (0..<69).map {
+            .address(pool, [0x20, 0x01, 0x0d, 0xb8] + [UInt8](repeating: 0, count: 11) + [UInt8($0)])
+        })
+        XCTAssertLessThanOrEqual(aaaa.count, 2006)
+        XCTAssertEqual(DNS.parseReply(aaaa[...])?.addresses.count, 69)
+    }
+
     // MARK: Packets
 
     func testParsesIPv4UDPOverEthernet() {
