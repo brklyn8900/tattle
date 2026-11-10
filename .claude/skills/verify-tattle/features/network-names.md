@@ -201,23 +201,32 @@ Preconditions:
   names a flow before the socket table shows it.
 - Connections already open when the dev copy started have no name (`open since before
   Tattle started`).
-- An owner and its app read by pid, with no sweep of the process table, shown 2026-11-09 on
-  the development Mac with the broker, dev copy at `ba0432b`, run `2026-11-09T192354`:
-  `Herdr Core to example.com`, `Process nc (pid 89678)`, `App Herdr Core`, `Signed by Apple`,
-  `App signed by Herdr, Inc.`, and in history `nc | example.com | http | Herdr Core | Apple |
-  Herdr, Inc.`. The short-lived recipe above, five alternating 120-second windows per side:
+- An owner and its app read with the socket table, its line walked through one reading of every
+  process's record, with no sweep of the process table: shown 2026-11-09 on the development Mac
+  with the broker, dev copy at `9b482ba`, run `2026-11-09T234833`: `Herdr Core to example.com`,
+  `Process nc (pid 18853)`, `App Herdr Core`, `Signed by Apple`, `App signed by Herdr, Inc.`, and
+  in history `nc | example.com | http | Herdr Core | Apple | Herdr, Inc.`; the same at `ba0432b`,
+  run `2026-11-09T192354`. A 120-second Time Profiler trace of `9b482ba` with the panel never
+  opened, 30 new connections: no `ProcessTable.list`, `ProcessTable.lines` 43 ms in all, and
+  `URL(fileURLWithPath:)` only under `AppBundle.name`, 1 ms. Its six `pid <n>` rows were all `ssh`
+  to testmac's port 22. The short-lived recipe above, five alternating 120-second windows per side:
   driven connections with no owner 1 of 150 at `7744536` and 0 of 149 at `ba0432b` (one `nc`
   exited with an error and left no row); all new rows with no owner 10 of 303 and 9 of 273,
   the rest TCP to the router's port 53, one per window as the driver's `dig +tcp` is, and to
   testmac's port 22. That shows no difference for processes that live 47 ms or more, and nothing
   about ones that exit sooner.
-- Owners of processes that exit within a reading, simulated 2026-11-09 on testmac (debug build,
-  not the app): a helper connects to a loopback listener and exits 26 to 42 ms later; 20 ms after
-  the accept one reading is taken, with the helper's socket rewritten to a private address. In
-  720 runs per side, in rotating order, the helper read as `pid <n>` 112 times at `7744536`, 126
-  at `b6c21c7` and 174 at `ba0432b`. Whether a side ran first or last in a round moved its count
-  more than which side it was: two fixed-order sets of 480 gave 55 and 58 at `7744536`, 68
-  (run second) and 44 (run first) at `b6c21c7`. The simulation is `QuickExitSimulationTests`,
+- Owners of processes that exit within a reading, simulated on testmac (debug build, not the app):
+  a helper connects to a loopback listener and exits 26 to 42 ms later; 20 ms after the accept
+  one reading is taken, with the helper's socket rewritten to a private address. 2026-11-10,
+  1,440 runs per side in twelve rounds alternating which side ran first: the helper read as
+  `pid <n>` 192 times at `7744536` and 162 at `9b482ba`, 9 to 26 and 6 to 24 a round; the tip's
+  count was lower in 9 rounds of 12, by 2.5 a round on average (standard deviation 5.3), which
+  is within the noise. Main has no reading seam, so its side ran the same test with main's
+  reading (the socket table and the whole process list in one task, then `fold`) in place of
+  `poll()`. 2026-11-09, 720 runs per side in rotating order: 112 at `7744536`, 126 at `b6c21c7`
+  and 174 at `ba0432b`, which read owners after the table. Whether a side ran first or last in a
+  round moved its count more than which side it was: two fixed-order sets of 480 gave 55 and 58
+  at `7744536`, 68 (run second) and 44 (run first) at `b6c21c7`. The simulation is `QuickExitSimulationTests`,
   which runs only when `TATTLE_SIM_HELPER` names the helper built from `Tests/quick-exit-helper.c`;
   compare two revisions in copies of each (`git archive`), alternating which runs first.
 - A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
