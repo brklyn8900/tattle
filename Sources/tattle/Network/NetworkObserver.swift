@@ -20,7 +20,8 @@ final class NetworkObserver {
     private let store: ConnectionStore
     private let rules: RuleStore
     private let settings: AppSettings
-    private let signatures = SignatureCache()
+    private let socketTable: @Sendable () throws -> [SocketEntry]
+    private let signature: @Sendable (String) -> CodeSignature?
     private var tracker = ConnectionTracker()
     private var owners: [Int32: ConnectionOwner] = [:]
     private var known = Set<String>()
@@ -37,8 +38,7 @@ final class NetworkObserver {
     /// A reading was asked for while one was running.
     private var pollRequested = false
     private var promptPollScheduled = false
-    /// Makes the lookup that one batch of owners is read through.
-    private let processLookup: @Sendable () -> (Int32) -> ProcessEntry?
+    private let processLines: @Sendable (Set<Int32>) -> ProcessLines
 
     /// Rule sources whose category may decide a connection's kind.
     private static let kindSources = SeedLoader.seedSources.union([.user])
@@ -46,12 +46,19 @@ final class NetworkObserver {
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
 
+    /// `socketTable`, `processLines` and `signature` are what a reading asks the system; tests
+    /// pass their own.
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
-         processLookup: @escaping @Sendable () -> (Int32) -> ProcessEntry? = { ProcessTable.lookup(signature: { _ in nil }) }) {
+         socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
+         processLines: @escaping @Sendable (Set<Int32>) -> ProcessLines = { ProcessTable.lines(of: $0) },
+         signature: (@Sendable (String) -> CodeSignature?)? = nil) {
         self.store = store
         self.rules = rules
         self.settings = settings
-        self.processLookup = processLookup
+        self.socketTable = socketTable
+        self.processLines = processLines
+        let signatures = SignatureCache()
+        self.signature = signature ?? { signatures.signature(at: $0) }
     }
 
     func start(every interval: Duration = .seconds(2)) {
@@ -219,38 +226,50 @@ final class NetworkObserver {
         }
     }
 
-    private func read() async {
+    /// Reads the socket table and, in the same moment, the lines of the owners not met yet: a
+    /// process can exit within milliseconds of opening a connection, so its line is read before
+    /// the main actor or any signature read can hold it up.
+    func read() async {
         let now = Date()
-        let entries: [SocketEntry]
+        let known = Set(owners.keys)
+        let (socketTable, processLines) = (socketTable, processLines)
+        let reading: (entries: [SocketEntry], lines: ProcessLines)
         do {
-            entries = try await Task.detached(priority: .utility) { try SocketTable.read() }.value
+            reading = try await Task.detached(priority: .utility) {
+                let entries = try socketTable()
+                let new = Set(entries.filter { $0.connectionScope != nil }.map(\.pid)).subtracting(known)
+                return (entries, new.isEmpty ? ProcessLines() : processLines(new))
+            }.value
         } catch {
             self.error = String(describing: error)
             return
         }
-        await fold(entries: entries, now: now)
+        await fold(entries: reading.entries, lines: reading.lines, now: now)
     }
 
-    /// Takes one reading of the table into the tracker, the history and the snapshot.
-    func fold(entries: [SocketEntry], now: Date) async {
+    /// Takes one reading of the table into the tracker, the history and the snapshot. `lines`
+    /// holds what was read of new owners with the table.
+    func fold(entries: [SocketEntry], lines: ProcessLines, now: Date) async {
         let changes = tracker.update(entries: entries, at: now, outboundSeen: { names.openingSeen($0, at: now) })
 
-        // Owners are resolved once per pid and executable, off the main thread, right after the
-        // reading names them: the process may be gone soon after. Only the owner and the line
-        // its app comes from are read. A pid whose connections all closed is forgotten so a
-        // reused pid is resolved afresh.
+        // Owners are resolved once per pid and executable, off the main thread, from the lines
+        // read with the table. A known pid that has started another program is read again
+        // here. A pid whose connections all closed is forgotten so a reused pid is resolved
+        // afresh.
         let unknown = ConnectionOwner.unresolved(opened: Set(changes.opened.map(\.pid)), known: owners, executable: ProcessTable.pidPath, commandName: ProcessTable.commandName)
         if !unknown.isEmpty {
-            let signatures = signatures
-            let processLookup = processLookup
+            let again = unknown.filter { owners[$0] != nil && lines.entries[$0] == nil }
+            let (signature, processLines) = (signature, processLines)
             let resolved = await Task.detached(priority: .utility) { () -> [Int32: ConnectionOwner] in
-                let processes = processLookup()
+                var lines = lines
+                if !again.isEmpty { lines.add(processLines(again)) }
                 var result: [Int32: ConnectionOwner] = [:]
                 for pid in unknown {
-                    result[pid] = ConnectionOwner.resolve(
-                        pid: pid, in: processes,
+                    result[pid] = lines.unreadable.contains(pid) ? .unknown : ConnectionOwner.resolve(
+                        pid: pid, in: lines.entries,
                         runningApp: { NSRunningApplication(processIdentifier: $0)?.bundleURL?.path },
-                        signature: signatures.signature(at:))
+                        responsible: { lines.responsible[$0] },
+                        signature: signature)
                 }
                 return result
             }.value

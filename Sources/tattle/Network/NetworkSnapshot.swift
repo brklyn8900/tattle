@@ -45,18 +45,18 @@ struct ConnectionOwner: Equatable, Sendable {
         }
     }
 
-    /// Resolves a pid against what `processes` answers about it and about the line its app
-    /// comes from, attributing helpers to their app the same way the Processes tab does, and
-    /// reads what it runs as that tab does. `processes` names them without signatures;
-    /// `signature` reads each executable the owner's line passes through, and the app bundle.
+    /// Resolves a pid against a process list, attributing helpers to their app the same
+    /// way the Processes tab does, and reads what it runs as that tab does. `byPid` is named
+    /// without signatures; `signature` reads each executable the owner's line passes through,
+    /// and the app bundle.
     static func resolve(
-        pid: Int32, in processes: (Int32) -> ProcessEntry?, runningApp: (Int32) -> String?,
+        pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), signature: (String) -> CodeSignature?
     ) -> ConnectionOwner {
-        // Entries carry no signatures, so the owner and the ancestors its app comes from are
-        // named here by theirs.
+        // The list carries no signatures, so the owner and the ancestors its app comes from
+        // are named here by theirs.
         func named(_ pid: Int32) -> ProcessEntry? {
-            processes(pid).map { $0.named(signature: $0.path.flatMap(signature)) }
+            byPid[pid].map { $0.named(signature: $0.path.flatMap(signature)) }
         }
         guard let entry = named(pid) else { return ConnectionOwner(processName: "pid \(pid)") }
         var memo: [Int32: AppBundle?] = [:]

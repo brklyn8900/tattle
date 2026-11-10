@@ -130,6 +130,23 @@ struct ProcessUsage: Equatable, Sendable {
     var memoryIsFootprint: Bool
 }
 
+/// What the owners of new connections are named from, read with the socket table
+/// (`ProcessTable.lines(of:)`).
+struct ProcessLines: Equatable, Sendable {
+    var entries: [Int32: ProcessEntry] = [:]
+    /// The process macOS holds responsible for an entry launchd started, when it is another.
+    var responsible: [Int32: Int32] = [:]
+    /// Pids the kernel would not report on, which are not known to have exited.
+    var unreadable: Set<Int32> = []
+
+    /// Adds what a later reading found, keeping what this one already had.
+    mutating func add(_ other: ProcessLines) {
+        entries.merge(other.entries) { mine, _ in mine }
+        responsible.merge(other.responsible) { mine, _ in mine }
+        unreadable.formUnion(other.unreadable)
+    }
+}
+
 /// Reads every process without privileges. The list, parent, user and start time come
 /// from the kinfo_proc sysctl; memory and CPU time come from libproc for the user's own
 /// processes, which is all libproc will give an unprivileged caller, and from one run of
@@ -182,33 +199,59 @@ enum ProcessTable {
             }
             // One argmax-sized scratch buffer for the command lines: allocating a
             // megabyte per process made a sweep of 1,600 take over a second.
-            var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
+            var scratch: [UInt8] = []
             return buffer.prefix(length / stride).compactMap { entry($0, scratch: &scratch, signature: signature) }
         }
         throw ReadError.sysctl(errno: ENOMEM)
     }
 
-    /// For a caller that asks about a few processes instead of the table: each is read as `list`
-    /// reads it, once, so an ancestor several owners share costs one read and reads the same
-    /// each time. Nil for one that has exited or is a zombie. Use it from one thread.
-    static func lookup(signature: @escaping (String) -> CodeSignature?) -> (Int32) -> ProcessEntry? {
-        var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
-        var read: [Int32: ProcessEntry?] = [:]
-        return { pid in
-            if let known = read[pid] { return known }
-            let found = kernelRecord(pid).flatMap { entry($0, scratch: &scratch, signature: signature) }
-            read[pid] = .some(found)
-            return found
-        }
+    /// The lines of `pids` as the kernel has them now, named without signatures.
+    static func lines(of pids: Set<Int32>) -> ProcessLines {
+        var scratch: [UInt8] = []
+        return lines(of: pids, read: { pid in
+            try kernelRecord(pid).flatMap { entry($0, scratch: &scratch, signature: { _ in nil }) }
+        }, responsible: ResponsibleProcess.pid(for:))
     }
 
-    /// The kernel's record of a process. Nil when it has exited.
-    private static func kernelRecord(_ pid: Int32) -> kinfo_proc? {
+    /// Each pid's line, read in one go: the process, every ancestor up to the one launchd
+    /// started, and for that one, the process macOS holds responsible for it. Which of them names the app
+    /// depends on signatures read later (`ProcessSnapshot.app`), so the whole line is read.
+    /// `read` answers nil for a process that has exited or is a zombie, and throws when the
+    /// kernel cannot be asked.
+    static func lines(of pids: Set<Int32>, read: (Int32) throws -> ProcessEntry?, responsible: (Int32) -> Int32?) -> ProcessLines {
+        var lines = ProcessLines()
+        var pending = Array(pids)
+        var asked = Set<Int32>()
+        while let pid = pending.popLast() {
+            guard asked.insert(pid).inserted else { continue }
+            let found: ProcessEntry?
+            do {
+                found = try read(pid)
+            } catch {
+                lines.unreadable.insert(pid)
+                Log.app.error("process \(pid) could not be read: \(error, privacy: .public)")
+                continue
+            }
+            guard let entry = found else { continue }
+            lines.entries[pid] = entry
+            if entry.parentPid > 1 {
+                if entry.parentPid != pid { pending.append(entry.parentPid) }
+            } else if let owner = responsible(pid) {
+                lines.responsible[pid] = owner
+                pending.append(owner)
+            }
+        }
+        return lines
+    }
+
+    /// The kernel's record of a process: nil when there is none, which is how an exited pid
+    /// reads. Throws when the kernel cannot be asked.
+    private static func kernelRecord(_ pid: Int32) throws -> kinfo_proc? {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
         var info = kinfo_proc()
         var length = MemoryLayout<kinfo_proc>.stride
-        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0, length > 0 else { return nil }
-        return info
+        guard sysctl(&mib, 4, &info, &length, nil, 0) == 0 else { throw ReadError.sysctl(errno: errno) }
+        return length > 0 ? info : nil
     }
 
     private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (String) -> CodeSignature?) -> ProcessEntry? {
@@ -252,11 +295,14 @@ enum ProcessTable {
     /// processes. The buffer holds argc, the executable path, padding, then the
     /// arguments and the environment, all NUL-separated.
     static func arguments(pid: Int32) -> [String]? {
-        var scratch = [UInt8](repeating: 0, count: argumentsMaximum)
+        var scratch: [UInt8] = []
         return arguments(pid: pid, scratch: &scratch)
     }
 
+    /// `scratch` is made argmax-sized on first use, so a caller that reads no one's command line
+    /// never pays for it.
     static func arguments(pid: Int32, scratch: inout [UInt8]) -> [String]? {
+        if scratch.isEmpty { scratch = [UInt8](repeating: 0, count: argumentsMaximum) }
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var length = scratch.count
         guard sysctl(&mib, 3, &scratch, &length, nil, 0) == 0, length > MemoryLayout<Int32>.size else { return nil }
@@ -287,7 +333,7 @@ enum ProcessTable {
     /// The kernel's name for a process: the file name of the program it last started, cut to
     /// `MAXCOMLEN` bytes. Nil when it has exited.
     static func commandName(_ pid: Int32) -> String? {
-        guard let info = kernelRecord(pid), Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
+        guard let info = try? kernelRecord(pid), Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         return commandName(of: info)
     }
 

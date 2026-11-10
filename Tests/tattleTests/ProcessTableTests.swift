@@ -95,13 +95,49 @@ final class ProcessTableTests: XCTestCase {
         XCTAssertEqual(started("~"), "~")
     }
 
-    func testLookingUpOneProcessFindsItAsTheListHasIt() throws {
-        let listed = try ProcessTable.list(signature: { _ in nil })
-        let lookup = ProcessTable.lookup(signature: { _ in nil })
-        for pid in [getpid(), 1, 0] {
-            XCTAssertEqual(lookup(pid), try XCTUnwrap(listed.first { $0.pid == pid }), "pid \(pid)")
+    func testALineReadsAsTheListHasIt() throws {
+        let lines = ProcessTable.lines(of: [getpid(), 0])
+        let listed = Dictionary(try ProcessTable.list(signature: { _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        XCTAssertNotNil(lines.entries[getppid()], "the parent is read with the process")
+        XCTAssertTrue(lines.entries.values.contains { $0.parentPid == 1 }, "and every ancestor up to the one launchd started")
+        XCTAssertNotNil(lines.entries[0])
+        for (pid, entry) in lines.entries {
+            XCTAssertEqual(entry, listed[pid], "pid \(pid)")
         }
-        XCTAssertNil(lookup(Int32.max), "no such process")
+        XCTAssertEqual(ProcessTable.lines(of: [Int32.max]), ProcessLines(), "no such process")
+    }
+
+    func testALineFollowsParentsAndTheResponsibleProcess() {
+        func entry(_ pid: Int32, _ parent: Int32) -> ProcessEntry {
+            ProcessEntry(pid: pid, parentPid: parent, uid: 501, name: "p\(pid)", path: "/x/p\(pid)", started: .distantPast)
+        }
+        // A helper under its app, and a service launchd started that an app answers for.
+        let table: [Int32: ProcessEntry] = [30: entry(30, 20), 20: entry(20, 1), 40: entry(40, 1), 50: entry(50, 1), 60: entry(60, 1)]
+        var reads: [Int32] = []
+        let lines = ProcessTable.lines(of: [30, 40, 20, 70], read: { pid in
+            reads.append(pid)
+            if pid == 70 { throw ProcessTable.ReadError.sysctl(errno: EINVAL) }
+            return table[pid]
+        }, responsible: { $0 == 40 ? 50 : nil })
+        XCTAssertEqual(Set(lines.entries.keys), [20, 30, 40, 50], "not the bystander")
+        XCTAssertEqual(lines.responsible, [40: 50])
+        XCTAssertEqual(lines.unreadable, [70])
+        XCTAssertEqual(reads.sorted(), [20, 30, 40, 50, 70], "each process once")
+    }
+
+    /// A child not yet waited for stays in the table as a zombie once it exits.
+    func testAZombieReadsAsExited() throws {
+        var pid: pid_t = 0
+        var argv: [UnsafeMutablePointer<CChar>?] = [strdup("/usr/bin/true"), nil]
+        defer { argv.forEach { free($0) } }
+        XCTAssertEqual(posix_spawn(&pid, "/usr/bin/true", nil, nil, &argv, environ), 0)
+        defer { waitpid(pid, nil, 0) }
+        let deadline = Date().addingTimeInterval(5)
+        while ProcessTable.commandName(pid) != nil, Date() < deadline { usleep(10_000) }
+        XCTAssertEqual(kill(pid, 0), 0, "still in the table")
+        XCTAssertNil(ProcessTable.commandName(pid))
+        XCTAssertEqual(ProcessTable.lines(of: [pid]), ProcessLines())
+        XCTAssertFalse(try ProcessTable.list(signature: { _ in nil }).contains { $0.pid == pid })
     }
 
     func testTheKernelNamesAProcessAfterItsFile() throws {
