@@ -6,6 +6,10 @@
 - Decide whether Processes, Ports and Startup should mark what is new, as Network marks first
   contact. The PRD lists what's new on every surface as a goal; only Network has it (raised
   2026-11-11).
+- Decide whether facts can add a line under "Should I care", such as unsigned code or a first
+  contact. Today the answer follows the rule's risk alone, so an unsigned program reaching a
+  low-risk host reads "Probably not." Such facts are noisy: every build from source is
+  unsigned or ad-hoc signed, and every new address is a first contact (raised 2026-11-11).
 - Invert the opt-in identity gate for rules: a rule about a program, from any source, needs
   an identity unless Apple's gate covers it. Today only `llm` rules and `builtin` rules with
   an owner do, and no shipped rule falls outside that.
