@@ -63,7 +63,7 @@ final class PortsSnapshotTests: XCTestCase {
     func testPortFactsKeepTheLoginAndCertificateNameOutOfTheirPromptValues() throws {
         let snapshot = PortsSnapshot.build(
             entries: [entry(.tcp, "0.0.0.0", 5000, pid: 634, uid: getuid())], services: services,
-            processes: { _ in self.process(634, "/x/Mine") },
+            processes: { _ in self.process(634, "/x/Mine", uid: getuid()) },
             signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") })
         assertPromptValues(try XCTUnwrap(snapshot.items.first).facts, runsAs: true)
     }
