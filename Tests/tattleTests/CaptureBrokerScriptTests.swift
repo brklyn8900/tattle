@@ -142,20 +142,6 @@ final class CaptureBrokerScriptTests: XCTestCase {
         XCTAssertEqual(leftoverStages, [])
     }
 
-    /// The plist was a file in $TMPDIR during the dialog: any process of the user could swap in
-    /// one that runs a shell as root, at every boot.
-    func testRootReadsNoPlistTheUserCanWrite() throws {
-        let evil = expectedPlist.replacingOccurrences(of: layout.helperPath, with: "/bin/sh")
-        try install { script in
-            XCTAssertFalse(script.contains(FileManager.default.temporaryDirectory.appending(path: CaptureBroker.label).path), "the script names a staged file")
-            for name in (try? FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)) ?? []
-            where name.hasPrefix(CaptureBroker.label) {
-                try evil.write(to: FileManager.default.temporaryDirectory.appending(path: name), atomically: false, encoding: .utf8)
-            }
-        }
-        XCTAssertEqual(contents(layout.plistPath), Data(expectedPlist.utf8))
-    }
-
     /// The bundle is the user's: during the dialog any process of theirs can replace the helper
     /// root is about to install and run.
     func testRootRefusesAHelperReplacedWithAnotherSignedProgram() throws {

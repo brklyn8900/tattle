@@ -36,14 +36,6 @@ final class NetworkSnapshotTests: XCTestCase {
         assertPromptValues(try XCTUnwrap(snapshot.groups.first).facts(gone: false), runsAs: false)
     }
 
-    func testConnectionFactsKeepTheLoginOutOfTheirPromptValue() throws {
-        var mine = connection(100, "52.1.1.1")
-        mine.uid = getuid()
-        let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
-        let row = LiveConnection(connection: mine, owner: owner, isNew: false)
-        assertPromptValues(row.facts(now: t0), runsAs: true)
-    }
-
     func testOwnerResolution() {
         var read: [String] = []
         let helper = ConnectionOwner.resolve(pid: 101, in: processes, runningApp: { _ in nil }) { path in

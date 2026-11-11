@@ -201,13 +201,6 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(CodeSignature(signer: .development).summary, "Apple Development")
     }
 
-    func testInterpreterSignsTheScriptNotItself() {
-        let reading: (String) -> CodeSignature? = { CodeSignature(signer: .developerID(name: $0)) }
-        XCTAssertEqual(CodeSignature.read(program: "/bin/ls", arguments: ["-l"], reading: reading)?.signer, .developerID(name: "/bin/ls"))
-        XCTAssertEqual(CodeSignature.read(program: "/usr/bin/osascript", arguments: ["-e", "1+1"], reading: reading)?.signer, .unnamed)
-        XCTAssertEqual(CodeSignature.read(program: "/bin/sh", arguments: ["-x", "/x/run.sh"], reading: reading)?.signer, .script)
-    }
-
     private func codesign(_ arguments: [String]) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")

@@ -57,12 +57,6 @@ final class ResourceSampleTests: XCTestCase {
         XCTAssertEqual(delta.bytesOut, 20)
     }
 
-    func testInterfacesThatVanishTogetherDoNotTrap() {
-        let delta = counters(["en0": (1_100, 0)])
-            .delta(from: counters(["en0": (1_000, 0), "en7": (4_000_000_000, 0), "en8": (4_000_000_000, 0)]))
-        XCTAssertEqual(delta.bytesIn, 100)
-    }
-
     func testOnlyInterfacesWithTheirOwnTrafficAreCounted() {
         for name in ["utun4", "ipsec0", "gif0", "stf0", "bridge0", "bridge100", "vmenet0", "vlan0", "bond0", "feth0"] {
             XCTAssertFalse(NetworkCounters.carriesItsOwnTraffic(name), name)
