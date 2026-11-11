@@ -227,6 +227,10 @@ Preconditions:
   `2026-11-10--fix-13-dns-name-bound--ea8fcbfb`, `artifacts/2026-11-10-dns-bound/`.
 - `outcome ... arrived with no live connection` debug lines are normal: the sniffer often
   names a flow before the socket table shows it.
+- The single schema proven 2026-11-11 on the test Mac, dev copy at `0f86354`, a fresh data
+  folder, run `2026-11-11T115236`: doctor read `v1-schema` as the database's one migration,
+  the three tables and four `connection` indexes were there, and `connect named` wrote its row
+  (`nc`, port 80, `outbound`). Copy in this Mac's `build/verify/runs/test-mac-2026-11-11/`.
 - The history database proven 2026-11-10 on the development Mac with the broker. At `1233d86`,
   run `2026-11-10T151852`, the dev copy's own data as main left it (20,034 rows, rollback
   journal): the first launch switched it to WAL and ran `v8-connection-flow-index`, the rows
