@@ -27,6 +27,17 @@ final class SeedLoaderTests: XCTestCase {
         XCTAssertTrue(try rules.rules().allSatisfy { $0.source == .builtin }, "the other seed files are empty")
     }
 
+    /// Every detail page answers what, why and should I care; Tattle's own rules answer all three.
+    func testEveryBuiltinRuleAnswersWhyAndCare() throws {
+        XCTAssertTrue(loader.load(from: repoSeeds).contains(.builtin))
+        let builtin = try rules.rules().filter { $0.source == .builtin }
+        XCTAssertFalse(builtin.isEmpty)
+        for rule in builtin {
+            XCTAssertFalse(rule.why?.isEmpty ?? true, rule.pattern)
+            XCTAssertFalse(rule.care?.isEmpty ?? true, rule.pattern)
+        }
+    }
+
     func testASeedRuleCarriesItsWhyAndCare() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

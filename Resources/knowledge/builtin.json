@@ -8,6 +8,8 @@
       "pattern": "mask*.icloud.com",
       "owner": "Apple",
       "purpose": "iCloud Private Relay ingress. The connection goes to Apple's relay; the real destination is hidden inside it.",
+      "why": "iCloud Private Relay is turned on for this Mac.",
+      "care": "It is Apple's privacy feature: it hides this Mac's address from the sites it visits.",
       "category": "relay",
       "risk": "low",
       "confidence": "high"
@@ -18,6 +20,8 @@
       "pattern": "apple-relay.apple.com",
       "owner": "Apple",
       "purpose": "Apple lists this host for Apple Intelligence Extensions.",
+      "why": "Apple Intelligence on this Mac uses it.",
+      "care": "It is Apple's own service.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -28,6 +32,8 @@
       "pattern": "apple-relay.cloudflare.com",
       "owner": "Cloudflare",
       "purpose": "Apple lists this host for Private Cloud Compute, the servers behind Apple Intelligence. Requests reach them through a relay run by a third party, which hides this Mac's address from them.",
+      "why": "Apple Intelligence on this Mac sends requests it cannot handle on the Mac to Private Cloud Compute.",
+      "care": "It is part of Apple Intelligence.",
       "category": "relay",
       "risk": "low",
       "confidence": "high"
@@ -38,6 +44,8 @@
       "pattern": "apple-relay.fastly-edge.com",
       "owner": "Fastly",
       "purpose": "Apple lists this host for Private Cloud Compute, the servers behind Apple Intelligence. Requests reach them through a relay run by a third party, which hides this Mac's address from them.",
+      "why": "Apple Intelligence on this Mac sends requests it cannot handle on the Mac to Private Cloud Compute.",
+      "care": "It is part of Apple Intelligence.",
       "category": "relay",
       "risk": "low",
       "confidence": "high"
@@ -48,6 +56,8 @@
       "pattern": "ohttp-relay*.cloudflare.com",
       "owner": "Cloudflare",
       "purpose": "An Oblivious HTTP relay, going by its name. The real destination is hidden inside it.",
+      "why": "An app or a macOS feature sends requests through a relay so the server cannot see this Mac's address.",
+      "care": "The relay itself is a privacy measure.",
       "category": "relay",
       "risk": "low",
       "confidence": "medium"
@@ -58,6 +68,8 @@
       "pattern": "ohttp-relay*.fastly-edge.com",
       "owner": "Fastly",
       "purpose": "An Oblivious HTTP relay, going by its name. The real destination is hidden inside it.",
+      "why": "An app or a macOS feature sends requests through a relay so the server cannot see this Mac's address.",
+      "care": "The relay itself is a privacy measure.",
       "category": "relay",
       "risk": "low",
       "confidence": "medium"
@@ -68,6 +80,8 @@
       "pattern": "cloudflare-ech.com",
       "owner": "Cloudflare",
       "purpose": "Encrypted Client Hello cover name. The real site is behind Cloudflare and its name is encrypted.",
+      "why": "A site this Mac reached is behind Cloudflare and encrypts its name.",
+      "care": "The cover name is a privacy measure that hides the real site's name.",
       "category": "ech-cover",
       "risk": "low",
       "confidence": "high"
@@ -77,7 +91,9 @@
       "match": "glob",
       "pattern": "ControlCenter:*",
       "owner": "Apple",
-      "purpose": "AirPlay Receiver: this Mac can be an AirPlay target for other devices. Switched off under System Settings, General, AirDrop & Continuity (AirDrop & Handoff before macOS 26).",
+      "purpose": "AirPlay Receiver: this Mac can be an AirPlay target for other devices.",
+      "why": "AirPlay Receiver is switched on in this Mac's settings.",
+      "care": "Devices on your network can see this Mac as an AirPlay target. If you never use it, switch it off under System Settings, General, AirDrop & Continuity (AirDrop & Handoff before macOS 26).",
       "category": "sharing",
       "risk": "low",
       "confidence": "high"
@@ -88,6 +104,8 @@
       "pattern": "rapportd:*",
       "owner": "Apple",
       "purpose": "Continuity: Handoff, Universal Clipboard, Sidecar and unlocking with Apple Watch talk to this between your devices.",
+      "why": "macOS runs it so your Apple devices can find and talk to each other.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -98,6 +116,8 @@
       "pattern": "sharingd:*",
       "owner": "Apple",
       "purpose": "AirDrop and the sharing features of macOS.",
+      "why": "macOS listens here so AirDrop and the other sharing features work.",
+      "care": "It is part of macOS. Who can AirDrop to this Mac is set in Control Center.",
       "category": "sharing",
       "risk": "low",
       "confidence": "high"
@@ -107,7 +127,9 @@
       "match": "glob",
       "pattern": "*:udp/5353",
       "owner": "Apple",
-      "purpose": "Bonjour (multicast DNS): the process advertises or browses services on the local network. mDNSResponder does this for all of macOS; a browser or app binding it too is discovering devices itself.",
+      "purpose": "Bonjour (multicast DNS): the process advertises or browses services on the local network.",
+      "why": "mDNSResponder does this for all of macOS; a browser or app binding it too is discovering devices itself.",
+      "care": "It reaches only the local network.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -118,6 +140,8 @@
       "pattern": "mDNSResponder:*",
       "owner": "Apple",
       "purpose": "The macOS name resolver: DNS and Bonjour for every app.",
+      "why": "Every Mac runs it: name lookups and Bonjour for every app go through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -128,6 +152,8 @@
       "pattern": "launchd",
       "owner": "Apple",
       "purpose": "The first process, started by the kernel at boot. It starts and manages every other process and service, for the system and for each user, including the XPC services bundled inside apps.",
+      "why": "Every Mac runs it; nothing else on macOS starts without it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -137,7 +163,9 @@
       "match": "exact",
       "pattern": "kernel_task",
       "owner": "Apple",
-      "purpose": "The kernel itself. Apple says it also helps manage CPU temperature by making the CPU less available to processes using it intensely, so a high kernel_task figure is usually a symptom of heat or of another process, not the cause.",
+      "purpose": "The kernel itself. Apple says it also helps manage CPU temperature by making the CPU less available to processes using it intensely.",
+      "why": "Every program on the Mac runs on top of it.",
+      "care": "It is part of macOS. A high kernel_task figure is usually a symptom of heat or of another process, not the cause.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -148,6 +176,8 @@
       "pattern": "WindowServer",
       "owner": "Apple",
       "purpose": "Draws every window on screen: window management, compositing and routing of keyboard and mouse events.",
+      "why": "macOS runs it to put anything on screen.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -158,6 +188,8 @@
       "pattern": "logd",
       "owner": "Apple",
       "purpose": "The unified logging daemon. Every process that logs through os_log shares memory pages with it; logd reads, compresses and keeps the entries in a ring buffer or on disk.",
+      "why": "Every app's log messages go through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -168,6 +200,8 @@
       "pattern": "cfprefsd",
       "owner": "Apple",
       "purpose": "The preferences daemon behind CFPreferences and NSUserDefaults: apps read and write their settings through it.",
+      "why": "Every app that reads or saves its settings goes through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -178,6 +212,8 @@
       "pattern": "distnoted",
       "owner": "Apple",
       "purpose": "Distributed notification services: passes notifications between processes, such as an app announcing a change for others to pick up.",
+      "why": "Apps and macOS use it to tell each other about changes.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -188,6 +224,8 @@
       "pattern": "coreaudiod",
       "owner": "Apple",
       "purpose": "The Core Audio daemon, the sound system every app plays and records through.",
+      "why": "Every app that plays or records sound goes through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -198,6 +236,8 @@
       "pattern": "trustd",
       "owner": "Apple",
       "purpose": "Evaluates trust in certificates for every process on the system. When an app or macOS checks whether a TLS certificate is valid, trustd does the check.",
+      "why": "Every secure connection an app makes has its certificate checked here.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -208,6 +248,8 @@
       "pattern": "nsurlsessiond",
       "owner": "Apple",
       "purpose": "A per-user daemon that carries out background network transfers for apps that scheduled them, so a download or upload finishes even while the app is suspended.",
+      "why": "Apps hand it downloads and uploads to finish in the background.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -218,6 +260,8 @@
       "pattern": "apsd",
       "owner": "Apple",
       "purpose": "The Apple Push Notification service daemon. It keeps the connection to Apple's push servers that delivers notifications to the Mac.",
+      "why": "Notifications from apps and macOS arrive through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -228,6 +272,8 @@
       "pattern": "mDNSResponder",
       "owner": "Apple",
       "purpose": "The system-wide DNS resolver and the Bonjour daemon (Multicast DNS and DNS Service Discovery). It answers name lookups for every process, listens on UDP 5353, and caches the replies.",
+      "why": "Every name lookup on this Mac goes through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -238,6 +284,8 @@
       "pattern": "cloudd",
       "owner": "Apple",
       "purpose": "The system daemon behind CloudKit, the iCloud database apps store their data in.",
+      "why": "Apps that keep their data in iCloud sync it through this.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -248,6 +296,8 @@
       "pattern": "bird",
       "owner": "Apple",
       "purpose": "One of the daemons behind the Documents in the Cloud feature: iCloud Drive file syncing.",
+      "why": "iCloud Drive syncs files through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -258,6 +308,8 @@
       "pattern": "rapportd",
       "owner": "Apple",
       "purpose": "Enables Phone Call Handoff and other communication features between Apple devices.",
+      "why": "macOS runs it so your Apple devices can work together.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -268,6 +320,8 @@
       "pattern": "sharingd",
       "owner": "Apple",
       "purpose": "Used by the Finder for AirDrop, Handoff between iCloud devices, Instant Hotspot discovery, connecting to shared computers, and Remote Discs.",
+      "why": "The Finder and Control Center use it for AirDrop, Handoff and sharing.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -278,6 +332,8 @@
       "pattern": "mds",
       "owner": "Apple",
       "purpose": "The Spotlight metadata server. It serves every client of the metadata APIs, including Spotlight search.",
+      "why": "Spotlight search, and anything else that searches files by their metadata, goes through it.",
+      "care": "It is part of macOS.",
       "category": "system",
       "risk": "low",
       "confidence": "high"
@@ -288,7 +344,9 @@
       "pattern": "claude",
       "owner": "Anthropic",
       "identity": "team:Q6L2SF6YDW:com.anthropic.claude-code",
-      "purpose": "Claude Code, Anthropic's coding agent for the terminal. One process per session, usually under a shell in a terminal tab; the npm and MCP processes beneath it, if any, are tool servers it starts for the session and stops when the session ends.",
+      "purpose": "Claude Code, Anthropic's coding agent for the terminal.",
+      "why": "One process per session, usually under a shell in a terminal tab; the npm and MCP processes beneath it, if any, are tool servers it starts for the session and stops when the session ends.",
+      "care": "It is a tool you installed and run, and it acts with your account's access.",
       "category": "developer-tool",
       "risk": "low",
       "confidence": "high"
