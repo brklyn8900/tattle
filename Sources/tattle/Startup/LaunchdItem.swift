@@ -1,7 +1,7 @@
 import Foundation
 
 /// One launchd job read from a property list in an agents or daemons folder.
-struct LaunchdItem: Equatable, Sendable, Identifiable {
+struct LaunchdItem: Equatable, Sendable {
     enum Scope: String, CaseIterable, Sendable {
         /// ~/Library/LaunchAgents: runs as this user, at login.
         case userAgent
@@ -48,8 +48,6 @@ struct LaunchdItem: Equatable, Sendable, Identifiable {
     /// An empty plist: launchd ignores it, nothing runs. Updaters leave these behind, or
     /// write them to block themselves.
     var isPlaceholder: Bool = false
-
-    var id: String { label }
 
     /// Where launchd loads this job: a daemon in the system domain, an agent in the GUI
     /// session unless its plist limits it. `Background` agents load in `user/<uid>`, as all

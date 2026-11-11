@@ -7,7 +7,6 @@ import Foundation
 /// CaptureBrokerInstall.swift.
 enum CaptureBroker {
     static let label = "io.github.eladefrati.tattle.capture-broker"
-    static var helperPath: String { Layout.system.helperPath }
     static var plistPath: String { Layout.system.plistPath }
 
     /// Where the broker answers: a Mach service launchd holds for its job, under the job's label.

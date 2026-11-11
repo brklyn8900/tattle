@@ -11,10 +11,10 @@ struct SystemSnapshot: Sendable {
 
     /// Reads the counters now. Returns nil if any Mach call fails, which should not
     /// happen on a supported macOS.
-    static func read(at time: Date = Date()) -> SystemSnapshot? {
+    static func read() -> SystemSnapshot? {
         guard let cpu = CPUTicks.read(), let memory = MemoryUsage.read(),
               let network = NetworkCounters.read() else { return nil }
-        return SystemSnapshot(time: time, cpu: cpu, memory: memory, network: network)
+        return SystemSnapshot(time: Date(), cpu: cpu, memory: memory, network: network)
     }
 }
 

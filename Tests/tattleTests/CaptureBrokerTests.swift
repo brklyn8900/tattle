@@ -60,7 +60,7 @@ final class CaptureBrokerTests: XCTestCase {
     func testPlistAndScriptsQuoteWhatTheyCarry() throws {
         let plist = CaptureBroker.plist(requirement: "identifier \"a\" and anchor <apple>", uid: 501)
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.label)</string>"))
-        XCTAssertTrue(plist.contains("<string>\(CaptureBroker.helperPath)</string>"))
+        XCTAssertTrue(plist.contains("<string>\(CaptureBroker.Layout.system.helperPath)</string>"))
         XCTAssertTrue(plist.contains("<string>identifier \"a\" and anchor &lt;apple&gt;</string>"))
         let parsed = plistDictionary(plist)
         XCTAssertEqual((parsed?["MachServices"] as? [String: Bool]), [CaptureBroker.label: true])

@@ -314,9 +314,6 @@ final class ConnectionNameTests: XCTestCase {
 
         for reason in [FlowEvent.Reason.notHandshake, .gap, .noServerName, .quic(.unsupportedVersion), .quic(.decryptFailed), .timeout, .evicted, .captureEnded] {
             XCTAssertTrue(reason.code.hasPrefix("none:"), "a reason is never mistaken for a source")
-            XCTAssertEqual(FlowEvent.Reason(code: reason.code), reason)
         }
-        XCTAssertNil(FlowEvent.Reason(code: "sni"))
-        XCTAssertNil(FlowEvent.Reason(code: "none:quic-nonsense"))
     }
 }

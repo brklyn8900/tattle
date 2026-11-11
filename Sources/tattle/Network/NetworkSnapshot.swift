@@ -181,7 +181,6 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         } else {
             facts.append(Fact(name: "Since", value: Self.ago(connection.firstSeen, now: now)))
         }
-        if let ended = connection.ended { facts.append(Fact(name: "Ended", value: Self.ago(ended, now: now))) }
         if connection.direction == .outbound { facts.append(Fact(name: "First contact", value: isNew ? "yes, never seen this address before" : "no, seen before", inPrompt: false)) }
         if let name {
             facts.append(Fact(name: "Name from", value: name.source.text))

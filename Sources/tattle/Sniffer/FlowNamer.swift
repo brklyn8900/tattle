@@ -1,7 +1,7 @@
 import Foundation
 
 /// Which packet named a connection, in order of preference (ADR-0001).
-enum NameSource: String, Sendable, Codable {
+enum NameSource: String, Sendable {
     /// The server name in a TLS ClientHello over TCP.
     case sni
     /// The same, inside a decrypted QUIC Initial packet.
@@ -73,21 +73,6 @@ struct FlowEvent: Equatable, Sendable {
             case .timeout: Self.codePrefix + "timeout"
             case .evicted: Self.codePrefix + "evicted"
             case .captureEnded: Self.codePrefix + "capture-ended"
-            }
-        }
-
-        init?(code: String) {
-            switch code {
-            case Self.codePrefix + "not-handshake": self = .notHandshake
-            case Self.codePrefix + "gap": self = .gap
-            case Self.codePrefix + "no-server-name": self = .noServerName
-            case Self.codePrefix + "timeout": self = .timeout
-            case Self.codePrefix + "evicted": self = .evicted
-            case Self.codePrefix + "capture-ended": self = .captureEnded
-            default:
-                guard code.hasPrefix(Self.codePrefix + "quic-"),
-                      let failure = QUIC.Failure(rawValue: String(code.dropFirst(Self.codePrefix.count + 5))) else { return nil }
-                self = .quic(failure)
             }
         }
 
@@ -367,9 +352,9 @@ struct FlowNamer: Sendable {
         for (key, var flow) in flows {
             if !flow.named, !flow.dnsTried, now - flow.start >= Self.dnsFallbackAfter {
                 flow.dnsTried = true
-                if let entry = dnsMap[key.remote] {
+                if let name = dnsMap[key.remote] {
                     flow.dnsNamed = true
-                    events.append(FlowEvent(key: key, kind: .named(entry.name, .dns)))
+                    events.append(FlowEvent(key: key, kind: .named(name, .dns)))
                 }
             }
             if !flow.named, !flow.finished, now - flow.start >= Self.finalizeAfter,
@@ -401,10 +386,10 @@ struct FlowNamer: Sendable {
         flow.tlsBuffer = nil
         flow.quicDone = true
         flow.quicAssembly = QUICAssembly()
-        if !flow.dnsTried, let entry = dnsMap[key.remote] {
+        if !flow.dnsTried, let name = dnsMap[key.remote] {
             flow.dnsTried = true
             flow.dnsNamed = true
-            return FlowEvent(key: key, kind: .named(entry.name, .dns))
+            return FlowEvent(key: key, kind: .named(name, .dns))
         }
         return flow.dnsNamed ? nil : FlowEvent(key: key, kind: .unnamed(reason))
     }
@@ -418,9 +403,7 @@ private struct DNSMap {
 
     var count: Int { entries.count }
 
-    subscript(address: IPAddress) -> (name: String, at: Double)? {
-        entries[address].map { ($0.name, $0.at) }
-    }
+    subscript(address: IPAddress) -> String? { entries[address]?.name }
 
     mutating func insert(_ name: String, for address: IPAddress, at ts: Double) {
         entries[address] = (name, ts, order.append(address))

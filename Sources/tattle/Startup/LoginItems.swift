@@ -2,7 +2,7 @@ import Foundation
 
 /// One record from the login-items database that System Settings manages
 /// (General, Login Items & Extensions).
-struct LoginItem: Equatable, Sendable, Identifiable {
+struct LoginItem: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         /// An app set to open at login.
         case app
@@ -41,8 +41,6 @@ struct LoginItem: Equatable, Sendable, Identifiable {
     var notified: Bool
     /// Found as a plist on disk rather than registered through SMAppService.
     var legacy: Bool
-
-    var id: String { identifier }
 
     /// The launchd label: a legacy record has no bundle identifier, and keeps the label after
     /// its type in the identifier.
@@ -144,7 +142,7 @@ final class BTMRecord: NSObject, NSSecureCoding {
 
     enum Key {
         static let strings = ["name", "identifier", "developerName", "teamIdentifier", "bundleIdentifier", "executablePath", "container"]
-        static let integers = ["type", "disposition", "flags"]
+        static let integers = ["type", "disposition"]
     }
 
     var strings: [String: String] = [:]

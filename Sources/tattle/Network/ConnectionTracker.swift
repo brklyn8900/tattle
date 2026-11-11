@@ -82,7 +82,7 @@ extension SocketEntry {
     /// UDP with a peer. Loopback is left out: a process talking to another on this Mac is
     /// the Ports tab's subject.
     var connectionScope: Connection.Scope? {
-        guard remotePort != 0, !isListening, tcpState != SocketEntry.tcpListen else { return nil }
+        guard remotePort != 0, !isListening else { return nil }
         guard !Self.isLoopback(remoteAddress), !Self.isUnspecified(remoteAddress) else { return nil }
         return Self.isLocalScope(remoteAddress) ? .local : .remote
     }

@@ -160,7 +160,6 @@ struct StartupSnapshot: Equatable, Sendable {
     var loginItemsError: String?
     /// The error is one that granting Full Disk Access would cure.
     var loginItemsNeedFullDiskAccess = false
-    var takenAt: Date
 
     func items(in group: StartupItem.Group) -> [StartupItem] {
         items.filter { $0.group == group }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -170,7 +169,7 @@ struct StartupSnapshot: Equatable, Sendable {
     /// passes a cached reader, tests pass a table.
     static func build(
         launchd: LaunchdReader.Result, loginItems: [LoginItem], state: LaunchctlState,
-        signature: (String) -> CodeSignature?, takenAt: Date = Date()
+        signature: (String) -> CodeSignature?
     ) -> StartupSnapshot {
         let byIdentifier = Dictionary(loginItems.map { ($0.identifier, $0) }, uniquingKeysWith: { a, _ in a })
         let byPlistPath = Dictionary(
@@ -194,7 +193,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 group: group(for: job.scope),
                 name: registered?.name ?? job.label,
                 program: job.program,
-                arguments: job.program == nil ? [] : job.arguments,
+                arguments: job.arguments,
                 trigger: job.isPlaceholder ? "never" : job.triggers.map { $0.description(scope: job.scope) }.joined(separator: ", "),
                 state: launchdState(job, state: state),
                 signature: started?.signature,
@@ -255,7 +254,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 launchdScope: nil))
         }
 
-        return StartupSnapshot(items: items, appleCount: launchd.appleCount, takenAt: takenAt)
+        return StartupSnapshot(items: items, appleCount: launchd.appleCount)
     }
 
     private static func group(for scope: LaunchdItem.Scope) -> StartupItem.Group {

@@ -4,7 +4,7 @@ import GRDB
 /// One knowledge-base rule: what an item (host, process, port, launch item) is and why it
 /// is probably there. See the PRD, "Explanation pipeline".
 struct Rule: Codable, Equatable, Identifiable, Sendable {
-    enum Kind: String, Codable, Sendable, CaseIterable {
+    enum Kind: String, Codable, Sendable {
         case host, process, port, launchItem
     }
 

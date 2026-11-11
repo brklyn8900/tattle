@@ -29,7 +29,7 @@ struct CodeSignature: Equatable, Sendable {
         /// item does.
         case launchItem(applesProgram: String?)
         /// Signed, but the signature does not match the binary.
-        case invalid(String)
+        case invalid
         /// Signed with a certificate Apple did not issue. Anyone can make one, with any name.
         case notIssuedByApple
         /// Some other certificate Apple issued.
@@ -139,18 +139,14 @@ struct CodeSignature: Equatable, Sendable {
         var error: Unmanaged<CFError>?
         let validity = SecStaticCodeCheckValidityWithErrors(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), nil, &error)
         // Taken whatever the verdict: the error is this caller's to release.
-        let failure = error?.takeRetainedValue()
+        _ = error?.takeRetainedValue()
         if validity == errSecCSUnsigned { return CodeSignature(signer: .unsigned) }
-        if validity != errSecSuccess {
-            let message = failure?.localizedDescription
-                ?? (SecCopyErrorMessageString(validity, nil) as String?) ?? "OSStatus \(validity)"
-            return CodeSignature(signer: .invalid(message))
-        }
+        if validity != errSecSuccess { return CodeSignature(signer: .invalid) }
 
         var infoRef: CFDictionary?
         guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef) == errSecSuccess,
               let info = infoRef as? [String: Any] else {
-            return CodeSignature(signer: .invalid("no signing information"))
+            return CodeSignature(signer: .invalid)
         }
         let identifier = info[kSecCodeInfoIdentifier as String] as? String
         let team = info[kSecCodeInfoTeamIdentifier as String] as? String

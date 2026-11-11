@@ -5,7 +5,7 @@ final class CodeIdentityTests: XCTestCase {
     /// No publisher says which version this is: a signature's own hash does, else the file.
     func testCodeWithNoTeamIsPinnedToOneVersion() {
         XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .unsigned), path: "/x/tool"), CodeIdentity(text: "unsigned:/x/tool", contentFile: "/x/tool"))
-        XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .invalid("bad")), path: "/x/tool"), CodeIdentity(text: "invalid:/x/tool", contentFile: "/x/tool"))
+        XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .invalid), path: "/x/tool"), CodeIdentity(text: "invalid:/x/tool", contentFile: "/x/tool"))
         XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .adHoc, codeHash: "ab"), path: "/x/tool"), CodeIdentity(text: "ad-hoc:ab:/x/tool"))
         XCTAssertEqual(CodeIdentity.of(CodeSignature(signer: .notIssuedByApple, codeHash: "ab"), path: "/x/tool"), CodeIdentity(text: "not-issued-by-apple:ab:/x/tool"))
         XCTAssertNotEqual(CodeIdentity.of(CodeSignature(signer: .adHoc, codeHash: "cd"), path: "/x/tool"), CodeIdentity.of(CodeSignature(signer: .adHoc, codeHash: "ab"), path: "/x/tool"))
@@ -285,7 +285,7 @@ final class LaunchctlStateTests: XCTestCase {
     }
 
     func testIdentityWithoutATeamOrAHashIsTheFile() {
-        for signer: CodeSignature.Signer in [.unsigned, .adHoc, .invalid("x"), .notIssuedByApple] {
+        for signer: CodeSignature.Signer in [.unsigned, .adHoc, .invalid, .notIssuedByApple] {
             let signature = CodeSignature(signer: signer, identifier: "tool-1234")
             XCTAssertEqual(CodeIdentity.of(signature, path: "/x/tool")?.contentFile, "/x/tool", "\(signer)")
             XCTAssertNil(CodeIdentity.of(signature, path: nil), "\(signer)")
