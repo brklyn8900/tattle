@@ -11,8 +11,12 @@ struct StartupTab: View {
                 ProgressView("Reading startup items")
             }
         }
-        .task {
-            if state.startup.snapshot == nil { await state.startup.refresh() }
+        .task(id: state.panelIsShowing) {
+            // Read each time the list comes on screen, like Ports and Processes; the last
+            // reading stays up meanwhile. Startup items rarely change under it, so not again
+            // while it is watched.
+            guard state.panelIsShowing else { return }
+            await state.startup.refresh()
         }
     }
 }
