@@ -101,6 +101,11 @@
 - A login item macOS has a record of and no plist is read in `gui/<uid>` only, so an agent
   limited to `Background` would read `enabled` or `off`, not `running`
   (`StartupSnapshot.loginItemState`).
+- On a hosted CI runner a broker test now and then reads `transport 54` (connection reset)
+  where it expects `refused`: `testBrokerRefusesCallersAnotherProcessCouldSteer` in one run,
+  `testBrokerAnswersOnlyTheInstallingUser` in another, neither in a third (2026-11-11). Not
+  seen on either Mac. Unknown whether the broker closes before its refusal is delivered or
+  the runner resets the connection (`CaptureBrokerTests.swift`).
 
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
 and (d) are done)
