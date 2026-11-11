@@ -88,6 +88,9 @@
   gives the loaded file's path (`StartupSnapshot.swift`).
 - A failed read of the process table fails the whole Ports refresh, and the old list stays on
   screen with no sign: the tab shows the error only when it has no list (`PortsObserver.swift`).
+- A failed read of the socket table leaves the Network list on screen with no sign, as a failed
+  process read left the Processes list until it said so above the list (`NetworkTab.swift`,
+  `NetworkObserver.error`).
 - A one-shot listener on a port of 49152 or above is misread: once the listener has closed,
   the socket it accepted reads outbound, and its peer can count as a first contact
   (`ConnectionTracker.swift`). This Mac's SYN-ACK would prove inbound for it: the capture
