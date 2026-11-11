@@ -174,7 +174,9 @@ Resolution order for any item:
    the account a process runs as reads `you` when it is the user's. The model returns
    structured JSON in the shape of a rule. The answer is stored as an **exact-item** rule with `source = llm`, shown as
    "unconfirmed" until the user has read it, judged it against the facts panel, and
-   confirmed it. There is no automatic check; confirmation is the user's. The source stays
+   confirmed it. An answer is shown without being stored when nothing would tell a later
+   item by its key from this one: code with no identity or whose file cannot be read, and
+   a host whose key went out as a placeholder. There is no automatic check; confirmation is the user's. The source stays
    `llm` so provenance is never lost. The schema lets the model propose a pattern, and
    nothing uses it yet: a rule becomes a pattern only when the user promotes it at
    confirmation, and no screen offers that. Unconfirmed LLM rules expire after 45 days.

@@ -143,7 +143,10 @@ The command runs in your login shell, in an empty temporary folder, and is stopp
 left the group keeps running.
 
 Tattle stores the answer as a rule for that item, marked unconfirmed until you click
-**Confirm**. Unconfirmed answers expire after 45 days.
+**Confirm**. Unconfirmed answers expire after 45 days. Two kinds of answer are shown without
+being stored, and have no **Confirm**: one about code Tattle cannot tell from other code of
+the same name (unnamed code, or a file it cannot read), and one about a host that went out as
+a placeholder, since a private address is another device on another network.
 
 ## Uninstall
 
