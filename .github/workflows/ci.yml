@@ -9,6 +9,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: System Integrity Protection
+        run: csrutil status
       - name: Test
         run: swift test
       - name: Bundle
