@@ -23,7 +23,7 @@ Use the dev copy otherwise: it runs beside the release build without stopping it
 
 ## Where it runs
 
-Which machine a run goes on: the session's memory.
+Which machine a run goes on is set in the session's memory, outside this repo.
 
 A proof that needs a signed build runs on the development Mac: testmac has no signing identity.
 
