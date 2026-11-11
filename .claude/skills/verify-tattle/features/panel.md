@@ -52,12 +52,12 @@ Preconditions:
 
 ## Gotchas
 
-- Proven 2026-11-09. On the development Mac, commit `6e86ade`: the reopening journeys in run
+- Proven 2026-11-09. On the development Mac, commit `a454612`: the reopening journeys in run
   `2026-11-09T131240`, and `pv-stop` in six closed traces (Ports and Processes, three runs). On
-  the test Mac, commit `c5e374f`, runs `2026-11-09T161254` and `2026-11-09T162043`: every path below,
+  the test Mac, commit `78ffbdd`, runs `2026-11-09T161254` and `2026-11-09T162043`: every path below,
   `pv-stop` closed on a Processes or Ports detail and on Network's root and a detail, the menu
   bar label moving while closed, and an Explain answered while closed or reopened mid-answer
-  (one prompt each, the answer shown). On the test Mac, commit `e3cf612`, run `2026-11-09T164024`:
+  (one prompt each, the answer shown). On the test Mac, commit `b944d76`, run `2026-11-09T164024`:
   `pv-baseline` by a timeline of the accessibility tree and a 30-second `pv-stop` trace closed on
   Processes. Copies in this Mac's `build/verify/runs/test-mac-2026-11-09/`.
 - Key status does not follow the panel: another app activated without a click (`open -a Finder`)

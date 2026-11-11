@@ -40,7 +40,7 @@ Preconditions:
 
 ## Gotchas
 
-- Proven 2026-11-08 on the test Mac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
+- Proven 2026-11-08 on the test Mac, run `2026-11-08T210232` (commit `a687b73`); copy in this Mac's
   `build/verify/runs/test-mac-2026-11-08/`. Inline code and an interpreter whose arguments cannot be read
   rest on the unit test (`testAListenerIsReadAsTheCodeItRuns`).
 - A process running as another account than its socket's creator rests on the unit test

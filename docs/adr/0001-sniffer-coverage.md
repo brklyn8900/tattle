@@ -88,7 +88,7 @@ logs to a third-party log intake.
    table, which the app holds, not from the sniffer; the spike's pre-existing bucket was a
    measurement rule only.
 5. The spike stays in the repo under `tools/` as the reference parser until the app's own
-   sniffer replaces it. It was removed in `c500acf`; `git show c500acf^:tools/sniff-spike/`
+   sniffer replaces it. It was removed in `d73107a`; `git show c500acf^:tools/sniff-spike/`
    lists it.
 
 ## Consequences

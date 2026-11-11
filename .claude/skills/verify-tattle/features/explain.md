@@ -224,34 +224,34 @@ Preconditions:
 - Proven 2026-10-27, run `2026-10-27T105938` (release build): shipped rule, Apple gate,
   ask and redaction.
 - Shipped rule proven again 2026-11-07 on the test Mac (macOS 26.7.1, where Apple's binaries are
-  signed `macOS Software Signing`), dev copy at `879a2ca`, run `2026-11-07T180918`: the
-  `5353, mDNSResponder` detail has `Signed by Apple` and the rule; again at `32a5508`, run
+  signed `macOS Software Signing`), dev copy at `5fa2a4f`, run `2026-11-07T180918`: the
+  `5353, mDNSResponder` detail has `Signed by Apple` and the rule; again at `16404e9`, run
   `2026-11-07T195705`.
 - An answer going with its code, and one nothing can keep, proven 2026-11-08 on the test Mac, dev
-  copy at `ebf12ca`, run `2026-11-08T104732`, copied to `build/verify/runs/test-mac-2026-11-08/`.
+  copy at `58fae5e`, run `2026-11-08T104732`, copied to `build/verify/runs/test-mac-2026-11-08/`.
 - The `claude` rule proven 2026-11-08 on the development Mac, where a real session runs,
-  dev copy at `ebf12ca`: the script under the name in run `2026-11-08T104814`, Anthropic's
+  dev copy at `58fae5e`: the script under the name in run `2026-11-08T104814`, Anthropic's
   program in run `2026-11-08T105317`.
 - One version of the code, a file that cannot be read and a host's prompt proven 2026-11-08 on
-  the test Mac, dev copy at `969e6d3`, run `2026-11-08T122412`; a launch item through a wrapper in run
+  the test Mac, dev copy at `4eb9612`, run `2026-11-08T122412`; a launch item through a wrapper in run
   `2026-11-08T122957`; an unkept answer going with its code in run `2026-11-08T123157`. All
   copied to `build/verify/runs/test-mac-2026-11-08/`.
 - A program replaced under its old date, one of Apple's programs by its line and a line that
-  does not say where its code is proven 2026-11-08 on the test Mac, dev copy at `0749baf`, run
+  does not say where its code is proven 2026-11-08 on the test Mac, dev copy at `c4cebc8`, run
   `2026-11-08T141229`, copied to `build/verify/runs/test-mac-2026-11-08/`.
 - The command holding none of Tattle's grants and the `~/.zshrc` line in Settings proven
   2026-11-08 on the development Mac, where the dev copy has Full Disk Access: before the fix at
-  `01de0ee`, run `2026-11-08T170503`; after it at `ab06f99`, run `2026-11-08T170728`.
-- The Claude Code preset proven 2026-11-08 on the test Mac, dev copy at `ab06f99`: one real request
+  `0ce8c15`, run `2026-11-08T170503`; after it at `278576c`, run `2026-11-08T170728`.
+- The Claude Code preset proven 2026-11-08 on the test Mac, dev copy at `278576c`: one real request
   in run `2026-11-08T170858`, Settings in run `2026-11-08T171037`, both copied to
   `build/verify/runs/test-mac-2026-11-08/`. Packet capture is off there, so the row was the
   connection's address.
 - The suspended start and the one-shot migration proven 2026-11-08 on the development Mac,
-  signed dev copy at `c59806d`, on a database holding the earlier preset: the migrated row,
+  signed dev copy at `fdb226d`, on a database holding the earlier preset: the migrated row,
   Settings and one real request in run `2026-11-08T174405`; the same text staying after a
   relaunch in run `2026-11-08T174445`; the command charged to `/bin/zsh` and refused the
   protected folder, with Startup listing login items, in run `2026-11-08T174453`.
-- What the prompt keeps back proven 2026-11-08 at `781f6a3`: a process's title and capitals, the
+- What the prompt keeps back proven 2026-11-08 at `2b4b184`: a process's title and capitals, the
   login and the Mac's name as a label's author, a script named for its author, another account's
   folder, a mounted disk's name and edited instructions on the test Mac, run `2026-11-08T185357`; a
   `users/` folder inside a path and the default instructions in run `2026-11-08T185610`, both
@@ -259,7 +259,7 @@ Preconditions:
   development Mac, the only one with either, run `2026-11-08T185833`. A host's whole-name rule, a
   tailnet name, an address spelled with hyphens and a public bound address rest on unit tests:
   `connect` reaches only its approved hosts, and neither Mac holds a public address.
-- The shared path and host rules proven 2026-11-08 on the test Mac at `fe3956b`, run
+- The shared path and host rules proven 2026-11-08 on the test Mac at `996b934`, run
   `2026-11-08T201245`, its prompts copied with it to `build/verify/runs/test-mac-2026-11-08/`: the
   firmlink, an unmounted disk, a mounted disk named for the login, a project's `users/<login>`
   folder, a disk's name in a title, the domain endings, script extensions and edited

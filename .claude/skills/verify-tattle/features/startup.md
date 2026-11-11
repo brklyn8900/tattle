@@ -169,53 +169,53 @@ Preconditions:
 - Proven 2026-10-25, run `2026-10-25T224119` (list, detail, cross-check, broker row);
   Load and Unload not exercised.
 - Signer of a command line proven 2026-11-07 on the test Mac, run `2026-11-07T180918` (commit
-  `879a2ca`); on `b2a39de`, run `2026-11-07T175830`, all four rows read `macOS Software
+  `5fa2a4f`); on `12bc8c6`, run `2026-11-07T175830`, all four rows read `macOS Software
   Signing` and the Program row read `Runs /bin/sh /bin/sh ...`. Copies in this Mac's
   `build/verify/runs/test-mac-2026-11-07/`.
 - All of the signer journey proven again 2026-11-07 on the test Mac, run `2026-11-07T195705`
-  (commit `32a5508`). Run `2026-11-07T195527` is the same on `2fdbff2`: the copy named
+  (commit `16404e9`). Run `2026-11-07T195527` is the same on `d0a363d`: the copy named
   `nohup`, the symlink, the relative path, `open` with a document, `find`, `zsh -O`, `perl
   -lne`, `python3 +run.py` and the node decoy all read `Apple`, and `nohup sleep` read
   `unsigned`.
 - All of the signer journey proven again 2026-11-07 on the test Mac, run `2026-11-07T224519`
-  (commit `9a0f53e`). Run `2026-11-07T224338` is the same on `2ec0b40`: both xargs rows
+  (commit `a68ec31`). Run `2026-11-07T224338` is the same on `9ff9cb2`: both xargs rows
   read `Apple`, the `sh` and `env` decoys `Mitchell Hashimoto` (Ghostty's signer), the
   script files `unsigned`, the toolchain's `swift` `Apple`, `open` with a document
   `unsigned`, and `nohup agent` had no `Signed by`.
 - The swift and `open` rows proven 2026-11-07 on the test Mac, run `2026-11-07T235929` (commit
-  `2aa83fc`). Run `2026-11-07T235754` is the same on `818f035`: the `-frontend`, `swiftc`
+  `3ed5587`). Run `2026-11-07T235754` is the same on `6844a78`: the `-frontend`, `swiftc`
   stub, plugin and `open -t`, `-R` and `-gR` rows read `Apple`, and the toolchain's
   `swiftc`, `swift-symbolgraph-extract` and `swift-api-digester` `script, not signed`.
 - Apple's developer tools, the `-Xfrontend -interpret` script and `open`'s long options
-  proven 2026-11-08 on the test Mac, run `2026-11-08T011100` (commit `7d50eec`). Run
-  `2026-11-08T010801` is the same on `1ab9f0b`: every row `Apple` but `/usr/bin/swift
+  proven 2026-11-08 on the test Mac, run `2026-11-08T011100` (commit `60fda3a`). Run
+  `2026-11-08T010801` is the same on `0a26037`: every row `Apple` but `/usr/bin/swift
   <dir>/loop.swift`'s. The Xcode rows proven on the development Mac, run `2026-11-08T010935`
-  (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) the four that are not Xcode itself
+  (`60fda3a`); in run `2026-11-08T010824` (`0a26037`) the four that are not Xcode itself
   read `Apple`. The copies of `clang`, `ld` and `swift-frontend` proven on the test Mac, run
-  `2026-11-08T014224` (`a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) all four read
+  `2026-11-08T014224` (`0c9dd17`); in run `2026-11-08T013916` (`13b0b70`) all four read
   `Apple`. Copies of the test Mac's in this Mac's `build/verify/runs/test-mac-2026-11-08/`.
   Inline code as `unnamed code` (the `zsh -c`, `h -c` and `perl -lne` rows) is unit-tested
   only.
 - The launch item rule and xcrun proven 2026-11-08 on the test Mac, run `2026-11-08T090736` (commit
-  `b5e5e2c`). In run `2026-11-08T090623` (`0a31fdc`) the `sqlite3`, `ls` and two xcrun rows
+  `f82f06d`). In run `2026-11-08T090623` (`14501b9`) the `sqlite3`, `ls` and two xcrun rows
   read `Apple`. The registered items proven on the development Mac, run `2026-11-08T090639`
-  (`b5e5e2c`); in run `2026-11-08T090557` (`0a31fdc`) they read `Apple`. The `open -ga` row
+  (`f82f06d`); in run `2026-11-08T090557` (`14501b9`) they read `Apple`. The `open -ga` row
   is unit-tested at this reading, not run again. `RootDirectory` proven on the test Mac, run
-  `2026-11-08T092645` (`be0e8f0`); in run `2026-11-08T092551` (`c701e4f`) its detail had
+  `2026-11-08T092645` (`6a81d7a`); in run `2026-11-08T092551` (`db98bda`) its detail had
   `Runs Apple's ls`.
   The copy, the link and the path out of `/usr` proven on the test Mac, run `2026-11-08T100408`
-  (`b3a99b9`); in run `2026-11-08T100308` (`6db6203`) they had `Runs Apple's softwareupdated`
+  (`d8825b4`); in run `2026-11-08T100308` (`da67eac`) they had `Runs Apple's softwareupdated`
   and `Runs Apple's SafariUpdater`.
 - The loaded job, the plists that cannot be read and the daemon's words proven 2026-11-08 on
-  the test Mac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
+  the test Mac, run `2026-11-08T210232` (commit `a687b73`); copy in this Mac's
   `build/verify/runs/test-mac-2026-11-08/`. An agent and a daemon sharing a label rest on the unit test
   (`testEachDomainAnswersForItsOwnJobs`).
 - A folder that cannot be listed and the Background agent, its `Unload` and `Load` included,
-  proven 2026-11-08 on the test Mac, run `2026-11-08T221748` (commit `97096f3`); copy in the development Mac's
+  proven 2026-11-08 on the test Mac, run `2026-11-08T221748` (commit `b28f3cb`); copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-08/`. A plist macOS has a record of proven 2026-11-08 on
-  the development Mac, run `2026-11-08T222028` (`97096f3`). A record of a kind Tattle does not
+  the development Mac, run `2026-11-08T222028` (`b28f3cb`). A record of a kind Tattle does not
   list rests on the unit test (`testARecordOfAnUnknownKindDoesNotHideAnUnreadablePlist`).
-- `st-gone` proven 2026-11-10 on the test Mac, dev copy at `ea8e98f`, run `2026-11-10T191945`: an
+- `st-gone` proven 2026-11-10 on the test Mac, dev copy at `0b1e7c9`, run `2026-11-10T191945`: an
   agent's plist, not loaded, deleted under its open detail; the panel closed and opened, with
   no `Refresh`: `No longer installed.` and `Load` gone. Copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-10/`. Not driven: the broker's row after `Remove`.

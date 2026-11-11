@@ -177,12 +177,12 @@ Preconditions:
   can't be opened` alert on the screen, so it never opened a connection to read.
   One put in a bundle built on the machine runs, which is the recipe above.
 - Incoming connections and the Tailscale peer's reach proven 2026-11-08 on the test Mac, run
-  `2026-11-08T210232` (commit `c969c4d`); copy in the development Mac's
+  `2026-11-08T210232` (commit `a687b73`); copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-08/`. `from the internet` needs a public peer, so it rests
   on the unit test (`testAnInboundConnectionReadsAsInbound`).
 - Direction proven 2026-11-08 on the development Mac with the broker. Run `2026-11-08T222028`
-  (commit `97096f3`): a seen opening, `Ghostty to example.com`, `direction` `outbound`. Run
-  `2026-11-08T223300` (commit `edc856c`), a fresh launch: all 64 internet rows were already
+  (commit `b28f3cb`): a seen opening, `Ghostty to example.com`, `direction` `outbound`. Run
+  `2026-11-08T223300` (commit `5b23169`), a fresh launch: all 64 internet rows were already
   open and read outbound from their local ports, none unknown. `Herdr Core to
   160.79.104.10:443`, `First contact no`; `Google Chrome to 18.97.36.51:443`, `First contact
   yes`; `identityservicesd with [fe80:17::f86b:c51e:57bf:33c]:1024`, on a port below the range;
@@ -190,7 +190,7 @@ Preconditions:
   Listeners by family and a seen opening arriving after the row rest on unit tests. The `nc`
   pair over Tailscale does not connect on the development Mac.
 - A host's prompt with no direction proven 2026-11-08 on the test Mac, run `2026-11-08T232714`
-  (commit `25c7e20`): `Ghostty to 100.x.y.z:18091` shows `Destination` and `First contact`,
+  (commit `13807fc`): `Ghostty to 100.x.y.z:18091` shows `Destination` and `First contact`,
   and the recorded prompt's `facts` are `Protocol`, `Reach` and `Since`. Copy in the development
   Mac's `build/verify/runs/test-mac-2026-11-08/`. An opening seen while a reading resolves owners
   rests on the unit test (`testAnOpeningSeenWhileAReadingResolvesOwnersReachesTheRowAndItsHistory`).
@@ -210,14 +210,14 @@ Preconditions:
   cannot name the garbage and silent connections; looking github.com up any other way first (a
   browser, `curl`, `ssh`) turns their outcome into `dns`.
 - DNS replies bounded, proven 2026-11-10 on the development Mac with the broker, dev copy at
-  `64da45c`, run `2026-11-10T163829`: `nc` to example.com shows `Name from the HTTP request`,
+  `1f6dd5c`, run `2026-11-10T163829`: `nc` to example.com shows `Name from the HTTP request`,
   and with no traffic made for it an `ssh` to `140.82.113.3:22` was logged `notHandshake` and
   kept as `github.com | dns`. It closed in 0.1 s, so the panel never showed it. A refused reply
   cannot be sent to the Mac on demand: the refusals rest on
   `testDNSRefusesAReplyWithMoreThanOneQuestion`, `testDNSRefusesANameLongerThan255Bytes` and
   `testDNSRefusesAReplyThatWalksTooManyLabels`, full-sized replies on
   `testDNSReadsFullRepliesWithCompressedNames`. Parse times on the test Mac, release build, median of
-  7 alternating runs a side against `6036ba4`: the fuzz review's 121-question reply 2.45 to
+  7 alternating runs a side against `98897da`: the fuzz review's 121-question reply 2.45 to
   0.0001 ms; 99 answers pointing at one 127-label name 1.26 to 0.095 ms; 99 answers pointing at
   one 255-byte name of four labels 0.26 ms on both, since the bound counts labels and pointers,
   not bytes;
@@ -227,21 +227,21 @@ Preconditions:
   `2026-11-10--fix-13-dns-name-bound--ea8fcbfb`, `artifacts/2026-11-10-dns-bound/`.
 - `outcome ... arrived with no live connection` debug lines are normal: the sniffer often
   names a flow before the socket table shows it.
-- The single schema proven 2026-11-11 on the test Mac, dev copy at `0f86354`, a fresh data
+- The single schema proven 2026-11-11 on the test Mac, dev copy at `cdebcb5`, a fresh data
   folder, run `2026-11-11T115236`: doctor read `v1-schema` as the database's one migration,
   the three tables and four `connection` indexes were there, and `connect named` wrote its row
   (`nc`, port 80, `outbound`). Copy in this Mac's `build/verify/runs/test-mac-2026-11-11/`.
-- The history database proven 2026-11-10 on the development Mac with the broker. At `1233d86`,
+- The history database proven 2026-11-10 on the development Mac with the broker. At `ddb835a`,
   run `2026-11-10T151852`, the dev copy's own data as main left it (20,034 rows, rollback
   journal): the first launch switched it to WAL and ran `v8-connection-flow-index`, the rows
   kept, the index on its four columns, the lookup's plan on `connection_flow`, and a named
   connection's row `example.com | http`. `Quit Tattle` left 3.9 MB in `tattle.sqlite-wal` and
   `tattle.sqlite` as it was at launch: the app does not close the database on quit, so the log
-  is not folded in at exit. The rest is from `77d7315`, the first version of `1233d86`, whose
+  is not folded in at exit. The rest is from `77d7315`, the first version of `ddb835a`, whose
   index also listed `id`. Run `2026-11-10T105220`, with a copy of the release build's history
   (211,609 rows) in place of the dev copy's data: the first launch switched it to WAL and ran
   `v8-connection-flow-index`, 507 ms from process start to the startup log line against 296 ms
-  for `c056427` on the same data (run `2026-11-10T104816`), one launch each. doctor read it with
+  for `42646a4` on the same data (run `2026-11-10T104816`), one launch each. doctor read it with
   `sqlite3 -readonly` while the copy ran, and a read after cleanup worked too. `Herdr Core to
   example.com`, `Name from the HTTP request`, history row 211865 `example.com | http`; on the
   same four-tuple after it closed, the new row 211918 `example.com | http`. A 120-second Time
@@ -251,7 +251,7 @@ Preconditions:
   of it GRDB preparing the statement; `open` 108 ms for 57 rows against 13 for 23, `close` 64
   for 35 against 22 for 32, `fsync` on the main thread 43 ms against none.
 - History write volume measured 2026-11-10 on the test Mac, dev copy with its own data and no broker,
-  panel never opened, 90 minutes each after 2 minutes' warm-up: `c056427` 573 row changes
+  panel never opened, 90 minutes each after 2 minutes' warm-up: `42646a4` 573 row changes
   (opens and closes), `77d7315` (the index with `id`) 665. Logical bytes written 41.85 against
   18.02 MB, 0.073 against 0.027 MB a row change (15-minute slices 0.067 to 0.080 and 0.023 to
   0.030). `tattle.sqlite` changed 279 times against 4 checkpoints, about 25 minutes apart after
@@ -267,16 +267,16 @@ Preconditions:
   Tattle started`).
 - An owner and its app read with the socket table, its line walked through one reading of every
   process's record, with no sweep of the process table: shown 2026-11-09 on the development Mac
-  with the broker, dev copy at `9b482ba`, run `2026-11-09T234833`: `Herdr Core to example.com`,
+  with the broker, dev copy at `3bb15a7`, run `2026-11-09T234833`: `Herdr Core to example.com`,
   `Process nc (pid 18853)`, `App Herdr Core`, `Signed by Apple`, `App signed by Herdr, Inc.`, and
-  in history `nc | example.com | http | Herdr Core | Apple | Herdr, Inc.`; the same at `ba0432b`,
-  run `2026-11-09T192354`. A 120-second Time Profiler trace of `7d89bed` with the panel never
+  in history `nc | example.com | http | Herdr Core | Apple | Herdr, Inc.`; the same at `984d28a`,
+  run `2026-11-09T192354`. A 120-second Time Profiler trace of `adef8ac` with the panel never
   opened, 26 new connections, summary in the development Mac's
   `build/verify/runs/2026-11-10T004954-trace/`: no `ProcessTable.list`; `ProcessTable.records`
   46 ms in all, 34 of them the kernel's table; `ProcessTable.lines` 3 ms; `URL(fileURLWithPath:)`
   only under `AppBundle.name`, 2 ms. Its one `pid <n>` row was `ssh` to the test Mac's port 22, as were
-  all six in the trace of `9b482ba`. The short-lived recipe above, five alternating 120-second windows per side:
-  driven connections with no owner 1 of 150 at `7744536` and 0 of 149 at `ba0432b` (one `nc`
+  all six in the trace of `3bb15a7`. The short-lived recipe above, five alternating 120-second windows per side:
+  driven connections with no owner 1 of 150 at `ce4f212` and 0 of 149 at `984d28a` (one `nc`
   exited with an error and left no row); all new rows with no owner 10 of 303 and 9 of 273,
   the rest TCP to the router's port 53, one per window as the driver's `dig +tcp` is, and to
   the test Mac's port 22. That shows no difference for processes that live 47 ms or more, and nothing
@@ -286,44 +286,44 @@ Preconditions:
   one reading is taken, with the helper's socket rewritten to a private address. The simulation
   is `QuickExitSimulationTests`, which runs only when `TATTLE_SIM_HELPER` names the helper built
   from `Tests/quick-exit-helper.c`; compare two revisions in copies of each (`git archive`),
-  alternating which runs first. Main had no reading seam at `7744536`, so its side ran the same
+  alternating which runs first. Main had no reading seam at `ce4f212`, so its side ran the same
   test with that commit's reading (the socket table and the whole process list in one task,
   then `fold`) in place of `poll()`. The reading by owner is not detectably worse than that sweep. The runs, newest
-  first, each against `7744536`:
-  - 2026-11-10, `7d89bed`, 1,440 runs per side in twelve rounds alternating which ran first,
+  first, each against `ce4f212`:
+  - 2026-11-10, `adef8ac`, 1,440 runs per side in twelve rounds alternating which ran first,
     counting apart the owners named without a path (read after the helper exited, by the
     kernel's name alone): `pid <n>` 228 and 226, a paired difference of 0.17 a round (standard
     deviation 5.9, so about −3.6 to +3.9 a round of 120); named without a path 42 and 138; no
     `unknown process`, missing row or failed helper.
-  - 2026-11-10, `9b482ba`, a review's rerun, the same design, an owner named without a path
+  - 2026-11-10, `3bb15a7`, a review's rerun, the same design, an owner named without a path
     counted as named: `pid <n>` 214 and 219, −0.4 a round (standard deviation 7.3).
-  - 2026-11-10, `9b482ba`, the same design and counting: `pid <n>` 162 and 192, −2.5 a round
+  - 2026-11-10, `3bb15a7`, the same design and counting: `pid <n>` 162 and 192, −2.5 a round
     (standard deviation 5.3).
-  - 2026-11-09, 720 runs per side in rotating order: 112 at `7744536`, 126 at `b6c21c7` and 174
-    at `ba0432b`, which read owners after the table. Whether a side ran first or last in a
+  - 2026-11-09, 720 runs per side in rotating order: 112 at `ce4f212`, 126 at `8a4c783` and 174
+    at `984d28a`, which read owners after the table. Whether a side ran first or last in a
     round moved its count more than which side it was: two fixed-order sets of 480 gave 55 and
-    58 at `7744536`, 68 (run second) and 44 (run first) at `b6c21c7`.
-- A process's own name for itself proven 2026-11-09 at `ba0432b`, run `2026-11-09T192510`:
+    58 at `ce4f212`, 68 (run second) and 44 (run first) at `8a4c783`.
+- A process's own name for itself proven 2026-11-09 at `984d28a`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A home folder (`~`, `~user`) or a relative
   path ending in `.` or `..` now reads as the program's file, and an absolute path keeps its last
-  component as before; that rests on `testTheNameAProcessStartedUnderIsNotAPathToResolve`. At `ba0432b` an empty `argv[0]` did not
+  component as before; that rests on `testTheNameAProcessStartedUnderIsNotAPathToResolve`. At `984d28a` an empty `argv[0]` did not
   reach the naming: `ProcessTable.parseArguments` took it for the padding after the executable's
   path, so the process was named after its next argument (`G` for `nc -G 5 ...`), or after its
   first environment string when it had none, and that string joined its arguments. The parser
   now skips the padding by its length; a real process with an empty `argv[0]` rests on
   `testAnEmptyFirstArgumentIsReadAsOne`, not yet on a run in the app.
-- A connection's own signer proven 2026-11-08 on the test Mac, dev copy at `ebf12ca`, run
+- A connection's own signer proven 2026-11-08 on the test Mac, dev copy at `58fae5e`, run
   `2026-11-08T105543`, copied to `build/verify/runs/test-mac-2026-11-08/`.
-- The relay and OHTTP rules read from the `rule` table at `969e6d3` on the test Mac, run
+- The relay and OHTTP rules read from the `rule` table at `4eb9612` on the test Mac, run
   `2026-11-08T122412`; no traffic to those hosts can be made on demand.
 - A row whose connections differ, a file put in a bundle and a process that replaces itself
-  proven 2026-11-08 on the test Mac, dev copy at `969e6d3`, run `2026-11-08T122412`; the bundle's own
+  proven 2026-11-08 on the test Mac, dev copy at `4eb9612`, run `2026-11-08T122412`; the bundle's own
   executable in run `2026-11-08T122957`. Copied to `build/verify/runs/test-mac-2026-11-08/`.
 - A process whose new program deletes its file proven 2026-11-08 on the test Mac, dev copy at
-  `0749baf`, run `2026-11-08T141229`, copied to `build/verify/runs/test-mac-2026-11-08/`.
+  `c4cebc8`, run `2026-11-08T141229`, copied to `build/verify/runs/test-mac-2026-11-08/`.
 - The three known connections after the review fixes of 2026-11-10, proven that day on the
-  development Mac with the broker, dev copy at `e32cc9d`, run `2026-11-10T192212`: `capturing on
+  development Mac with the broker, dev copy at `e787e9f`, run `2026-11-10T192212`: `capturing on
   en0, link type 1, through the broker`; `nc | Herdr Core | example.com | http`, `none:not-handshake`
   and `none:timeout` in history, all `outbound`; the details read `No name the connection did
   not start with a TLS or HTTP handshake` and `No name no complete handshake came in the
