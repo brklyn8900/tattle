@@ -65,7 +65,7 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         }
         if let first = arguments?.first {
             // A title with spaces ("npm exec @scope/pkg") is not a path, unless it starts
-            // like one ("/Users/u/Library/Application Support/x/server").
+            // like one ("/Users/user/Library/Application Support/x/server").
             let isTitle = first.contains(" ") && !first.hasPrefix("/")
             let started = (isTitle ? Substring(first) : Substring((first as NSString).lastPathComponent)).drop { $0 == "-" }
             let isHomeFolder = first.hasPrefix("~") && first.drop { $0 != "/" }.allSatisfy { $0 == "/" }

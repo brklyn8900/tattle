@@ -23,33 +23,33 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(redactor.redact("Usernamex.example.com", as: .program), "Usernamex.example.com")
     }
 
-    /// One or two letters are ordinary text anywhere else ("-e", "a"), so a short login goes
+    /// One or two letters are ordinary text anywhere else ("-u", "a"), so a short login goes
     /// only where a login stands: before an "@", and first in a process title.
     func testAShortUsernameIsReplacedOnlyWhereALoginGoes() {
-        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        XCTAssertEqual(short.redact("/Users/u/x run by e with osascript -e 1", as: .program), "<home>/x run by e with osascript -e 1")
-        XCTAssertEqual(short.redact("sshd-session: e@ttys003 (pid 9)", as: .program), "sshd-session: <user>@ttys003 (pid 9)")
-        XCTAssertEqual(short.redact("postgres: e clientdb [local] idle:tcp/5432", as: .program), "postgres: <user> clientdb [local] idle:tcp/5432")
-        XCTAssertEqual(short.redact("sshd: E [priv]", as: .program), "sshd: E [priv]", "only as written")
-        XCTAssertEqual(short.redact("sshd: e", as: .program), "sshd: <user>")
-        XCTAssertEqual(short.redact("mail: be@x.example, code-e@x.example, a.e@x.example", as: .program), "mail: be@x.example, code-e@x.example, a.e@x.example")
-        XCTAssertEqual(short.redact("postgres: clientdb e [local]", as: .program), "postgres: clientdb e [local]", "second in the title is not the login's place")
+        let short = Redactor(home: "/Users/u", username: "u", machineNames: [])
+        XCTAssertEqual(short.redact("/Users/u/x run by u with sort -u 1", as: .program), "<home>/x run by u with sort -u 1")
+        XCTAssertEqual(short.redact("sshd-session: u@ttys003 (pid 9)", as: .program), "sshd-session: <user>@ttys003 (pid 9)")
+        XCTAssertEqual(short.redact("postgres: u clientdb [local] idle:tcp/5432", as: .program), "postgres: <user> clientdb [local] idle:tcp/5432")
+        XCTAssertEqual(short.redact("sshd: U [priv]", as: .program), "sshd: U [priv]", "only as written")
+        XCTAssertEqual(short.redact("sshd: u", as: .program), "sshd: <user>")
+        XCTAssertEqual(short.redact("mail: bu@x.example, code-u@x.example, a.u@x.example", as: .program), "mail: bu@x.example, code-u@x.example, a.u@x.example")
+        XCTAssertEqual(short.redact("postgres: clientdb u [local]", as: .program), "postgres: clientdb u [local]", "second in the title is not the login's place")
         let none = Redactor(home: "", username: "", machineNames: [])
         XCTAssertEqual(none.redact("sshd: x@y", as: .program), "sshd: x@y", "no login, nothing to match")
     }
 
     /// In the user's own sentences one or two letters are ordinary words, wherever they stand.
     func testAShortUsernameStaysInEditedInstructions() {
-        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        let written = "mail e@x.example, postgres: e db, com.e.helper"
+        let short = Redactor(home: "/Users/u", username: "u", machineNames: [])
+        let written = "mail u@x.example, postgres: u db, com.u.helper"
         XCTAssertEqual(short.redact(written, as: .instructions), written)
-        XCTAssertEqual(short.redact("sshd: e", as: .instructions), "sshd: e")
+        XCTAssertEqual(short.redact("sshd: u", as: .instructions), "sshd: u")
     }
 
-    /// "/Users/eve/..." is another account's folder, not the home "/Users/u" plus "ve/...".
+    /// "/Users/user/..." is another account's folder, not the home "/Users/u" plus "ser/...".
     func testHomeMatchesOnAPathBoundary() {
-        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        XCTAssertEqual(short.redact("/Users/eve/Library/x", as: .program), "/Users/<other-user>/Library/x")
+        let short = Redactor(home: "/Users/u", username: "u", machineNames: [])
+        XCTAssertEqual(short.redact("/Users/user/Library/x", as: .program), "/Users/<other-user>/Library/x")
         XCTAssertEqual(short.redact("/Users/u/Library/x and /Users/u", as: .program), "<home>/Library/x and <home>")
         XCTAssertEqual(short.redact(#"{"key":"/Users/u"}"#, as: .program), #"{"key":"<home>"}"#)
         XCTAssertEqual(short.redact("/Users/u.old/x", as: .program), "/Users/<other-user>/x")
@@ -67,8 +67,8 @@ final class RedactorTests: XCTestCase {
     /// Every path pass reads the same start. A project's users/ folder is no account, and the
     /// boot disk's firmlink or another disk's root is the top of a path.
     func testEveryPathPassAgreesWhereAPathStarts() {
-        let short = Redactor(home: "/Users/u", username: "e", machineNames: [])
-        XCTAssertEqual(short.redact("/opt/app/users/e/tool", as: .program), "/opt/app/users/e/tool", "a project's folder is not the home")
+        let short = Redactor(home: "/Users/u", username: "u", machineNames: [])
+        XCTAssertEqual(short.redact("/opt/app/users/u/tool", as: .program), "/opt/app/users/u/tool", "a project's folder is not the home")
         XCTAssertEqual(redactor.redact("/opt/app/users/username/tool", as: .program), "/opt/app/users/<user>/tool")
         XCTAssertEqual(redactor.redact("/System/Volumes/Data/Users/username/x", as: .launchItem), "/System/Volumes/Data<home>/x")
         XCTAssertEqual(redactor.redact("/System/Volumes/Data/Users/other/x", as: .launchItem), "/System/Volumes/Data/Users/<other-user>/x")
@@ -196,7 +196,7 @@ final class RedactorTests: XCTestCase {
     }
 
     func testTailscaleLabel() {
-        XCTAssertEqual(Redactor.tailscaleLabel("U’s Computer"), "us-computer", "measured on this Mac")
+        XCTAssertEqual(Redactor.tailscaleLabel("User’s Computer"), "users-computer", "the form measured on a Mac")
         XCTAssertEqual(Redactor.tailscaleLabel("studio.localdomain.local"), "studio")
         XCTAssertEqual(Redactor.tailscaleLabel("studio.lan.localdomain"), "studio")
         XCTAssertEqual(Redactor.tailscaleLabel("studio.local.lan"), "studio-local", "suffixes trimmed in order, once each")
@@ -218,9 +218,9 @@ final class RedactorTests: XCTestCase {
 
     func testAnEmptyDomainNeverTakesAPeriod() {
         let domains = SystemDNS(states: ["State:/Network/Global/DNS": ["SearchDomains": ["", "."]]]).domains
-        let testmac = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
-            computerName: nil, localHostName: "testmac", hostName: nil, domains: domains))
-        XCTAssertEqual(testmac.redact("Then testmac. Next", as: .host), "Then <machine>. Next")
+        let computer = Redactor(home: "/Users/username", username: "username", machineNames: Redactor.machineNames(
+            computerName: nil, localHostName: "computer", hostName: nil, domains: domains))
+        XCTAssertEqual(computer.redact("Then computer. Next", as: .host), "Then <machine>. Next")
     }
 
     /// A MagicDNS name is device.tailnet.ts.net, and the tailnet's name identifies the account.
@@ -269,9 +269,9 @@ final class RedactionReviewTableTests: XCTestCase {
     }
 
     func testEveryInputFromBothReviews() {
-        let username = user("username"), e = user("e"), code = user("code"), mail = user("mail"), apple = user("apple")
+        let username = user("username"), u = user("u"), code = user("code"), mail = user("mail"), apple = user("apple")
         let admin = user("admin"), test = user("test"), server = user("server"), js = user("js"), home = user("home")
-        let testmac = user("username", mac: ["testmac"]), dev = user("username", mac: ["dev"]), macMac = user("username", mac: ["Mac"])
+        let computer = user("username", mac: ["computer"]), dev = user("username", mac: ["dev"]), macMac = user("username", mac: ["Mac"])
         let homeMac = user("username", mac: ["home"]), curly = user("username", mac: ["Username’s Mac"])
         let rows: [(Redactor, Redactor.Context, String, String)] = [
             // First review: a login in a dotted name.
@@ -290,8 +290,8 @@ final class RedactionReviewTableTests: XCTestCase {
             (username, .program, "username2-worker", "username2-worker"),
             (username, .host, "username.com", "username.com"),
             (username, .host, "www.username.com", "www.username.com"),
-            (user("username", mac: ["testmac"]), .launchItem, "com.testmac.backup", "com.<machine>.backup"),
-            (testmac, .launchItem, "/Library/LaunchAgents/com.testmac.backup.plist", "/Library/LaunchAgents/com.<machine>.backup.plist"),
+            (user("username", mac: ["computer"]), .launchItem, "com.computer.backup", "com.<machine>.backup"),
+            (computer, .launchItem, "/Library/LaunchAgents/com.computer.backup.plist", "/Library/LaunchAgents/com.<machine>.backup.plist"),
 
             // First review: a login that is a common word.
             (code, .program, "Code", "Code"),
@@ -326,7 +326,7 @@ final class RedactionReviewTableTests: XCTestCase {
             (js, .launchItem, "/opt/app/server.js", "/opt/app/server.js"),
             (user("sh"), .launchItem, "/opt/tools/sync.sh", "/opt/tools/sync.sh"),
             (mail, .launchItem, "com.apple.mail.helper", "com.apple.mail.helper"),
-            (e, .launchItem, "com.e.backup", "com.<user>.backup"),
+            (u, .launchItem, "com.u.backup", "com.<user>.backup"),
 
             // First review: instructions.
             (username, .instructions, "Compare with /Users/other/x on nas.tail1234.ts.net", "Compare with /Users/other/x on nas.tail1234.ts.net"),
@@ -354,10 +354,10 @@ final class RedactionReviewTableTests: XCTestCase {
             (user("username", disks: ["Big \"Work\" Disk"]), .program, "/Volumes/Big \"Work\" Disk/bin/x", "/Volumes/<volume>/bin/x"),
 
             // First review: short logins, tailnet order and spelling.
-            (e, .program, "worker: e:tcp/8000", "worker: e:tcp/8000"),
-            (e, .program, "worker: e (pid 9)", "worker: <user> (pid 9)"),
-            (e, .program, "e run", "e run"),
-            (e, .program, "postgres: e e [local] idle", "postgres: <user> e [local] idle"),
+            (u, .program, "worker: u:tcp/8000", "worker: u:tcp/8000"),
+            (u, .program, "worker: u (pid 9)", "worker: <user> (pid 9)"),
+            (u, .program, "u run", "u run"),
+            (u, .program, "postgres: u u [local] idle", "postgres: <user> u [local] idle"),
             (user("username", mac: ["nas"]), .host, "nas.tail1234.ts.net", "<tailnet-device>"),
             (user("username", mac: ["nas", "nas.tail1234.ts.net"]), .host, "nas.tail1234.ts.net", "<machine>"),
             (curly, .host, "Username‘s Mac", "Username‘s Mac"),
@@ -371,7 +371,7 @@ final class RedactionReviewTableTests: XCTestCase {
             (homeMac, .instructions, "/Users/username/x", "<<machine>>/x"),
             (user("username", mac: ["Home"]), .instructions, "/Users/username/Library/x", "<<machine>>/Library/x"),
             (user("machine", mac: ["x"]), .instructions, "/Users/machine/bin/x", "<home>/bin/<<user>>"),
-            (user("machine", mac: ["testmac"]), .host, "testmac.lan", "testmac.lan"),
+            (user("machine", mac: ["computer"]), .host, "computer.lan", "computer.lan"),
 
             // Second review: a disk's name and the login.
             (user("username", disks: ["username work files"]), .launchItem, "/Volumes/username work files/bin/tool", "/Volumes/<volume>/bin/tool"),
@@ -379,9 +379,9 @@ final class RedactionReviewTableTests: XCTestCase {
             (user("username", disks: ["username backup"]), .program, "/Volumes/username backup/x", "/Volumes/<volume>/x"),
 
             // Second review: where a path starts.
-            (e, .program, "node /srv/api/users/e/x.js", "node /srv/api/users/e/x.js"),
+            (u, .program, "node /srv/api/users/u/x.js", "node /srv/api/users/u/x.js"),
             (admin, .program, "node /srv/api/users/admin/x.js", "node /srv/api/users/<user>/x.js"),
-            (e, .program, "/opt/app/users/e/tool", "/opt/app/users/e/tool"),
+            (u, .program, "/opt/app/users/u/tool", "/opt/app/users/u/tool"),
             (username, .program, "/opt/app/users/username/tool", "/opt/app/users/<user>/tool"),
             (username, .program, "ssh://host/Users/username/x", "ssh://host/Users/<user>/x"),
             (username, .launchItem, "/System/Volumes/Data/Users/other/x", "/System/Volumes/Data/Users/<other-user>/x"),
@@ -404,13 +404,13 @@ final class RedactionReviewTableTests: XCTestCase {
             (server, .program, "dev.server.js", "dev.server.js"),
             (server, .program, "/srv/app/io.server.js", "/srv/app/io.server.js"),
             (js, .program, "ui.js.map", "ui.js.map"),
-            (e, .program, "to.e.x", "to.e.x"),
+            (u, .program, "to.u.x", "to.u.x"),
             (username, .launchItem, "8.com.username.helper", "8.com.<user>.helper"),
             (username, .launchItem, "4.com.username.magnetLauncher", "4.com.<user>.magnetLauncher"),
             (username, .launchItem, "64.com.username.foo", "64.com.<user>.foo"),
             (username, .launchItem, "4096.com.username.podcasts", "4096.com.<user>.podcasts"),
-            (testmac, .launchItem, "4096.com.testmac.podcasts", "4096.com.<machine>.podcasts"),
-            (e, .launchItem, "8.com.e.helper", "8.com.<user>.helper"),
+            (computer, .launchItem, "4096.com.computer.podcasts", "4096.com.<machine>.podcasts"),
+            (u, .launchItem, "8.com.u.helper", "8.com.<user>.helper"),
             (username, .launchItem, "x.com.username.helper", "x.com.username.helper"),
             (username, .launchItem, "io.github.username.tool", "io.github.username.tool"),
             (username, .launchItem, "com.github.username.tool", "com.github.username.tool"),
@@ -468,7 +468,7 @@ final class RedactionReviewTableTests: XCTestCase {
             (home, .launchItem, "/Users/home/x", "<<user>>/x"),
             (home, .program, "/Users/home/Library/x", "<<user>>/Library/x"),
             (user("machine", mac: ["atlas"]), .host, "atlas", "<<user>>"),
-            (user("machine", mac: ["testmac"]), .host, "testmac", "<<user>>"),
+            (user("machine", mac: ["computer"]), .host, "computer", "<<user>>"),
             (user("device"), .program, "ssh nas.tail1234.ts.net", "ssh <tailnet-<user>>"),
             (homeMac, .instructions, "see /Users/username/x", "see <<machine>>/x"),
         ]
@@ -617,19 +617,19 @@ final class PromptTests: XCTestCase {
             let data = try capturedData(in: Prompt.build(instructions: "x", request: request, redactor: redactor))
             return ((data["item"] as? [String: String])?["key"], (data["facts"] as? [[String: String]])?.first?["value"])
         }
-        let username = Redactor(home: "/Users/username", username: "username", machineNames: ["testmac"])
+        let username = Redactor(home: "/Users/username", username: "username", machineNames: ["computer"])
         for kind in [Rule.Kind.launchItem, .process] {
             let label = try sent(username, kind, "com.username.backup")
             XCTAssertEqual(label.key, "com.<user>.backup", "\(kind)")
             XCTAssertEqual(label.path, "/Library/Tools/com.<user>.backup.plist", "\(kind)")
         }
-        let short = try sent(Redactor(home: "/Users/u", username: "e", machineNames: []), .launchItem, "com.e.backup")
+        let short = try sent(Redactor(home: "/Users/u", username: "u", machineNames: []), .launchItem, "com.u.backup")
         XCTAssertEqual(short.key, "com.<user>.backup")
         XCTAssertEqual(short.path, "/Library/Tools/com.<user>.backup.plist")
-        let mac = try sent(username, .launchItem, "com.testmac.backup")
+        let mac = try sent(username, .launchItem, "com.computer.backup")
         XCTAssertEqual(mac.key, "com.<machine>.backup")
         XCTAssertEqual(mac.path, "/Library/Tools/com.<machine>.backup.plist")
-        XCTAssertEqual(try sent(username, .process, "com.testmac.helper").key, "com.testmac.helper", "no machine names in a process")
+        XCTAssertEqual(try sent(username, .process, "com.computer.helper").key, "com.computer.helper", "no machine names in a process")
         XCTAssertEqual(try sent(username, .host, "com.username.backup").key, "com.username.backup", "a dotted name in a host item is a host")
     }
 
@@ -651,7 +651,7 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(try key("test", .process, "db.test.js"), "db.test.js")
         XCTAssertEqual(try key("server", .process, "dev.server.js"), "dev.server.js")
         XCTAssertEqual(try key("js", .process, "ui.js.map"), "ui.js.map")
-        XCTAssertEqual(try key("e", .process, "to.e.x"), "to.e.x")
+        XCTAssertEqual(try key("u", .process, "to.u.x"), "to.u.x")
         XCTAssertEqual(try key("username", .launchItem, "dev.username.tool"), "dev.username.tool", "only com, org, net and io are endings")
         XCTAssertEqual(try key("server", .process, "/srv/app/io.server.js"), "/srv/app/io.server.js", "a script's extension is no label after the author")
         XCTAssertEqual(try key("username", .process, "com.username.sh"), "com.username.sh")
@@ -670,13 +670,13 @@ final class PromptTests: XCTestCase {
     func testPanelOnlyFactsAndPromptValues() throws {
         let facts = [
             Fact(name: "Working in", value: "~/dev/client-acme", inPrompt: false),
-            Fact(name: "Runs as", value: "you (e)", promptValue: "you"),
+            Fact(name: "Runs as", value: "you (u)", promptValue: "you"),
             Fact(name: "Team", value: "ABCDE12345"),
         ]
         let data = try capturedData(in: Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: "p", facts: facts), redactor: .addressesOnly))
         XCTAssertEqual(data["facts"] as? [[String: String]], [["name": "Runs as", "value": "you"], ["name": "Team", "value": "ABCDE12345"]])
         XCTAssertEqual(facts[0].value, "~/dev/client-acme", "the panel still has it")
-        XCTAssertEqual(facts[1].value, "you (e)")
+        XCTAssertEqual(facts[1].value, "you (u)")
     }
 
     func testDefaultInstructionsSayTheDataIsNotInstructions() {

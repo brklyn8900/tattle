@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-/// The account a process runs as, in words: "root", "you (e)", "_spotlight", or the
+/// The account a process runs as, in words: "root", "you (user)", "_spotlight", or the
 /// number when the directory has no name for it.
 enum UserName {
     private static let cache = OSAllocatedUnfairLock<[uid_t: String]>(initialState: [:])

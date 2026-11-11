@@ -63,24 +63,24 @@ final class ProcessTableTests: XCTestCase {
         let shell = ProcessEntry.name(path: "/bin/zsh", arguments: ["-zsh"], command: "zsh")
         XCTAssertEqual(shell.name, "zsh", "a login shell with no script is itself")
         XCTAssertNil(shell.interpreter)
-        XCTAssertEqual(ProcessEntry.name(path: "/Users/u/.local/share/claude/versions/2.1.304", arguments: ["claude", "--model", "x"], command: "2.1.304").name, "claude",
+        XCTAssertEqual(ProcessEntry.name(path: "/Users/user/.local/share/claude/versions/2.1.304", arguments: ["claude", "--model", "x"], command: "2.1.304").name, "claude",
                        "the name it was started under beats a version-numbered file name")
-        XCTAssertEqual(ProcessEntry.name(path: "/Users/u/.local/share/claude/versions/2.1.304", arguments: ["ugrep", "-G"], command: "2.1.304").name, "ugrep")
+        XCTAssertEqual(ProcessEntry.name(path: "/Users/user/.local/share/claude/versions/2.1.304", arguments: ["ugrep", "-G"], command: "2.1.304").name, "ugrep")
         XCTAssertEqual(ProcessEntry.name(path: nil, arguments: ["claude"], command: "2.1.206").name, "claude", "a deleted executable too")
         XCTAssertEqual(ProcessEntry.name(path: "/opt/node/bin/node", arguments: ["npm exec chrome-devtools-mcp@1.11.0", ""], command: "node").name,
                        "npm exec chrome-devtools-mcp@1.11.0", "a title node set for itself")
         XCTAssertEqual(ProcessEntry.name(path: "/usr/libexec/trustd", arguments: nil, command: "trustd").name, "trustd")
-        XCTAssertEqual(ProcessEntry.name(path: "/Users/u/Library/Application Support/iTerm2/iTermServer-3.6.11",
-                                         arguments: ["/Users/u/Library/Application Support/iTerm2/iTermServer-3.6.11"], command: "iTermServer-3.6.").name,
+        XCTAssertEqual(ProcessEntry.name(path: "/Users/user/Library/Application Support/iTerm2/iTermServer-3.6.11",
+                                         arguments: ["/Users/user/Library/Application Support/iTerm2/iTermServer-3.6.11"], command: "iTermServer-3.6.").name,
                        "iTermServer-3.6.11", "a path with a space is still a path")
         XCTAssertEqual(ProcessEntry.name(path: nil, arguments: nil, command: "kernel_task").name, "kernel_task")
 
-        XCTAssertEqual(ProcessEntry.scriptName("/Users/u/.npm/_npx/0a/node_modules/chrome-devtools-mcp/build/src/main.js"), "chrome-devtools-mcp")
+        XCTAssertEqual(ProcessEntry.scriptName("/Users/user/.npm/_npx/0a/node_modules/chrome-devtools-mcp/build/src/main.js"), "chrome-devtools-mcp")
         XCTAssertEqual(ProcessEntry.scriptName("/x/node_modules/@playwright/mcp/cli.js"), "@playwright/mcp")
         XCTAssertEqual(ProcessEntry.scriptName("/x/node_modules/.bin/tsc"), "tsc")
         XCTAssertEqual(ProcessEntry.name(path: "/opt/node/bin/node", arguments: ["npm exec @playwright/mcp@latest", ""], command: "node").name,
                        "npm exec @playwright/mcp@latest", "a title is not a path")
-        XCTAssertEqual(ProcessEntry.scriptName("/Users/u/dev/app/server.js"), "server.js")
+        XCTAssertEqual(ProcessEntry.scriptName("/Users/user/dev/app/server.js"), "server.js")
     }
 
     /// The name a process started under is read as text: a URL would resolve these against the
@@ -174,7 +174,7 @@ final class ProcessTableTests: XCTestCase {
     func testParseArguments() {
         var bytes: [UInt8] = [3, 0, 0, 0]
         bytes += Array("/usr/bin/node".utf8) + [0, 0, 0]
-        for string in ["node", "/tmp/server.js", "--port", "HOME=/Users/u"] {
+        for string in ["node", "/tmp/server.js", "--port", "HOME=/Users/user"] {
             bytes += Array(string.utf8) + [0]
         }
         XCTAssertEqual(ProcessTable.parseArguments(bytes[...]), ["node", "/tmp/server.js", "--port"])

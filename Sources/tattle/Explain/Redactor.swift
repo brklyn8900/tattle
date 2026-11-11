@@ -112,7 +112,7 @@ struct Redactor: Sendable {
         let captured = context != .instructions
         var out = text
         // Home path before username: the path contains the username.
-        // On a path boundary: home "/Users/u" must not take the front off "/Users/eve/...".
+        // On a path boundary: home "/Users/u" must not take the front off "/Users/user/...".
         // In any case, as APFS reads a path.
         if !home.isEmpty {
             let pattern = Self.pathStart + NSRegularExpression.escapedPattern(for: home) + Self.pathEnd
@@ -194,9 +194,9 @@ struct Redactor: Sendable {
     ///
     /// A login of one or two letters would match ordinary text ("-e"), so it goes only where
     /// a login stands: before an "@" ("e@ttys003"), first after the program in a process title
-    /// ("postgres: e db") and as the author's part of a dotted name. Where it appears in a path
+    /// ("postgres: u db") and as the author's part of a dotted name. Where it appears in a path
     /// the home replacement covers it; the facts built for a prompt never carry it as "you
-    /// (e)" (UserName.describeForModel).
+    /// (u)" (UserName.describeForModel).
     private func redactUsername(_ text: String, in context: Context) -> String {
         guard !username.isEmpty else { return text }
         let login = NSRegularExpression.escapedPattern(for: username)
