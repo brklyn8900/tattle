@@ -167,7 +167,8 @@ final class CaptureFilterTests: XCTestCase {
         if let mac = PacketCapture.hardwareAddress(of: interface), capture.dataLinkType == PacketCapture.linkEthernet {
             direction = .hardwareAddress(mac)
         } else {
-            direction = .sourceAddresses(localAddresses().map(\.bytes))
+            // The interface's own, sorted, as the sniffer builds it.
+            direction = .sourceAddresses(localAddresses(of: interface).map(\.bytes).sorted { $0.lexicographicallyPrecedes($1) })
         }
         let filter = try XCTUnwrap(CaptureFilter.program(linkType: capture.dataLinkType, direction: direction))
         XCTAssertNoThrow(try capture.install(filter))

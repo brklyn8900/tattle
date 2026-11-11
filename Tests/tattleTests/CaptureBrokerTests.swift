@@ -259,7 +259,7 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertThrowsError(try CaptureBroker.request(interface: "en0", service: silent.service)) {
             XCTAssertEqual($0 as? CaptureBroker.RequestError, .transport(errno: ETIMEDOUT))
         }
-        XCTAssertLessThan(Date().timeIntervalSince(began), 12)
+        XCTAssertLessThan(Date().timeIntervalSince(began), CaptureBroker.requestTimeout + 2, "one wait, not one per attempt")
     }
 
     func testBrokerHandsADescriptorToACallerItRecognises() throws {

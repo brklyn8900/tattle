@@ -50,6 +50,7 @@ final class SnifferTests: XCTestCase {
         mac.withLock { $0 = [0x2a, 0, 0, 0, 0, 2] }
         XCTAssertTrue(eventually { ethernet.installed.count == 2 }, "rebuilt for the new hardware address")
         XCTAssertEqual(ethernet.installed.last, CaptureFilter.program(linkType: PacketCapture.linkEthernet, direction: .hardwareAddress([0x2a, 0, 0, 0, 0, 2])))
+        usleep(300_000)  // six more checks of the interface
         wifi.stop()
         XCTAssertEqual(ethernet.installed.count, 2, "and not again while nothing changed")
 

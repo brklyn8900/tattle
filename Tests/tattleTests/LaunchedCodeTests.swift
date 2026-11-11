@@ -484,10 +484,14 @@ final class LaunchedCodeTests: XCTestCase {
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: folder.appending(path: "bin"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        try Data().write(to: bin.appending(path: "clang"))
-        let link = folder.appending(path: "bin/cc")
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: bin.appending(path: "clang"))
-        XCTAssertEqual(signer(link.path, ["-c", "/x/a.c"], identifiers: [link.path: "com.apple.clang"]), .unnamed)
+        // Not one Apple's identifier alone makes a developer tool: only the folder it is in does.
+        try Data().write(to: bin.appending(path: "dsymutil"))
+        let link = folder.appending(path: "bin/symbols")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: bin.appending(path: "dsymutil"))
+        XCTAssertEqual(signer(link.path, ["/x/a.out"], identifiers: [link.path: "com.apple.dsymutil"]), .unnamed)
+        let copy = folder.appending(path: "bin/copy")
+        try Data().write(to: copy)
+        XCTAssertNotEqual(signer(copy.path, ["/x/a.out"], identifiers: [copy.path: "com.apple.dsymutil"]), .unnamed, "a copy outside the toolchain")
     }
 
     func testALaunchItemNamesApplesProgramOnlyWhereMacOSInstallsIt() throws {
