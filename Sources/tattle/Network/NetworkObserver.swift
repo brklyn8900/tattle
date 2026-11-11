@@ -286,7 +286,7 @@ final class NetworkObserver {
             let connection = tracker.live[reading.id] ?? reading
             let owner = owners[connection.pid] ?? .unknown
             let isNew = LiveConnection.isFirstContact(connection, known: &known)
-            opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, outcome: names.outcome(for: connection.flowKey)))
+            opened.append(LiveConnection(connection: connection, owner: owner, isNew: isNew, outcome: names.outcome(for: connection)))
         }
         record(opened: opened, closed: changes.closed, now: now)
 
@@ -294,14 +294,15 @@ final class NetworkObserver {
         owners = owners.filter { openPids.contains($0.key) }
         names.prune(now: now, keeping: Set(tracker.live.values.map(\.flowKey)))
 
-        // Keep each live row's "new" mark and name from when it opened.
+        // Keep each live row's "new" mark and name from when it opened; a row with no outcome
+        // yet takes the one waiting for its connection.
         let previous = Dictionary((snapshot?.connections ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let live = tracker.open.map { connection in
             let before = previous[connection.id] ?? opened.first { $0.id == connection.id }
             return LiveConnection(connection: connection,
                                   owner: before?.owner ?? owners[connection.pid] ?? .unknown,
                                   isNew: before?.isNew ?? false,
-                                  outcome: before?.outcome ?? names.outcome(for: connection.flowKey))
+                                  outcome: before?.outcome ?? names.outcome(for: connection))
         }
         snapshot = NetworkSnapshot(connections: live, takenAt: now)
     }

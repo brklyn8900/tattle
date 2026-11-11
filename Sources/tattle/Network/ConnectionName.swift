@@ -46,7 +46,8 @@ enum NameOutcome: Equatable, Sendable {
 struct PendingNames: Equatable, Sendable {
     static let keepFor: TimeInterval = 300
 
-    private var names: [String: (outcome: NameOutcome, at: Date)] = [:]
+    /// Each flow's outcome, when it arrived, and when the flow opened.
+    private var names: [String: (outcome: NameOutcome, at: Date, openedAt: Date)] = [:]
     /// When each flow's opened event arrived: history rows older than that are another
     /// connection's.
     private var opened: [String: Date] = [:]
@@ -57,11 +58,21 @@ struct PendingNames: Equatable, Sendable {
         a.names.keys == b.names.keys && a.names.allSatisfy { b.names[$0.key]?.outcome == $0.value.outcome }
     }
 
+    /// An outcome comes at most the namer's give-up time after its flow opened.
     mutating func set(_ outcome: NameOutcome, for flowKey: String, at date: Date) {
-        names[flowKey] = (outcome, date)
+        names[flowKey] = (outcome, date, opened[flowKey] ?? date.addingTimeInterval(-FlowNamer.finalizeAfter))
     }
 
     func outcome(for flowKey: String) -> NameOutcome? { names[flowKey]?.outcome }
+
+    /// The outcome that is this connection's: its flow's, unless the flow opened after the
+    /// connection was first seen, which makes the outcome a later connection's on the same
+    /// four-tuple (`ConnectionStore.isConnection`).
+    func outcome(for connection: Connection) -> NameOutcome? {
+        guard let held = names[connection.flowKey],
+              ConnectionStore.isConnection(isUDP: connection.proto == .udp, firstSeen: connection.firstSeen, isOpen: connection.isOpen, openedAt: held.openedAt) else { return nil }
+        return held.outcome
+    }
 
     /// Whether this Mac was just seen opening the flow, its outbound SYN or QUIC Initial.
     /// Anything older was an earlier connection on the same four-tuple.
@@ -88,8 +99,7 @@ struct PendingNames: Equatable, Sendable {
                 outcome = .unnamed(reason)
             }
             set(outcome, for: event.key.text, at: date)
-            // An outcome comes at most the namer's give-up time after its flow opened.
-            outcomes.append((event.key, outcome, opened[event.key.text] ?? date.addingTimeInterval(-FlowNamer.finalizeAfter)))
+            outcomes.append((event.key, outcome, names[event.key.text]?.openedAt ?? date))
         }
         return outcomes
     }

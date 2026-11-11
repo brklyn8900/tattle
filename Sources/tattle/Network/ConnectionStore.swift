@@ -105,7 +105,11 @@ struct ConnectionStore: Sendable {
     /// socket still open. A second QUIC connection on a kept port is the same socket table
     /// entry, so its outcome renames the row.
     static func isConnection(of flow: FlowKey, firstSeen: Date, isOpen: Bool, openedAt: Date) -> Bool {
-        firstSeen >= openedAt.addingTimeInterval(-openedSlack) || (flow.proto == .udp && isOpen)
+        isConnection(isUDP: flow.proto == .udp, firstSeen: firstSeen, isOpen: isOpen, openedAt: openedAt)
+    }
+
+    static func isConnection(isUDP: Bool, firstSeen: Date, isOpen: Bool, openedAt: Date) -> Bool {
+        firstSeen >= openedAt.addingTimeInterval(-openedSlack) || (isUDP && isOpen)
     }
 
     /// Records the sniffer's outcome on the newest row of the flow, open or not: a short

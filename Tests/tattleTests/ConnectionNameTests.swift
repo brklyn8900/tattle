@@ -105,6 +105,19 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(table.outcome(for: "k")?.name?.name, "later.apple.com", "the latest outcome wins")
     }
 
+    /// A connection the table still shows after another opened on its four-tuple keeps
+    /// waiting: the outcome is the later connection's, as it is for the row and for history.
+    func testAnOutcomeWaitsForItsOwnConnection() {
+        var table = PendingNames()
+        let key = FlowKey(proto: .tcp, localPort: 50000, remote: IPAddress(bytes: [17, 1, 1, 1]), remotePort: 443)
+        _ = table.apply([FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("new.example.com", .sni))], at: t0 + 60) { _, _ in .destination }
+        var older = connection("17.1.1.1")
+        XCTAssertEqual(older.flowKey, key.text)
+        XCTAssertNil(table.outcome(for: older), "first seen a minute before the flow opened")
+        older.firstSeen = t0 + 60
+        XCTAssertEqual(table.outcome(for: older)?.name?.name, "new.example.com")
+    }
+
     /// Local ports are reused: a connection that opens on the four-tuple of one that closed a
     /// minute ago is a different connection and must not show the old one's name.
     func testAnOpenedFlowStartsWithoutThePreviousConnectionsOutcome() {
