@@ -17,7 +17,9 @@ decision was made.
 The four tabs (Network, Processes, Ports, Startup) and Explain are built. There are no
 binaries, so build from source with the steps below.
 
-Not built yet: cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
+Not built yet: a mark on a new listening port or a new startup item (only an address reached
+for the first time is marked), any view of the connection history, when a startup item last
+ran, cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
 attribution, a search bar, a "started by" filter on processes, and IP block owner data (iptoasn). The
 Tracker Radar and Apple hosts knowledge files ship with no rules. Blocking is not planned.
 The PRD leaves it to a future decision of its own.
@@ -169,6 +171,5 @@ a placeholder, since a private address is another device on another network.
 
 ## License
 
-MIT, including the knowledge base in `Resources/knowledge/`. `tracker-radar.json` and
-`apple-hosts.json` ship with no rules. Tracker Radar data, once added, stays under its own
-license (CC BY-NC-SA 4.0) in its own file.
+MIT, including the knowledge base in `Resources/knowledge/`. Tracker Radar data, once added
+to `tracker-radar.json`, stays under its own license (CC BY-NC-SA 4.0) in that file.
