@@ -36,6 +36,17 @@ final class BuildTests: XCTestCase {
         let line = try XCTUnwrap(try recipe(["SIGN_IDENTITY="]).first { $0.contains("codesign --force") && $0.contains("--sign -") })
         let options = Array(line.split(separator: " ").map(String.init).drop { $0 != "codesign" }.dropFirst().prefix { !$0.contains("Tattle.app") })
 
+        // With System Integrity Protection off, macOS loads the library into a hardened
+        // program too (seen on a hosted CI runner), so the Mac cannot show what the options do.
+        let csrutil = Process(), status = Pipe()
+        csrutil.executableURL = URL(fileURLWithPath: "/usr/bin/csrutil")
+        csrutil.arguments = ["status"]
+        csrutil.standardOutput = status
+        try csrutil.run()
+        csrutil.waitUntilExit()
+        let protection = String(decoding: status.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        guard protection.contains("enabled") else { throw XCTSkip("System Integrity Protection is not enabled: \(protection)") }
+
         let directory = FileManager.default.temporaryDirectory.appending(path: "inject-\(getpid())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
