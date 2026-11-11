@@ -50,8 +50,8 @@ Listening TCP and UDP sockets with owning pid, from the same `sysctl` as Network
 state for each, and the login-items database
 (`/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`), which needs
 Full Disk Access ([ADR-0002](adr/0002-login-items-full-disk-access.md)), is undocumented,
-and is a keyed archive with more than one schema version in the wild; KnockKnock has a
-parser to learn from.
+and is a keyed archive with more than one schema version in the wild; it is decoded with a
+generic record class in place of the private ones (`Startup/LoginItems.swift`).
 
 ## Knowledge base
 
@@ -97,9 +97,9 @@ never contaminates the rest.
 
 ## Stack
 
-Swift, SwiftUI `MenuBarExtra`, macOS 14 or later. Swift Package Manager with a script that
-assembles the app bundle (Info.plist with `LSUIElement`) and signs it and the broker with
+Swift, SwiftUI `MenuBarExtra`, macOS 14 or later. Swift Package Manager with a Makefile target
+(`make app`) that assembles the app bundle (Info.plist with `LSUIElement`) and signs it and the broker with
 the hardened runtime: with the first Apple Development identity in the keychain, or ad hoc
 without one; no Xcode project
-unless something forces one. GitHub Actions on `macos-latest` runs `swift build` and tests
-on every push from the first commit.
+unless something forces one. GitHub Actions on `macos-latest` runs the tests and `make app`
+on every push.
