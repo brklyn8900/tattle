@@ -30,19 +30,23 @@ struct CaptureFilter: Equatable, Sendable {
 
     static let snapLength: UInt32 = 2048
 
+    /// The length of a link type's header, or nil for a type this filter has no layout for.
+    static func linkHeaderLength(_ linkType: UInt32) -> UInt32? {
+        switch linkType {
+        case PacketCapture.linkEthernet: 14
+        case PacketCapture.linkNull: 4
+        case PacketCapture.linkRaw: 0
+        default: nil
+        }
+    }
+
     var instructions: [Instruction]
 
     /// The program for a link type, or nil for one this filter has no layout for, or when
     /// so many source addresses push a jump past BPF's reach, in which case everything is
     /// copied and the parsers do all the dropping.
     static func program(linkType: UInt32, direction: Direction) -> CaptureFilter? {
-        let linkLength: UInt32
-        switch linkType {
-        case PacketCapture.linkEthernet: linkLength = 14
-        case PacketCapture.linkNull: linkLength = 4
-        case PacketCapture.linkRaw: linkLength = 0
-        default: return nil
-        }
+        guard let linkLength = linkHeaderLength(linkType) else { return nil }
         if case .hardwareAddress(let mac) = direction, mac.count != 6 || linkType != PacketCapture.linkEthernet { return nil }
 
         var a = Assembler()

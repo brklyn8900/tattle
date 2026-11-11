@@ -147,7 +147,9 @@ final class Sniffer: @unchecked Sendable {
 
     private func installFilter(on capture: any CaptureSource, direction: CaptureFilter.Direction, interface: String) {
         guard let filter = CaptureFilter.program(linkType: capture.dataLinkType, direction: direction) else {
-            Log.sniffer.notice("no kernel filter for link type \(capture.dataLinkType) on \(interface, privacy: .public); copying every packet")
+            let why = CaptureFilter.linkHeaderLength(capture.dataLinkType) == nil
+                ? "link type \(capture.dataLinkType) has no layout" : "its addresses are too many for one program"
+            Log.sniffer.notice("no kernel filter on \(interface, privacy: .public), \(why, privacy: .public); copying every packet")
             return
         }
         do {
