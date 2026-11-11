@@ -3,6 +3,9 @@
 - Notifications for what's new: an opt-in macOS notification on first contact with a
   destination, a new listening port, or a new startup item. Needs a PRD change. After the
   search bar (agreed 2026-11-07).
+- Decide whether Processes, Ports and Startup should mark what is new, as Network marks first
+  contact. The PRD lists what's new on every surface as a goal; only Network has it (raised
+  2026-11-11).
 - The bundle id carries the author's GitHub handle (Makefile, `Info.plist`, the README, tests
   and the verify-tattle skill). Changing it resets the privacy grants and reinstalls the broker
   under a new label, so it stays for now. Decide before a public release (agreed 2026-11-09).
