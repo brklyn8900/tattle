@@ -33,6 +33,12 @@ protocol CaptureSource: AnyObject {
     func install(_ filter: CaptureFilter) throws
     /// One read; `handle` gets each packet's capture timestamp and bytes.
     func readPackets(_ handle: (Double, [UInt8]) -> Void) throws
+    /// Whether the broker supplied the descriptor.
+    var isFromBroker: Bool { get }
+}
+
+extension CaptureSource {
+    var isFromBroker: Bool { false }
 }
 
 /// One BPF descriptor, bound to an interface and read in a loop. Takes the descriptor as
@@ -42,6 +48,7 @@ final class PacketCapture: CaptureSource {
     let fd: Int32
     let bufferLength: Int
     let dataLinkType: UInt32
+    let isFromBroker: Bool
     private let buffer: UnsafeMutableRawPointer
 
     /// Link types this capture understands (net/bpf.h).
@@ -51,7 +58,8 @@ final class PacketCapture: CaptureSource {
 
     /// Prepares a bound descriptor for reading and takes ownership of it: it is closed
     /// when the capture goes away. `timeout` bounds each read so the loop can stop.
-    init(descriptor: Int32, timeout: Duration = .seconds(1)) throws {
+    init(descriptor: Int32, timeout: Duration = .seconds(1), isFromBroker: Bool = false) throws {
+        self.isFromBroker = isFromBroker
         var length: UInt32 = 0
         var dlt: UInt32 = 0
         let milliseconds = Int32(clamping: timeout.components.seconds * 1000 + timeout.components.attoseconds / 1_000_000_000_000_000)
@@ -76,10 +84,19 @@ final class PacketCapture: CaptureSource {
     /// A capture on `interface` from the broker when it is installed, else from the
     /// device itself, which works only while the devices are readable.
     static func obtain(interface: String, timeout: Duration = .seconds(1)) throws -> PacketCapture {
-        guard CaptureBroker.isReachable else { return try open(interface: interface, timeout: timeout) }
+        let broker = { try PacketCapture(descriptor: try CaptureBroker.request(interface: interface), timeout: timeout, isFromBroker: true) }
+        return try obtain(broker: CaptureBroker.isReachable ? broker : nil, device: { try open(interface: interface, timeout: timeout) })
+    }
+
+    /// The broker's capture when there is a broker; the device's when there is none, or when
+    /// the broker gave none and the devices are readable all the same. When they are not,
+    /// what the broker said is why there are no packets.
+    static func obtain<Capture>(broker: (() throws -> Capture)?, device: () throws -> Capture) throws -> Capture {
+        guard let broker else { return try device() }
         do {
-            return try PacketCapture(descriptor: try CaptureBroker.request(interface: interface), timeout: timeout)
+            return try broker()
         } catch let error as CaptureBroker.RequestError {
+            if let capture = try? device() { return capture }
             throw CaptureError.broker(error)
         }
     }

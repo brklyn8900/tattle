@@ -3,6 +3,22 @@ import XCTest
 @testable import tattle
 
 final class SnifferTests: XCTestCase {
+    /// ADR-0003: other software can have made the devices readable, and then Tattle opens one
+    /// itself, with no broker or with one that gives it nothing.
+    func testTheDeviceIsOpenedWhenThereIsNoBrokerOrItGivesNoCapture() throws {
+        let refused: () throws -> String = { throw CaptureBroker.RequestError.refused }
+        let unreadable: () throws -> String = { throw CaptureError.open(errno: EACCES) }
+        XCTAssertEqual(try PacketCapture.obtain(broker: { "broker" }, device: { "device" }), "broker")
+        XCTAssertEqual(try PacketCapture.obtain(broker: nil, device: { "device" }), "device")
+        XCTAssertEqual(try PacketCapture.obtain(broker: refused, device: { "device" }), "device")
+        XCTAssertThrowsError(try PacketCapture.obtain(broker: refused, device: unreadable)) {
+            XCTAssertEqual($0 as? CaptureError, .broker(.refused), "what the broker said, not that the device is root's")
+        }
+        XCTAssertThrowsError(try PacketCapture.obtain(broker: nil, device: unreadable)) {
+            XCTAssertEqual($0 as? CaptureError, .open(errno: EACCES))
+        }
+    }
+
     private func eventually(within seconds: TimeInterval = 3, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while !condition() && Date() < deadline { usleep(20_000) }

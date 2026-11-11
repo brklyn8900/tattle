@@ -119,7 +119,7 @@ final class Sniffer: @unchecked Sendable {
             onStatus(.capturing(interface: interface))
             // Notice, not info: the unified log keeps notices, so a later comparison can
             // tell when capture was on.
-            Log.sniffer.notice("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(CaptureBroker.isReachable ? "through the broker" : "from the device", privacy: .public)")
+            Log.sniffer.notice("capturing on \(interface, privacy: .public), link type \(capture.dataLinkType), \(capture.isFromBroker ? "through the broker" : "from the device", privacy: .public)")
             captureLoop(capture, interface: interface, direction: direction, shouldStop: shouldStop)
         }
         onStatus(.stopped)
