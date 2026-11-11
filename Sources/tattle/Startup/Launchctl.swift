@@ -24,8 +24,10 @@ struct LaunchctlState: Equatable, Sendable {
     var system = Domain()
 
     static func read() -> LaunchctlState {
+        // One run per domain: `print` ends with the overrides `print-disabled` lists.
         func domain(_ name: String) -> Domain {
-            Domain(services: parseServices(run(["print", name])), overrides: parseOverrides(run(["print-disabled", name])))
+            let output = run(["print", name])
+            return Domain(services: parseServices(output), overrides: parseOverrides(output))
         }
         return LaunchctlState(gui: domain(LaunchDomain.gui.name), user: domain(LaunchDomain.user.name), system: domain(LaunchDomain.system.name))
     }
@@ -54,7 +56,8 @@ struct LaunchctlState: Equatable, Sendable {
         return services
     }
 
-    /// The `"label" => disabled|enabled` lines of `launchctl print-disabled <domain>`.
+    /// The `"label" => disabled|enabled` lines of `launchctl print <domain>`'s
+    /// `disabled services` block, which are all `launchctl print-disabled <domain>` prints.
     static func parseOverrides(_ output: String) -> [String: Bool] {
         var overrides: [String: Bool] = [:]
         for line in output.split(separator: "\n") {

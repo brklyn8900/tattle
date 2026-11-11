@@ -244,6 +244,25 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertEqual(LaunchctlState.parseOverrides(output), ["com.apple.Siri.agent": true, "com.spotify.client.startuphelper": false])
     }
 
+    /// One `launchctl print` gives both: its other blocks hold nothing either parser takes.
+    func testOnePrintOfADomainGivesItsServicesAndItsOverrides() {
+        let output = """
+            gui/501 = {
+            \tservices = {
+            \t\t     685      - \tcom.apple.syncdefaultsd
+            \t}
+            \tendpoints = {
+            \t\t"com.not.a.service" => { port = 1 }
+            \t}
+            \tdisabled services = {
+            \t\t"com.apple.Siri.agent" => disabled
+            \t}
+            }
+            """
+        XCTAssertEqual(Array(LaunchctlState.parseServices(output).keys), ["com.apple.syncdefaultsd"])
+        XCTAssertEqual(LaunchctlState.parseOverrides(output), ["com.apple.Siri.agent": true])
+    }
+
     func testLoadAndUnloadInUserDomain() throws {
         let label = "io.github.eladefrati.tattle.test." + UUID().uuidString
         let plist = FileManager.default.temporaryDirectory.appending(path: label + ".plist")
