@@ -127,5 +127,14 @@ Preconditions:
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
+- A downloaded release, 2026-11-11 on the test Mac (macOS 26.7.1): an ad-hoc release build made
+  there, zipped, marked as a download by hand, unzipped with Archive Utility and moved to
+  `/Applications` by a scripted Finder move, with no other copy or data on the Mac. macOS
+  blocked it until `Open Anyway` and an administrator's password, and it then ran from a
+  translocated path (`.../AppTranslocation/...`), after a quit and reopen too. From there
+  `Allow packet access` installed the broker, the log read `capturing on en0 ... through the
+  broker`, a request to example.com was named (`http`), and `Remove` took the daemon and its
+  plist away. No run folder: the panel was driven outside a `$V` run. Not tried: a move by
+  hand in the Finder.
 - Not proven: Cancel, `Install for this account`, and a second account
   against the installed daemon (to run on the test Mac).
