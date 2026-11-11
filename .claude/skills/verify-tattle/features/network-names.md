@@ -87,7 +87,7 @@ Preconditions:
   http`, `| none:not-handshake`, `| none:timeout`.
 - **Log.** `$V log "<port1>|<port2>|<port3>"`: `no name for tcp/<port>><ip>:22:
   notHandshake` and `...: timeout` lines.
-- **History database.** doctor's migrations end in `v8-connection-flow-index`. `$V db "pragma
+- **History database.** doctor's migration is `v1-schema`. `$V db "pragma
   journal_mode"`: `wal`, with `tattle.sqlite-wal` and `tattle.sqlite-shm` in the data folder.
   `$V db "explain query plan select * from connection where proto = 'tcp' and localPort = 1
   and remotePort = 80 and (remoteAddress = 'x' or remoteAddress = '::ffff:' || 'x') order by id

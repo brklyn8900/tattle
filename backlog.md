@@ -270,10 +270,9 @@ what stays)
   `Quit Tattle` the latest changes stay in `tattle.sqlite-wal` until a later checkpoint, and
   `tattle.sqlite` alone lacks them (`AppDatabase.swift`, `TattleApp.swift`).
 - Migrations run on the main thread inside `TattleApp.init`, before the menu bar item exists.
-  The flow index (`v8-connection-flow-index`) took 0.25 s on the test Mac at 221,007 rows and 4.2 s
+  Building the flow index took 0.25 s on the test Mac at 221,007 rows and 4.2 s
   at 3.98M, 365 days at the development Mac's rate (the real history replicated, warm cache);
-  random synthetic data took 11.4 to 12.5 s at 3.8M (2026-11-10). No install can reach that
-  before v8 runs, since every history is under a month old, but an index added later to a long
+  random synthetic data took 11.4 to 12.5 s at 3.8M (2026-11-10). The schema creates it on an empty database, but an index added later to a long
   history would need building after launch, from a background write (`AppDatabase.swift`).
 - A large prune got slower on the main actor with the flow index and the write-ahead log. On
   the test Mac at 3.98M rows, one run per size: 1,434 rows 792 against 1,277 ms, 11,884 rows 1,602

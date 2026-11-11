@@ -181,18 +181,14 @@ Preconditions:
   `ls` fails with `Operation not permitted`. A build before the fix: charged to the copy's
   `tattle`, `ls` lists the `.btm` files.
 - **The Claude Code preset, for real.** One real request; the item goes to Anthropic, so use
-  the `connect named` row. Migration `v6-claude-preset-flags` runs once per database, so before
-  launch delete its row from `grdb_migrations` and save the earlier preset (`claude -p
-  --setting-sources project,local --tools "" --permission-prompts none --output-format json
-  --json-schema {schema}`) as `provider.command`. Count `~/.claude/projects/*tattle-explain*`,
+  the `connect named` row. Count `~/.claude/projects/*tattle-explain*`,
   `~/Library/Caches/claude-cli-nodejs/*tattle-explain*` and `tattle-explain` in `~/.claude.json`.
-  After launch the row holds the current preset. `Explain` gives `Model answer, unconfirmed`,
-  and the three counts do not change. With the earlier preset's flags, a signed-in call adds a
+  `Explain` gives `Model answer, unconfirmed`,
+  and the three counts do not change. Without `--no-session-persistence --strict-mcp-config --system-prompt ""`, a signed-in call adds a
   folder to each of the first two.
 - **Settings.** `tattle-ax` reaches only the panel. Walk the app's `AXWindows` whose subrole
-  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. After the
-  migration the `AXPopUpButton` reads `Claude Code` and the command field holds the current
-  flags. Put the earlier preset's text in the row with the app quit, and relaunch: the row
+  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. The `AXPopUpButton` reads `Claude Code` and the command field holds the current
+  flags. Put another command's text in the row with the app quit, and relaunch: the row
   keeps it and the picker reads `Custom`. Setting the field's `AXValue` returns success but does
   not reach SwiftUI's binding, so the row is what to write. The footnote says `The command must
   work from a login shell`.
