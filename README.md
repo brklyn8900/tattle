@@ -17,9 +17,15 @@ decision was made.
 The four tabs (Network, Processes, Ports, Startup) and Explain are built. There are no
 binaries, so build from source with the steps below.
 
-TODO, with the first release: say here how to open an ad-hoc signed release (allow it under
-System Settings, Privacy & Security, after the first blocked launch). The PRD's Distribution
-section already says the README does.
+A release will be ad-hoc signed, so macOS blocks its first launch. To open it:
+
+1. Move Tattle to Applications in the Finder and open it. macOS says it was not opened;
+   click Done.
+2. Open System Settings, Privacy & Security, and scroll down to Security.
+3. Click Open Anyway beside the message about Tattle. The button stays for about an hour
+   after the blocked launch.
+4. In the alert that follows, click Open Anyway again.
+5. Enter an administrator's name and password. Tattle opens.
 
 Not built yet: a mark on a new listening port or a new startup item (only an address reached
 for the first time is marked), any view of the connection history, when a startup item last
