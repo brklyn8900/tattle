@@ -303,3 +303,17 @@ what stays)
   same either way; a separate case would say which.
 - `ProcessTable.arguments(pid:)`, the overload without `scratch`, is called only by
   `ProcessTableTests`.
+
+**Costs measured and left, 2026-11-10** (testmac, release build; the review of that day read them as
+inefficient)
+
+- A 1,400-byte segment on a finished flow costs 0.5 µs to parse and observe, 0.26 µs of it the
+  parse, the same with 4,096 flows tracked: 5% of a core at 100,000 packets a second
+  (`Packet.swift`, `FlowNamer.swift`).
+- `expire` with 4,096 pending flows takes 0.78 ms, once a second (`FlowNamer.swift`).
+- A 15 KB ClientHello takes 0.1 ms in 1,400-byte segments, 0.2 ms in 100-byte ones and 1.1 ms
+  in 20-byte ones (`FlowNamer.swift`, `TLS.swift`).
+- 300 connections opened at the first poll take 58 ms as a transaction each and 14 ms as one
+  (`NetworkObserver.record`, `ConnectionStore.open`).
+- `NetworkSnapshot.groups` takes 0.2 ms for 300 connections of 40 programs, and a render of
+  the list or a group's detail asks for it up to six times (`NetworkTab.swift`).
