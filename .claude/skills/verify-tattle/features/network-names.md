@@ -318,3 +318,12 @@ Preconditions:
   executable in run `2026-11-08T122957`. Copied to `build/verify/runs/testmac-2026-11-08/`.
 - A process whose new program deletes its file proven 2026-11-08 on testmac, dev copy at
   `0749baf`, run `2026-11-08T141229`, copied to `build/verify/runs/testmac-2026-11-08/`.
+- The three known connections after the review fixes of 2026-11-10, proven that day on the
+  development Mac with the broker, dev copy at `e32cc9d`, run `2026-11-10T192212`: `capturing on
+  en0, link type 1, through the broker`; `nc | Herdr Core | example.com | http`, `none:not-handshake`
+  and `none:timeout` in history, all `outbound`; the details read `No name the connection did
+  not start with a TLS or HTTP handshake` and `No name no complete handshake came in the
+  connection's first 20 seconds`. A QUIC flow, a socket two processes share and an IPv4-mapped
+  peer rest on unit tests (`testAQUICStreamThatIsNoClientHelloEndsAtOnceAsOverTCP`,
+  `testASocketAnotherProcessUsedLastIsTheSameConnection`,
+  `testFirstContactCountsOnlyThisMacReachingOut`).
