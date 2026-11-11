@@ -17,6 +17,10 @@ decision was made.
 The four tabs (Network, Processes, Ports, Startup) and Explain are built. There are no
 binaries, so build from source with the steps below.
 
+TODO, with the first release: say here how to open an ad-hoc signed release (allow it under
+System Settings, Privacy & Security, after the first blocked launch). The PRD's Distribution
+section already says the README does.
+
 Not built yet: a mark on a new listening port or a new startup item (only an address reached
 for the first time is marked), any view of the connection history, when a startup item last
 ran, cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
