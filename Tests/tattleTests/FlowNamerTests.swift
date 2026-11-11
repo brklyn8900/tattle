@@ -250,6 +250,9 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.observe(udp(dstPort: 5004, rtp), at: t0), [], "RTP version 2")
         XCTAssertEqual(n.observe(udp([0xc3, 0, 0, 0, 1] + [UInt8](repeating: 0, count: 95)), at: t0), [], "too small for a client Initial")
         XCTAssertEqual(n.observe(udp(dstPort: 53, SnifferParserTests.rfcInitial), at: t0), [], "a DNS query, whatever its first byte")
+        for (first, type) in [(UInt8(0xd0), "0-RTT"), (0xe0, "Handshake")] {
+            XCTAssertEqual(n.observe(udp([first, 0, 0, 0, 1] + [UInt8](repeating: 0, count: 1295)), at: t0), [], "a version 1 \(type) packet")
+        }
         XCTAssertEqual(n.flowCount, 0)
     }
 

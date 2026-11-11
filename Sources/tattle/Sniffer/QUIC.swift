@@ -35,9 +35,12 @@ enum QUIC {
     static let minimumInitialDatagram = 1200
 
     /// Whether a client's datagram can hold an Initial: a long header with the fixed bit set
-    /// (0xC0), at the size a client must pad it to. RTP (0x80) and most other UDP fail it.
+    /// (0xC0), at the size a client must pad it to. RTP (0x80) and most other UDP fail it. In
+    /// version 1 the header also says the packet's type, and a 0-RTT or Handshake packet is
+    /// not one; another version's types are not read.
     static func mayBeClientInitial(_ datagram: [UInt8]) -> Bool {
-        datagram.count >= minimumInitialDatagram && datagram[0] & 0xc0 == 0xc0
+        guard datagram.count >= minimumInitialDatagram, datagram[0] & 0xc0 == 0xc0 else { return false }
+        return datagram[1...4] != [0, 0, 0, 1] || datagram[0] & 0x30 == 0
     }
 
     static func parseInitial(_ datagram: [UInt8], at start: Int) -> Result<Initial, Failure> {
