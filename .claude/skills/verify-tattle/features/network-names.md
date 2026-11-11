@@ -186,7 +186,7 @@ Preconditions:
   open and read outbound from their local ports, none unknown. `Herdr Core to
   160.79.104.10:443`, `First contact no`; `Google Chrome to 18.97.36.51:443`, `First contact
   yes`; `identityservicesd with [fe80:17::f86b:c51e:57bf:33c]:1024`, on a port below the range;
-  `rapportd from 192.168.1.20:55421`, on a high port, among 128 sockets its listener claims.
+  `rapportd from 192.168.x.y:55421`, on a high port, among 128 sockets its listener claims.
   Listeners by family and a seen opening arriving after the row rest on unit tests. The `nc`
   pair over Tailscale does not connect on the development Mac.
 - A host's prompt with no direction proven 2026-11-08 on the test Mac, run `2026-11-08T232714`
