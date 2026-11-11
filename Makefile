@@ -29,7 +29,9 @@ build:
 test:
 	swift test
 
-app: build
+# Each product on its own: `build` would link the app without its stack size first.
+app:
+	swift build -c $(CONFIG) --product $(BROKER)
 	swift build -c $(CONFIG) --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK)
 	rm -rf $(APPDIR)
 	mkdir -p $(APPDIR)/Contents/MacOS $(APPDIR)/Contents/Resources
