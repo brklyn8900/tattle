@@ -1277,14 +1277,12 @@ final class ShellProviderTests: XCTestCase {
     /// A command that answered and exited 0 but left a child holding stdin, stdout or stderr
     /// waited for the timeout, 120 s in the app, and its answer was thrown away as a timeout.
     func testACommandsLeftoverChildrenEndWhenItExits() async throws {
-        let prompt = String(repeating: "x", count: 1_000_000)
-        for (holds, redirect) in [("stdin", " <&0 >/dev/null 2>&1"), ("stdout", " </dev/null 2>/dev/null"),
-                                  ("stderr", " </dev/null >/dev/null")] {
+        for (holds, redirect) in Self.heldPipes {
             let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-child-" + UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: pidFile) }
             let start = Date()
             let output = try? await ShellProvider(command: "sleep 10\(redirect) & echo $! > '\(pidFile.path)'; echo answer",
-                                                 timeout: 5).explain(prompt)
+                                                 timeout: 5).explain(Self.largerThanAPipe)
             XCTAssertEqual(output, "answer\n", holds)
             XCTAssertLessThan(Date().timeIntervalSince(start), 2.5, "answered once the command exited: \(holds)")
             let child = try XCTUnwrap(Int32(String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
