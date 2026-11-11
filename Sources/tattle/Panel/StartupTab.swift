@@ -29,12 +29,14 @@ private struct StartupList: View {
                         Text(error)
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
-                        Button("Open Full Disk Access Settings") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-                                NSWorkspace.shared.open(url)
+                        if snapshot.loginItemsNeedFullDiskAccess {
+                            Button("Open Full Disk Access Settings") {
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                                    NSWorkspace.shared.open(url)
+                                }
                             }
+                            .controlSize(.small)
                         }
-                        .controlSize(.small)
                     }
                 }
             }

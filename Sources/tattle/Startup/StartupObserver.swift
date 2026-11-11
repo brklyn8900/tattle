@@ -17,10 +17,12 @@ final class StartupObserver {
             let launchd = LaunchdReader().read()
             var loginItems: [LoginItem] = []
             var loginItemsError: String?
+            var needsFullDiskAccess = false
             do {
                 loginItems = try LoginItemsDatabase.readCurrent().items
             } catch LoginItemsDatabase.ReadError.cannotList(let reason) {
                 loginItemsError = "Login items need Full Disk Access: \(reason)"
+                needsFullDiskAccess = true
             } catch {
                 loginItemsError = "Login items could not be read: \(error)"
             }
@@ -29,6 +31,7 @@ final class StartupObserver {
             var snapshot = StartupSnapshot.build(
                 launchd: launchd, loginItems: loginItems, state: state, signature: signatures.signature(at:))
             snapshot.loginItemsError = loginItemsError
+            snapshot.loginItemsNeedFullDiskAccess = needsFullDiskAccess
             return snapshot
         }.value
     }

@@ -158,6 +158,8 @@ struct StartupSnapshot: Equatable, Sendable {
     var items: [StartupItem]
     var appleCount: Int
     var loginItemsError: String?
+    /// The error is one that granting Full Disk Access would cure.
+    var loginItemsNeedFullDiskAccess = false
     var takenAt: Date
 
     func items(in group: StartupItem.Group) -> [StartupItem] {
