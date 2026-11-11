@@ -28,25 +28,12 @@ final class NetworkSnapshotTests: XCTestCase {
         return Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
     }()
 
-    /// What the panel shows differs from what a prompt carries: a development certificate is
-    /// named after the developer, and the user's account after their login.
-    private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
-        let signed = facts.first { $0.name == "Signed by" }
-        XCTAssertEqual(signed?.value, "Apple Development (ABCDE12345)", file: file, line: line)
-        XCTAssertNil(signed?.promptValue, "the panel's value carries no name, so the model gets it too", file: file, line: line)
-        guard runsAs else { return }
-        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
-        let account = facts.first { $0.name == "Runs as" }
-        XCTAssertEqual(account?.value, "you (\(login))", file: file, line: line)
-        XCTAssertEqual(account?.promptValue, "you", file: file, line: line)
-    }
-
     func testProcessGroupFactsKeepTheCertificateNameOutOfTheirPromptValue() throws {
         let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
         let snapshot = NetworkSnapshot(connections: [
             LiveConnection(connection: connection(100, "52.1.1.1"), owner: owner, isNew: false),
         ], takenAt: t0)
-        assertPromptValuesDiffer(try XCTUnwrap(snapshot.groups.first).facts(gone: false), runsAs: false)
+        assertPromptValues(try XCTUnwrap(snapshot.groups.first).facts(gone: false), runsAs: false)
     }
 
     func testConnectionFactsKeepTheLoginOutOfTheirPromptValue() throws {
@@ -54,7 +41,7 @@ final class NetworkSnapshotTests: XCTestCase {
         mine.uid = getuid()
         let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
         let row = LiveConnection(connection: mine, owner: owner, isNew: false)
-        assertPromptValuesDiffer(row.facts(now: t0), runsAs: true)
+        assertPromptValues(row.facts(now: t0), runsAs: true)
     }
 
     func testOwnerResolution() {

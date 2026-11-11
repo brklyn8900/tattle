@@ -80,19 +80,6 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(background[1].state, .off, "set by the app but switched off by the user")
     }
 
-    /// What the panel shows differs from what a prompt carries: a development certificate is
-    /// named after the developer, and the user's account after their login.
-    private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
-        let signed = facts.first { $0.name == "Signed by" }
-        XCTAssertEqual(signed?.value, "Apple Development (ABCDE12345)", file: file, line: line)
-        XCTAssertNil(signed?.promptValue, "the panel's value carries no name, so the model gets it too", file: file, line: line)
-        guard runsAs else { return }
-        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
-        let account = facts.first { $0.name == "Runs as" }
-        XCTAssertEqual(account?.value, "you (\(login))", file: file, line: line)
-        XCTAssertEqual(account?.promptValue, "you", file: file, line: line)
-    }
-
     func testOnlyTheDaemonWithTheBrokersLabelIsTattlesBroker() {
         let launchd = LaunchdReader.Result(items: [
             job(CaptureBroker.label, scope: .daemon, plist: "/Library/LaunchDaemons/\(CaptureBroker.label).plist"),
@@ -108,7 +95,7 @@ final class StartupSnapshotTests: XCTestCase {
             launchd: LaunchdReader.Result(items: [job("com.acme.updater")], appleCount: 0, unreadable: []),
             loginItems: [], state: LaunchctlState(),
             signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") })
-        assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: false)
+        assertPromptValues(try XCTUnwrap(snapshot.items.first).facts, runsAs: false)
     }
 
     func testALaunchItemThatIsNotApplesNeverReadsAsApple() throws {

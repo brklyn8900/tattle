@@ -60,25 +60,12 @@ final class PortsSnapshotTests: XCTestCase {
         XCTAssertFalse(entry(.tcp, "::ffff:192.168.1.5", 8021, pid: 1, v6: true).isLoopback)
     }
 
-    /// What the panel shows differs from what a prompt carries: a development certificate is
-    /// named after the developer, and the user's account after their login.
-    private func assertPromptValuesDiffer(_ facts: [Fact], runsAs: Bool, file: StaticString = #filePath, line: UInt = #line) {
-        let signed = facts.first { $0.name == "Signed by" }
-        XCTAssertEqual(signed?.value, "Apple Development (ABCDE12345)", file: file, line: line)
-        XCTAssertNil(signed?.promptValue, "the panel's value carries no name, so the model gets it too", file: file, line: line)
-        guard runsAs else { return }
-        let login = String(cString: getpwuid(getuid()).pointee.pw_name)
-        let account = facts.first { $0.name == "Runs as" }
-        XCTAssertEqual(account?.value, "you (\(login))", file: file, line: line)
-        XCTAssertEqual(account?.promptValue, "you", file: file, line: line)
-    }
-
     func testPortFactsKeepTheLoginAndCertificateNameOutOfTheirPromptValues() throws {
         let snapshot = PortsSnapshot.build(
             entries: [entry(.tcp, "0.0.0.0", 5000, pid: 634, uid: getuid())], services: services,
             processes: { _ in self.process(634, "/x/Mine") },
             signature: { _ in CodeSignature(signer: .development, teamIdentifier: "ABCDE12345") })
-        assertPromptValuesDiffer(try XCTUnwrap(snapshot.items.first).facts, runsAs: true)
+        assertPromptValues(try XCTUnwrap(snapshot.items.first).facts, runsAs: true)
     }
 
     /// A socket bound to this Mac's own public address would send that address: the panel
