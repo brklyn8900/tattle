@@ -106,6 +106,8 @@ final class PortsSnapshotTests: XCTestCase {
         let script = try item(8000)
         XCTAssertEqual(script.processName, "server.py")
         XCTAssertEqual(script.explainKey, "server.py:tcp/8000")
+        XCTAssertEqual(script.whyHere(gone: false), "server.py listens on it, for programs on this Mac only.")
+        XCTAssertEqual(script.whyHere(gone: true), "server.py listened on it, for programs on this Mac only.")
         XCTAssertEqual(script.signature?.signer, .script)
         XCTAssertEqual(script.interpreterSignature, apple)
         XCTAssertEqual(script.identity, .script(at: "/x/server.py"), "an answer for it is kept, against the script's file")

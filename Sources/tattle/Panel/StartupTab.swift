@@ -104,7 +104,7 @@ private struct StartupRow: View {
     }
 
     private var subtitle: String {
-        var parts = [item.trigger, item.state.text]
+        var parts = [item.trigger ?? "unknown", item.state.text]
         if let signature = item.signature { parts.append(signature.summary) }
         else if let developer = item.developer { parts.append(developer) }
         return parts.joined(separator: " · ")
@@ -135,7 +135,7 @@ private struct StartupDetail: View {
                 FactsGrid(facts: item.facts)
                 Divider()
                 if item.canExplain {
-                    ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity), state: state)
+                    ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity), whyHere: item.whyHere(gone: current == nil), state: state)
                     Divider()
                 }
                 HStack {

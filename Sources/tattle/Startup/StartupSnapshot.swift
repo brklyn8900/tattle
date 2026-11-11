@@ -71,7 +71,8 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// What runs: the program, or the app.
     var program: String?
     var arguments: [String] = []
-    var trigger: String
+    /// When it runs; nil when nothing says.
+    var trigger: String?
     var state: State
     var signature: CodeSignature?
     /// What says which version of the code its command line reaches this is.
@@ -125,6 +126,21 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         }
     }
 
+    /// The app's sentence that opens "Why it is probably here": when it runs, or what keeps it
+    /// from running, and the app it belongs to. In the past tense once it is gone.
+    func whyHere(gone: Bool) -> String {
+        let (be, does) = gone ? ("was", "did") : ("is", "does")
+        let when = switch state {
+        case .disabled: "It \(be) disabled, so macOS \(does) not start it."
+        case .off: "It \(be) switched off in System Settings, so it \(does) not run."
+        case .placeholder: "Its file \(be) empty, so nothing \(gone ? "ran" : "runs")."
+        case .unreadable, .unlisted: "Tattle could not read its file, so when it runs is not known."
+        default: trigger.map { "It \(gone ? "ran" : "runs") \($0)." } ?? "Nothing says when it runs."
+        }
+        guard let parent else { return when }
+        return when + " It \(gone ? "belonged" : "belongs") to \(parent)."
+    }
+
     /// Deterministic facts sent with an explain request and shown in the detail view.
     var facts: [Fact] {
         var facts: [Fact] = []
@@ -133,7 +149,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
             let count = arguments.count == 1 ? "1 argument" : "\(arguments.count) arguments"
             facts.append(Fact(name: "Runs", value: runs, promptValue: arguments.isEmpty ? nil : "\(program) (\(count), not sent)"))
         }
-        facts.append(Fact(name: "When", value: trigger))
+        facts.append(Fact(name: "When", value: trigger ?? "unknown"))
         facts.append(Fact(name: "State", value: state.text))
         switch state {
         case .unreadable(let reason), .unlisted(let reason): facts.append(Fact(name: "Reason", value: reason))
@@ -218,7 +234,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 group: group(for: plist.scope),
                 name: registered?.name ?? plist.url.deletingPathExtension().lastPathComponent,
                 program: path,
-                trigger: "unknown",
+                trigger: nil,
                 state: plist.isFolder ? .unlisted(reason: plist.reason) : .unreadable(reason: plist.reason),
                 signature: signed,
                 codeVersion: path.map { .of(program: $0, signature: signed) } ?? .unknown,
@@ -283,7 +299,7 @@ struct StartupSnapshot: Equatable, Sendable {
         return item.allowed ? .enabled : .off
     }
 
-    private static func trigger(for item: LoginItem) -> String {
+    private static func trigger(for item: LoginItem) -> String? {
         switch item.kind {
         case .app, .loginItemHelper: "at login"
         case .agent: "at login, by its app"
@@ -292,7 +308,7 @@ struct StartupSnapshot: Equatable, Sendable {
         case .spotlightImporter: "when Spotlight indexes its files"
         case .dockTilePlugin: "while its app is in the Dock"
         case .appExtension: "when macOS needs it"
-        case .other: "unknown"
+        case .other: nil
         }
     }
 

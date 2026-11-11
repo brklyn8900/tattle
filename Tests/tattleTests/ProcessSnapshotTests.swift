@@ -60,6 +60,32 @@ final class ProcessSnapshotTests: XCTestCase {
 
     private func signedByAcme(_ path: String) -> CodeSignature? { CodeSignature(signer: .developerID(name: "Acme"), teamIdentifier: "ACME") }
 
+    func testWhyHereSaysWhatStartedIt() throws {
+        let calendar = "/System/Applications/Calendar.app"
+        let entries = [
+            entry(0, 0, nil, uid: 0, name: "kernel_task"), entry(1, 0, "/sbin/launchd", uid: 0), entry(201, 1, "/bin/zsh"),
+            entry(9000, 201, "/usr/local/bin/tool"), entry(50, 9000, "/usr/local/bin/worker"),
+            entry(752, 1, calendar + "/Contents/PlugIns/CalendarWidgetExtension.appex/Contents/MacOS/CalendarWidgetExtension"),
+            entry(9100, 1, calendar + "/Contents/MacOS/Calendar"),
+        ]
+        func snapshot(open: Bool) -> ProcessSnapshot {
+            ProcessSnapshot.build(entries: open ? entries : entries.filter { $0.pid != 9100 }, previous: nil, signature: sign,
+                                  runningApp: { open && $0 == 9100 ? calendar : nil }, responsible: { _ in nil }, takenAt: epoch)
+        }
+        let open = snapshot(open: true)
+        func item(_ pid: Int32) throws -> ProcessItem { try XCTUnwrap(open.items.first { $0.pid == pid }) }
+        XCTAssertEqual(try item(0).whyHere(gone: false), "The Mac starts it at boot.")
+        XCTAssertEqual(try item(9000).whyHere(gone: false), "zsh started it.")
+        // launchd takes in every process whose parent quit, so it is named as the parent only.
+        XCTAssertEqual(try item(201).whyHere(gone: false), "Its parent is launchd.")
+        XCTAssertEqual(try item(752).whyHere(gone: false), "Its parent is launchd, and it is part of Calendar.")
+        XCTAssertEqual(try item(752).whyHere(gone: true), "Its parent was launchd, and it was part of Calendar.")
+        XCTAssertEqual(open.group(id: "pid:9000")?.whyHere(gone: false), "zsh started it; 2 processes in all.")
+        XCTAssertEqual(open.group(id: calendar)?.whyHere(gone: false), "Calendar is open; 2 processes in all.")
+        XCTAssertEqual(open.group(id: calendar)?.whyHere(gone: true), "Calendar was open; 2 processes in all.")
+        XCTAssertEqual(snapshot(open: false).group(id: calendar)?.whyHere(gone: false), "Calendar is not open, but 1 of its processes is running.")
+    }
+
     /// A widget launchd started at login has a lower pid than the app opened later, and is
     /// not what "Quit Calendar" means. With the app closed there is nothing of that name to quit.
     func testAnAppsLeaderIsTheProcessLaunchServicesOpenedItFrom() throws {

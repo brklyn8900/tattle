@@ -76,6 +76,16 @@ struct PortItem: Equatable, Sendable, Identifiable {
     /// Knowledge-base key: the process and the port, so "ControlCenter:tcp/*" can be a rule.
     var explainKey: String { "\(processName):\(proto.rawValue)/\(port)" }
 
+    /// The app's sentence that opens "Why it is probably here": who listens, and who can reach
+    /// it. In the past tense once the port has closed.
+    func whyHere(gone: Bool) -> String {
+        switch group {
+        case .network: "\(processName) \(gone ? "listened" : "listens") on it, and anything on your network \(gone ? "could" : "can") connect."
+        case .local: "\(processName) \(gone ? "listened" : "listens") on it, for programs on this Mac only."
+        case .ephemeral: "\(processName) \(gone ? "held" : "holds") it, usually waiting for replies to its own requests."
+        }
+    }
+
     var facts: [Fact] {
         var facts = [
             Fact(name: "Port", value: "\(String(port)) \(proto.rawValue.uppercased())"),

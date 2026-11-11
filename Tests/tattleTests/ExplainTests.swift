@@ -1393,3 +1393,36 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 }
+
+final class ThreeAnswersTests: XCTestCase {
+    private func rule(risk: Rule.Level?, confidence: Rule.Level? = .high, why: String? = nil, care: String? = nil) -> Rule {
+        Rule(kind: .host, pattern: "a.example", purpose: "What.", why: why, care: care, risk: risk, confidence: confidence, source: .llm)
+    }
+
+    /// The opening words come from the risk shown under them, so the two never disagree.
+    func testCareOpensWithTheWordsForTheRisk() {
+        XCTAssertEqual(ExplainSection.care(rule(risk: .low, care: "It is part of macOS.")), "Probably not. It is part of macOS.")
+        XCTAssertEqual(ExplainSection.care(rule(risk: .medium, care: "It sends usage data.")), "Worth a look. It sends usage data.")
+        XCTAssertEqual(ExplainSection.care(rule(risk: .high, care: "Nothing says what it is.")), "Yes. Nothing says what it is.")
+    }
+
+    /// No risk, or a guess, gets no opening words: only the reason.
+    func testNoOpeningWordsWithoutARiskOrForAGuess() {
+        XCTAssertEqual(ExplainSection.care(rule(risk: nil, care: "Reason.")), "Reason.")
+        XCTAssertEqual(ExplainSection.care(rule(risk: .low, confidence: .low, care: "Reason.")), "Reason.")
+        XCTAssertNil(ExplainSection.care(rule(risk: nil)))
+    }
+
+    /// An answer without a reason still shows the words for its risk.
+    func testCareWithoutAReasonIsTheWordsAlone() {
+        XCTAssertEqual(ExplainSection.care(rule(risk: .low)), "Probably not.")
+    }
+
+    func testWhyIsTheAppsSentenceThenTheRules() {
+        XCTAssertEqual(ExplainSection.why(rule(risk: .low, why: "Its apps ask this at launch."), opening: "Spotify opened it."),
+                       "Spotify opened it. Its apps ask this at launch.")
+        XCTAssertEqual(ExplainSection.why(nil, opening: "Spotify opened it."), "Spotify opened it.")
+        XCTAssertEqual(ExplainSection.why(rule(risk: .low, why: "Its apps ask this at launch."), opening: nil), "Its apps ask this at launch.")
+        XCTAssertNil(ExplainSection.why(rule(risk: .low), opening: nil))
+    }
+}

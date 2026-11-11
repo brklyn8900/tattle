@@ -1,9 +1,12 @@
 import SwiftUI
 
-/// The explanation for one item: the knowledge base's answer, or a button that asks the
-/// model, and confirmation of an unconfirmed answer. Shared by every tab's detail view.
+/// The explanation for one item, as three answers: what it is, why it is probably here, and
+/// whether to care. The knowledge base's answer, or a button that asks the model, and
+/// confirmation of an unconfirmed answer. Shared by every tab's detail view.
 struct ExplainSection: View {
     let request: ExplainRequest
+    /// The app's own sentence that opens "Why it is probably here", from the facts.
+    let whyHere: String?
     let state: AppState
     @State private var rule: Rule?
     /// The code `rule` was asked about, when the answer was the model's in this view.
@@ -16,9 +19,32 @@ struct ExplainSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            heading("What is this")
             if let rule {
-                Text(rule.purpose)
-                    .fixedSize(horizontal: false, vertical: true)
+                answer(rule.purpose)
+            } else {
+                HStack {
+                    Text("No explanation yet.")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Explain") { ask() }
+                        .disabled(busy || !providerConfigured)
+                }
+                if !providerConfigured {
+                    Text("Choose a provider in Settings to ask a model.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let why = Self.why(rule, opening: whyHere) {
+                heading("Why it is probably here")
+                answer(why)
+            }
+            if let rule, let care = Self.care(rule) {
+                heading("Should I care")
+                answer(care)
+            }
+            if let rule {
                 HStack(spacing: 8) {
                     Text(provenance(rule))
                         .font(.caption)
@@ -34,19 +60,6 @@ struct ExplainSection: View {
                             .disabled(busy || !providerConfigured)
                     }
                 }
-            } else {
-                HStack {
-                    Text("No explanation yet.")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Explain") { ask() }
-                        .disabled(busy || !providerConfigured)
-                }
-                if !providerConfigured {
-                    Text("Choose a provider in Settings to ask a model.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
             if busy { ProgressView().controlSize(.small) }
             if let error {
@@ -57,6 +70,45 @@ struct ExplainSection: View {
             }
         }
         .task(id: request) { await load() }
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func answer(_ text: String) -> some View {
+        Text(text)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The app's sentence from the facts, then the rule's. A host's rule is asked not to say which
+    /// program opened the connection: the app's sentence does.
+    static func why(_ rule: Rule?, opening: String?) -> String? {
+        joined([opening, rule?.why])
+    }
+
+    /// The words the app picks from the rule's risk, then the rule's reason. The app picks them
+    /// so they never disagree with the risk shown under them; none when the rule has no risk or
+    /// was a guess.
+    static func care(_ rule: Rule) -> String? {
+        joined([verdict(rule), rule.care])
+    }
+
+    static func verdict(_ rule: Rule) -> String? {
+        guard let risk = rule.risk, rule.confidence != .low else { return nil }
+        switch risk {
+        case .low: return "Probably not."
+        case .medium: return "Worth a look."
+        case .high: return "Yes."
+        }
+    }
+
+    private static func joined(_ parts: [String?]) -> String? {
+        let parts = parts.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
     private var providerConfigured: Bool {

@@ -16,6 +16,22 @@ final class StartupSnapshotTests: XCTestCase {
                   enabled: enabled, allowed: allowed, hidden: false, notified: false, legacy: legacy)
     }
 
+    /// What keeps an item from running comes before when it runs, so the sentence never says it
+    /// starts under a State that says it does not.
+    func testWhyHereSaysWhenItRunsOrWhatStopsIt() {
+        func item(_ trigger: String?, _ state: StartupItem.State = .notLoaded, parent: String? = nil) -> StartupItem {
+            StartupItem(id: "a", group: .userAgents, name: "a", program: "/x", trigger: trigger, state: state, parent: parent, isLoginItem: false)
+        }
+        XCTAssertEqual(item("at login, kept running").whyHere(gone: false), "It runs at login, kept running.")
+        XCTAssertEqual(item("at login, by its app", .enabled, parent: "Acme").whyHere(gone: false), "It runs at login, by its app. It belongs to Acme.")
+        XCTAssertEqual(item("at login", .disabled).whyHere(gone: false), "It is disabled, so macOS does not start it.")
+        XCTAssertEqual(item("at login", .off).whyHere(gone: false), "It is switched off in System Settings, so it does not run.")
+        XCTAssertEqual(item("never", .placeholder).whyHere(gone: false), "Its file is empty, so nothing runs.")
+        XCTAssertEqual(item(nil, .unreadable(reason: "x")).whyHere(gone: false), "Tattle could not read its file, so when it runs is not known.")
+        XCTAssertEqual(item(nil, .enabled).whyHere(gone: false), "Nothing says when it runs.")
+        XCTAssertEqual(item("at login", .running(pid: 1), parent: "Acme").whyHere(gone: true), "It ran at login. It belonged to Acme.")
+    }
+
     func testJoinsRegisteredPlistAndGroupsTheRest() {
         let launchd = LaunchdReader.Result(items: [
             job("com.acme.updater"),
@@ -314,7 +330,7 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(row.program, "/usr/bin/x")
         XCTAssertEqual(row.signature, signed)
         XCTAssertEqual(row.developer, "Acme Inc")
-        XCTAssertEqual(row.trigger, "unknown", "the plist says when it runs, and it was not read")
+        XCTAssertNil(row.trigger, "the plist says when it runs, and it was not read")
         XCTAssertEqual(row.plistURL, url)
         XCTAssertEqual(row.launchdScope, .daemon)
         XCTAssertTrue(row.isLoginItem)

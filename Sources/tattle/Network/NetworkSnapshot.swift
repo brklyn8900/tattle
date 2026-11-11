@@ -137,6 +137,15 @@ struct LiveConnection: Equatable, Sendable, Identifiable {
         connection.direction == .outbound && known.insert(connection.wireAddress).inserted
     }
 
+    /// The app's sentence that opens "Why it is probably here": who holds the connection.
+    var whyHere: String {
+        switch connection.direction {
+        case .outbound: "\(owner.displayName) opened it."
+        case .inbound: "It came in to \(owner.displayName) on port \(connection.localPort)."
+        case .unknown: "\(owner.displayName) holds it."
+        }
+    }
+
     func facts(now: Date) -> [Fact] {
         var facts: [Fact] = []
         switch connection.direction {
@@ -257,6 +266,12 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
         if remote(.unknown) > 0 { parts.append("\(remote(.unknown)) with the internet") }
         if localCount > 0 { parts.append("\(localCount) on this network") }
         return parts
+    }
+
+    /// The app's sentence that opens "Why it is probably here".
+    func whyHere(gone: Bool) -> String {
+        let count = connections.count == 1 ? "1 connection" : "\(connections.count) connections"
+        return gone ? "It had \(count) open." : "It is running and has \(count) open."
     }
 
     func facts(gone: Bool) -> [Fact] {

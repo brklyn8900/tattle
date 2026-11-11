@@ -108,6 +108,25 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// "Slack Helper*" covers the helpers. The path is a fact.
     var explainKey: String { name }
 
+    /// The app's sentence that opens "Why it is probably here": what started the process.
+    func whyHere(gone: Bool) -> String { origin(gone: gone) + "." }
+
+    /// `whyHere` without its full stop, for a group to go on from.
+    fileprivate func origin(gone: Bool) -> String {
+        if pid == 0 { return "The Mac starts it at boot" }
+        let parent = parentName ?? "pid \(parentPid)"
+        let be = gone ? "was" : "is"
+        // A process whose parent quits is handed to launchd, so launchd as the parent does not
+        // say who started it.
+        if parentPid <= 1 {
+            let origin = "Its parent \(be) \(parent)"
+            guard let app, app.name != name else { return origin }
+            return origin + ", and it \(be) part of \(app.name)"
+        }
+        guard let app, app.name != name else { return "\(parent) started it" }
+        return "\(parent) started it, as part of \(app.name)"
+    }
+
     var facts: [Fact] {
         var facts = [Fact(name: "Process", value: "\(name) (pid \(pid))")]
         if let interpreter, let path {
@@ -227,6 +246,22 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// row's tree. Nil for macOS, and for an app that is not open while its helpers or
     /// widgets run: quitting one of those would not quit the app.
     var leader: ProcessItem? { members.first { $0.pid == leaderPid } }
+
+    /// The app's sentence that opens "Why it is probably here", in the past tense once the group
+    /// is gone. Nil for macOS, which is not explained as one thing.
+    func whyHere(gone: Bool) -> String? {
+        let be = gone ? "was" : "is"
+        let all = members.count > 1 ? "; \(members.count) processes in all" : ""
+        switch kind {
+        case .app:
+            if leader != nil { return "\(name) \(be) open\(all)." }
+            let running = members.count == 1
+                ? "1 of its processes \(be) running" : "\(members.count) of its processes \(gone ? "were" : "are") running"
+            return "\(name) \(be) not open, but \(running)."
+        case .process: return (leader?.origin(gone: gone) ?? "It \(be) running") + "\(all)."
+        case .system: return nil
+        }
+    }
 
     var facts: [Fact] {
         var facts = [Fact(name: "Processes", value: String(members.count))]

@@ -28,6 +28,21 @@ final class NetworkSnapshotTests: XCTestCase {
         return Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
     }()
 
+    func testWhyHereSaysWhoHoldsTheConnection() {
+        let owner = ConnectionOwner(processName: "Spotify")
+        func live(_ direction: Connection.Direction) -> LiveConnection {
+            LiveConnection(connection: connection(100, "203.0.113.5", direction: direction), owner: owner, isNew: false)
+        }
+        XCTAssertEqual(live(.outbound).whyHere, "Spotify opened it.")
+        XCTAssertEqual(live(.inbound).whyHere, "It came in to Spotify on port 50000.")
+        XCTAssertEqual(live(.unknown).whyHere, "Spotify holds it.")
+        let one = ConnectionGroup(id: "s", name: "Spotify", connections: [live(.outbound)])
+        XCTAssertEqual(one.whyHere(gone: false), "It is running and has 1 connection open.")
+        XCTAssertEqual(one.whyHere(gone: true), "It had 1 connection open.")
+        XCTAssertEqual(ConnectionGroup(id: "s", name: "Spotify", connections: [live(.outbound), live(.unknown)]).whyHere(gone: false),
+                       "It is running and has 2 connections open.")
+    }
+
     func testProcessGroupFactsKeepTheCertificateNameOutOfTheirPromptValue() throws {
         let owner = ConnectionOwner(processName: "Mine", signature: CodeSignature(signer: .development, teamIdentifier: "ABCDE12345"))
         let snapshot = NetworkSnapshot(connections: [
