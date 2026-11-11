@@ -164,19 +164,19 @@ final class RedactorTests: XCTestCase {
 
     /// macOS stores a curly apostrophe in the computer name; other text often has a straight one.
     func testAMachineNameMatchesEitherApostrophe() {
-        for name in ["Username’s Computer", "Username's Computer"] {
+        for name in ["User’s Computer", "User's Computer"] {
             let username = Redactor(home: "/Users/username", username: "username", machineNames: [name])
-            XCTAssertEqual(username.redact("Username's Computer and Username’s Computer", as: .host), "<machine> and <machine>", name)
+            XCTAssertEqual(username.redact("User's Computer and User’s Computer", as: .host), "<machine> and <machine>", name)
         }
     }
 
     func testAFullHostnameIsANameAndItsFirstLabelGoesUnderEachDomain() {
         let names = Redactor.machineNames(
-            computerName: "Username’s Computer", localHostName: "Users-Computer",
+            computerName: "User’s Computer", localHostName: "Users-Computer",
             hostName: "desktop.corp.example.com", domains: ["tail1234.ts.net", "localdomain"])
         let username = Redactor(home: "/Users/username", username: "username", machineNames: names)
         XCTAssertEqual(
-            username.redact("Username’s Computer, Users-Computer.local, users-computer.tail1234.ts.net, users-computer.lan", as: .host),
+            username.redact("User’s Computer, Users-Computer.local, users-computer.tail1234.ts.net, users-computer.lan", as: .host),
             "<machine>, <machine>, <machine>, users-computer.lan")
         XCTAssertEqual(username.redact("desktop.corp.example.com, desktop.localdomain", as: .host), "<machine>, <machine>")
         let none = Redactor.machineNames(computerName: nil, localHostName: nil, hostName: "localhost", domains: ["localdomain"])
@@ -272,7 +272,7 @@ final class RedactionReviewTableTests: XCTestCase {
         let username = user("username"), u = user("u"), code = user("code"), mail = user("mail"), apple = user("apple")
         let admin = user("admin"), test = user("test"), server = user("server"), js = user("js"), home = user("home")
         let computer = user("username", mac: ["computer"]), dev = user("username", mac: ["dev"]), macMac = user("username", mac: ["Mac"])
-        let homeMac = user("username", mac: ["home"]), curly = user("username", mac: ["Username’s Mac"])
+        let homeMac = user("username", mac: ["home"]), curly = user("username", mac: ["User’s Computer"])
         let rows: [(Redactor, Redactor.Context, String, String)] = [
             // First review: a login in a dotted name.
             (username, .program, "com.username.helper", "com.<user>.helper"),
@@ -360,8 +360,8 @@ final class RedactionReviewTableTests: XCTestCase {
             (u, .program, "postgres: u u [local] idle", "postgres: <user> u [local] idle"),
             (user("username", mac: ["nas"]), .host, "nas.tail1234.ts.net", "<tailnet-device>"),
             (user("username", mac: ["nas", "nas.tail1234.ts.net"]), .host, "nas.tail1234.ts.net", "<machine>"),
-            (curly, .host, "Username‘s Mac", "Username‘s Mac"),
-            (curly, .host, "Usernameʼs Mac", "Usernameʼs Mac"),
+            (curly, .host, "User‘s Computer", "User‘s Computer"),
+            (curly, .host, "Userʼs Computer", "Userʼs Computer"),
             (curly, .host, "Users Computer", "Users Computer"),
             (user("username", mac: ["Café Computer"]), .host, "Cafe\u{301} Computer", "Cafe\u{301} Computer"),
             (user("üser"), .program, "u\u{308}ser", "u\u{308}ser"),
@@ -459,7 +459,7 @@ final class RedactionReviewTableTests: XCTestCase {
             // Second review: edited instructions.
             (username, .instructions, "steps 10-20-30-40 and 10-0-0-5", "steps 10-20-30-40 and 10-0-0-5"),
             (username, .instructions, "/USERS/USERNAME/x", "<home>/x"),
-            (curly, .instructions, "Username's Mac", "<machine>"),
+            (curly, .instructions, "User's Computer", "<machine>"),
             (username, .instructions, "my app com.username.helper here", "my app com.username.helper here"),
             (username, .instructions, "My NAS is nas.tail1234.ts.net.", "My NAS is nas.tail1234.ts.net."),
             (macMac, .instructions, "a Mac's owner", "a <machine>'s owner"),
@@ -1015,10 +1015,10 @@ final class ExplainerTests: XCTestCase {
 
     func testTheItemKeyIsNotRewrittenByName() async throws {
         let provider = FakeProvider(output: #"{"purpose":"x","risk":"low","confidence":"low"}"#)
-        _ = try await explainer(provider).ask(ExplainRequest(kind: .host, key: "username.users-computer.example",
+        _ = try await explainer(provider).ask(ExplainRequest(kind: .host, key: "username.usernames-mac.example",
                                                             facts: [Fact(name: "Host", value: "Users-Computer")]))
         let sent = try XCTUnwrap(provider.seen.prompts.first)
-        XCTAssertTrue(sent.contains(#""item":{"key":"username.users-computer.example","kind":"host"}"#), sent)
+        XCTAssertTrue(sent.contains(#""item":{"key":"username.usernames-mac.example","kind":"host"}"#), sent)
         XCTAssertTrue(sent.contains(#"{"name":"Host","value":"<machine>"}"#), sent)
     }
 
