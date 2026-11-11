@@ -229,6 +229,15 @@ final class FlowNamerTests: XCTestCase {
         XCTAssertEqual(n.observe(udp(second), at: t0 + 0.1), [FlowEvent(key: udpKey, kind: .named("example.org", .quic))])
     }
 
+    func testAQUICStreamThatIsNoClientHelloEndsAtOnceAsOverTCP() {
+        var n = namer()
+        let serverHello: [UInt8] = [2, 0, 0, 4, 1, 2, 3, 4]
+        let initial = SnifferParserTests.sealInitial([0x06, 0x00, UInt8(serverHello.count)] + serverHello)
+        XCTAssertEqual(n.observe(udp(initial), at: t0),
+                       [FlowEvent(key: udpKey, kind: .opened), FlowEvent(key: udpKey, kind: .unnamed(.notHandshake))])
+        XCTAssertEqual(n.expire(now: t0 + FlowNamer.finalizeAfter), [], "nothing left to give up on")
+    }
+
     func testShortHeaderDoesNotStartAFlow() {
         var n = namer()
         XCTAssertEqual(n.observe(udp([0x41, 1, 2, 3]), at: t0), [], "a connection open before capture started")

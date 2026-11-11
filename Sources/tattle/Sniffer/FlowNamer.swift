@@ -331,10 +331,18 @@ struct FlowNamer: Sendable {
                     flow.quicAssembly = QUICAssembly()
                     return .unnamed(.noServerName)
                 }
-                if case .hello(let sni) = TLS.clientHello(flow.quicAssembly.stream) {
+                switch TLS.clientHello(flow.quicAssembly.stream) {
+                case .hello(let sni):
                     flow.quicDone = true
                     flow.quicAssembly = QUICAssembly()
                     return sni.map { .named($0, .quic) } ?? .unnamed(.noServerName)
+                case .notClientHello:
+                    // As over TCP: what it starts with is not a handshake, and no wait changes that.
+                    flow.quicDone = true
+                    flow.quicAssembly = QUICAssembly()
+                    return .unnamed(.notHandshake)
+                case .needMore:
+                    break
                 }
             case .failure(.unsupportedVersion) where offset == 0:
                 // Not a version whose Initial can be read; nothing more will come of it. Only
