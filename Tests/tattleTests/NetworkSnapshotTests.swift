@@ -643,29 +643,6 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(saved.nameSource, "sni")
     }
 
-    /// Before the process's own signer was read, a row under an app held the app's.
-    func testAnOldRowsSignerUnderAnAppMovesToTheAppsColumn() throws {
-        let queue = try DatabaseQueue()
-        try AppDatabase.migrator.migrate(queue, upTo: "v3-connections")
-        try queue.write { db in
-            for (key, appPath) in [("under-app", "/Applications/iTerm.app" as String?), ("alone", nil)] {
-                try db.execute(sql: """
-                    INSERT INTO connection (key, proto, pid, uid, processName, appPath, signer, localPort, remoteAddress, remotePort, isIPv6, scope, firstSeen, lastSeen, preExisting)
-                    VALUES (?, 'tcp', 1, 501, 'curl', ?, 'EXAMPLE DEVELOPER', 1, '1.1.1.1', 443, 0, 'remote', 0, 0, 0)
-                    """, arguments: [key, appPath])
-            }
-        }
-        try AppDatabase.migrator.migrate(queue)
-        try queue.read { db in
-            let rows = try Row.fetchAll(db, sql: "SELECT key, signer, appSigner FROM connection ORDER BY key")
-            XCTAssertEqual(rows.map { $0["key"] as String }, ["alone", "under-app"])
-            XCTAssertEqual(rows[0]["signer"] as String?, "EXAMPLE DEVELOPER", "no app: it was the process's own")
-            XCTAssertNil(rows[0]["appSigner"] as String?)
-            XCTAssertNil(rows[1]["signer"] as String?, "the process's own signer was never read")
-            XCTAssertEqual(rows[1]["appSigner"] as String?, "EXAMPLE DEVELOPER")
-        }
-    }
-
     func testGroupsAndCounts() {
         let slack = ConnectionOwner(processName: "Slack", app: AppBundle(path: "/Applications/Slack.app"))
         let helper = ConnectionOwner(processName: "Slack Helper", app: AppBundle(path: "/Applications/Slack.app"))

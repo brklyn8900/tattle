@@ -75,7 +75,7 @@ struct AppDatabase: Sendable {
 
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
-        migrator.registerMigration("v1-rules") { db in
+        migrator.registerMigration("v1-schema") { db in
             try db.create(table: "rule") { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("kind", .text).notNull()
@@ -87,20 +87,20 @@ struct AppDatabase: Sendable {
                 t.column("risk", .text)
                 t.column("confidence", .text)
                 t.column("source", .text).notNull()
+                // Empty, not null: SQLite treats nulls as distinct, so a key with one would
+                // never conflict.
+                t.column("identity", .text).notNull().defaults(to: "")
                 t.column("confirmed", .datetime)
                 t.column("created", .datetime).notNull()
-                // One rule per (kind, match, pattern, source): a re-explained item or a
-                // reloaded seed replaces the earlier row instead of piling up duplicates.
-                t.uniqueKey(["kind", "match", "pattern", "source"])
+                // One rule per item and per program: a re-explained item or a reloaded seed
+                // replaces the earlier row instead of piling up duplicates, and an answer
+                // about one program with a name must not replace another's.
+                t.uniqueKey(["kind", "match", "pattern", "source", "identity"])
             }
-        }
-        migrator.registerMigration("v2-settings") { db in
             try db.create(table: "setting") { t in
                 t.primaryKey("key", .text)
                 t.column("value", .text).notNull()
             }
-        }
-        migrator.registerMigration("v3-connections") { db in
             try db.create(table: "connection") { t in
                 t.autoIncrementedPrimaryKey("id")
                 // The tracker's key; the same socket reused is a new row each time.
@@ -124,60 +124,12 @@ struct AppDatabase: Sendable {
                 // Filled by the sniffer; nil until then.
                 t.column("name", .text)
                 t.column("nameSource", .text)
+                t.column("appSigner", .text)
+                t.column("direction", .text).notNull().defaults(to: Connection.Direction.outbound.rawValue)
             }
             try db.create(index: "connection_remote", on: "connection", columns: ["remoteAddress"])
             try db.create(index: "connection_firstSeen", on: "connection", columns: ["firstSeen"])
             try db.create(index: "connection_open", on: "connection", columns: ["key"], condition: Column("ended") == nil)
-        }
-        migrator.registerMigration("v4-connection-app-signer") { db in
-            try db.alter(table: "connection") { $0.add(column: "appSigner", .text) }
-            // A row under an app held the app's signer; the process's own was never read.
-            try db.execute(sql: "UPDATE connection SET appSigner = signer, signer = NULL WHERE appPath IS NOT NULL")
-        }
-        migrator.registerMigration("v5-rule-identity") { db in
-            // SQLite cannot change a table's unique key, so the table is rebuilt. Empty, not
-            // null: SQLite treats nulls as distinct, so a key with one would never conflict.
-            try db.create(table: "rule_new") { t in
-                t.autoIncrementedPrimaryKey("id")
-                t.column("kind", .text).notNull()
-                t.column("match", .text).notNull()
-                t.column("pattern", .text).notNull()
-                t.column("owner", .text)
-                t.column("purpose", .text).notNull()
-                t.column("category", .text)
-                t.column("risk", .text)
-                t.column("confidence", .text)
-                t.column("source", .text).notNull()
-                t.column("identity", .text).notNull().defaults(to: "")
-                t.column("confirmed", .datetime)
-                t.column("created", .datetime).notNull()
-                // One rule per item and per program: an answer about one program with a name
-                // must not replace another's.
-                t.uniqueKey(["kind", "match", "pattern", "source", "identity"])
-            }
-            try db.execute(sql: """
-                INSERT INTO rule_new (id, kind, match, pattern, owner, purpose, category, risk, confidence, source, confirmed, created)
-                SELECT id, kind, match, pattern, owner, purpose, category, risk, confidence, source, confirmed, created FROM rule
-                """)
-            try db.drop(table: "rule")
-            try db.rename(table: "rule_new", to: "rule")
-        }
-        migrator.registerMigration("v6-claude-preset-flags") { db in
-            // A preset is saved as its text, so one saved earlier would keep its old flags. This
-            // runs once: the same text typed later is the user's own.
-            try db.execute(
-                sql: "UPDATE setting SET value = ? WHERE key = 'provider.command' AND value = ?",
-                arguments: [
-                    #"claude -p --setting-sources project,local --no-session-persistence --strict-mcp-config --system-prompt "" --tools "" --permission-prompts none --output-format json --json-schema {schema}"#,
-                    #"claude -p --setting-sources project,local --tools "" --permission-prompts none --output-format json --json-schema {schema}"#,
-                ])
-        }
-        migrator.registerMigration("v7-connection-direction") { db in
-            // Rows from before this were recorded as this Mac reaching out, and first contact
-            // is measured against them.
-            try db.alter(table: "connection") { $0.add(column: "direction", .text).notNull().defaults(to: Connection.Direction.outbound.rawValue) }
-        }
-        migrator.registerMigration("v8-connection-flow-index") { db in
             // Naming a flow, on the main actor, found its rows by address and read each one,
             // tens of thousands for a client that talks to one address all day. The address
             // index stays: knownAddresses scans it at launch, and scans this wider one slower.

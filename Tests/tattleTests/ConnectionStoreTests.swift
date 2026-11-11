@@ -38,20 +38,6 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try store.knownAddresses(), ["17.1.1.1", "203.0.113.6", "203.0.113.7"], "a mapped address is the IPv4 peer")
     }
 
-    /// First contact is measured against what was recorded before directions existed.
-    func testConnectionsFromBeforeDirectionsCountAsReached() throws {
-        let queue = try DatabaseQueue()
-        try AppDatabase.migrator.migrate(queue, upTo: "v6-claude-preset-flags")
-        try queue.write {
-            try $0.execute(sql: """
-                INSERT INTO connection (key, proto, pid, uid, processName, localPort, remoteAddress, remotePort, isIPv6, scope, firstSeen, lastSeen, preExisting)
-                VALUES ('k', 'tcp', 1, 501, 'x', 50000, '17.1.1.1', 443, 0, 'remote', ?, ?, 0)
-                """, arguments: [t0, t0])
-        }
-        try AppDatabase.migrator.migrate(queue)
-        XCTAssertEqual(try queue.read { try String.fetchOne($0, sql: "SELECT direction FROM connection") }, "outbound")
-    }
-
     private func historyFile() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-history-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -65,7 +51,7 @@ final class ConnectionStoreTests: XCTestCase {
         let settings: [Row]
         do {
             let queue = try DatabaseQueue(path: url.path)
-            try AppDatabase.migrator.migrate(queue, upTo: "v7-connection-direction")
+            try AppDatabase.migrator.migrate(queue)
             try queue.write { db in
                 for (i, address) in ["17.1.1.1", "::ffff:17.1.1.1", "2001:db8::1", "17.1.1.1"].enumerated() {
                     try db.execute(sql: """
