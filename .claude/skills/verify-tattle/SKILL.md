@@ -25,19 +25,19 @@ Use the dev copy otherwise: it runs beside the release build without stopping it
 
 Which machine a run goes on is set in the session's memory, outside this repo.
 
-A proof that needs a signed build runs on the development Mac: testmac has no signing identity.
+A proof that needs a signed build runs on the development Mac: the test Mac has no signing identity.
 
-- Bring testmac's checkout to the commit under test first (tattle `memory.md`, Machines).
-- The accessibility tool needs testmac's GUI session, not an ssh one. Put the `$V` commands
+- Bring the test Mac's checkout to the commit under test first (tattle `memory.md`, Machines).
+- The accessibility tool needs the test Mac's GUI session, not an ssh one. Put the `$V` commands
   in a script that writes its output to files, start it with
-  `ssh <testmac> 'open -na Ghostty --args -e /bin/zsh <script>'`, and read the files and the
+  `ssh <test-mac> 'open -na Ghostty --args -e /bin/zsh <script>'`, and read the files and the
   run folder over ssh.
-- testmac's display must be awake or the terminal never starts the script: run `caffeinate -di
+- The test Mac's display must be awake or the terminal never starts the script: run `caffeinate -di
   -t <seconds>` over ssh, and `caffeinate -u -t 3` to wake it, before `open`. Use ssh for this:
   a background job started through `hc exec` ends with the call.
-- Answer a dialog on testmac through the accessibility API. `osascript` with System Events from
+- Answer a dialog on the test Mac through the accessibility API. `osascript` with System Events from
   a script raises macOS's automation prompt on its screen and then times out.
-- Copy the run folder back to this Mac's `build/verify/runs/testmac-<date>/`.
+- Copy the run folder back to this Mac's `build/verify/runs/test-mac-<date>/`.
 
 All commands run from the repo root through one helper:
 
@@ -156,7 +156,7 @@ Proof standards:
 
 - **Administrator password.** Installing or removing packet access opens macOS's
   administrator dialog. Press the button, then stop: tell the user the dialog is up and what
-  it will do, and wait for them to type the password into the dialog themselves (on testmac,
+  it will do, and wait for them to type the password into the dialog themselves (on the test Mac,
   over Screen Sharing). Never type, script or ask for the password in the terminal.
 - **Changes outside the run's copy.** Startup's `Load`, `Unload` and `Remove`, and
   Processes' `Quit` and `Force Quit`, act on the user's real system. Use them only on
@@ -196,4 +196,4 @@ build/Tattle.app` starts it again.
 - A session whose terminal app has no Accessibility permission (Herdr Core on the development
   Mac, seen 2026-11-08) cannot drive the panel: `launch` stops at `this terminal has no
   Accessibility permission`. Put the `$V` commands in a script that writes its output to a
-  file and start it with `open -na Ghostty --args -e /bin/zsh <script>`, as on testmac.
+  file and start it with `open -na Ghostty --args -e /bin/zsh <script>`, as on the test Mac.

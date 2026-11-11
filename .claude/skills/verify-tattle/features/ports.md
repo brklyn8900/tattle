@@ -26,7 +26,7 @@ Preconditions:
 - Open run; doctor all `ok`.
 - For the kept answer, the fake provider (explain.md).
 
-- **A script listening.** On testmac: `<dir>/server.py` binding `127.0.0.1:18180`, run with
+- **A script listening.** On the test Mac: `<dir>/server.py` binding `127.0.0.1:18180`, run with
   `/usr/bin/python3`. `$V tab Ports`; the row reads `18180, server.py, TCP · localhost only ·
   script, not signed`. Its detail has `Process server.py (pid N)`, `Runs with Python
   (<path>)`, `Signed by script, not signed`, `Interpreter signed by Apple`, and no `Path`.
@@ -40,9 +40,9 @@ Preconditions:
 
 ## Gotchas
 
-- Proven 2026-11-08 on testmac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
-  `build/verify/runs/testmac-2026-11-08/`. Inline code and an interpreter whose arguments cannot be read
+- Proven 2026-11-08 on the test Mac, run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
+  `build/verify/runs/test-mac-2026-11-08/`. Inline code and an interpreter whose arguments cannot be read
   rest on the unit test (`testAListenerIsReadAsTheCodeItRuns`).
 - A process running as another account than its socket's creator rests on the unit test
-  (`testAListenerRunsAsItsProcessNotItsSocket`): a socket-activated agent's listener on testmac
+  (`testAListenerRunsAsItsProcessNotItsSocket`): a socket-activated agent's listener on the test Mac
   (run `2026-11-08T221748`) stayed owned by launchd, and making one any other way needs root.

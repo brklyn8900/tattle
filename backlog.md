@@ -45,7 +45,7 @@
 - An owner read as `unknown process`, because the process table could not be read, is read
   again only when its pid opens another connection; its existing rows keep that owner.
 - About 15% of processes that exit 26 to 42 ms after connecting lose their owner, with the
-  full process sweep and with the reading by owner alike (quick-exit simulation on testmac,
+  full process sweep and with the reading by owner alike (quick-exit simulation on the test Mac,
   2026-11-10). The loss follows the lifetime, which points at the 20 ms prompt-poll delay
   (`NetworkObserver.promptPollDelay`), not at the reading.
 - Inline code that calls a file is pinned by its line: `sh -c /x/agent` keeps its answer when
@@ -65,7 +65,7 @@
   only for kinds without a type of their own.
 - The rate divides by wall-clock time (`ResourceSample.between`), so a backward clock step
   multiplies one tick by up to 1,000. A monotonic clock fixes it.
-- On an Intel Mac with a T2 chip, the link to that chip (`en5` on testmac) counts in the rate:
+- On an Intel Mac with a T2 chip, the link to that chip (`en5` on the test Mac) counts in the rate:
   about 3 kB/s each way at rest.
 - The Claude Code preset's `--system-prompt ""` relies on how the CLI treats an empty string.
   CLI 2.1.319 honors it, measured from one request; the CLI's version is not pinned and no
@@ -107,9 +107,9 @@ and (d) are done)
 
 - (b) A `make test` wall-clock limit with cleanup of what a killed run leaves behind. Each
   launched process already waits at most 60 s. Yes/no when raised.
-- (c) Agreed (2026-10-26): on testmac, run the packet-access checks not yet proven (second
+- (c) Agreed (2026-10-26): on the test Mac, run the packet-access checks not yet proven (second
   account against the installed daemon, Cancel, Install for this account), then remove
-  "to run on testmac" from `features/packet-access.md`.
+  "to run on the test Mac" from `features/packet-access.md`.
 - (e) After Remove, the Startup tab keeps the broker's "Allowed in the background" row until
   Refresh: its refresh runs before macOS rewrites the background-items file, about a minute
   later.
@@ -156,7 +156,7 @@ and (d) are done)
 - `testALockedFileFailsOneInstallAndWedgesNone` checks that the stage held a locked copy
   when the install failed, which holds only where ditto copies a locked file: macOS 26.7.2
   does, and on 2026-10-26 this Mac's ditto failed on it, so on such a system the check
-  fails. Not run on testmac (26.7.1). Its name no longer fits either: the stand-in launchctl
+  fails. Not run on the test Mac (26.7.1). Its name no longer fits either: the stand-in launchctl
   fails the install, not the lock (`CaptureBrokerScriptTests.swift`).
 - A wrapper given no command reads as undetermined, so its launch item shows no signer,
   though some then run only their own code: `caffeinate -s` (a common keep-awake agent),
@@ -270,31 +270,31 @@ what stays)
   `Quit Tattle` the latest changes stay in `tattle.sqlite-wal` until a later checkpoint, and
   `tattle.sqlite` alone lacks them (`AppDatabase.swift`, `TattleApp.swift`).
 - Migrations run on the main thread inside `TattleApp.init`, before the menu bar item exists.
-  The flow index (`v8-connection-flow-index`) took 0.25 s on testmac at 221,007 rows and 4.2 s
+  The flow index (`v8-connection-flow-index`) took 0.25 s on the test Mac at 221,007 rows and 4.2 s
   at 3.98M, 365 days at the development Mac's rate (the real history replicated, warm cache);
   random synthetic data took 11.4 to 12.5 s at 3.8M (2026-11-10). No install can reach that
   before v8 runs, since every history is under a month old, but an index added later to a long
   history would need building after launch, from a background write (`AppDatabase.swift`).
 - A large prune got slower on the main actor with the flow index and the write-ahead log. On
-  testmac at 3.98M rows, one run per size: 1,434 rows 792 against 1,277 ms, 11,884 rows 1,602
+  the test Mac at 3.98M rows, one run per size: 1,434 rows 792 against 1,277 ms, 11,884 rows 1,602
   against 2,424 ms, 14,482 rows 1,500 against 2,545 ms; an hour's worth (291 rows) 787 against
   794 ms (2026-11-10). Most of each is the scan of every row for the cutoff, which no index
   serves. Large prunes follow a lowered retention or a long time with the app off
   (`ConnectionStore.swift`, `NetworkObserver.swift`).
 - `knownAddresses` as a table scan (`NOT INDEXED`) took 0.11 s against 0.34 s through
-  `connection_remote` on testmac at 221,007 rows, the same 5,576 addresses (2026-11-10). Then
+  `connection_remote` on the test Mac at 221,007 rows, the same 5,576 addresses (2026-11-10). Then
   `connection_remote` serves nothing `connection_flow` cannot, and dropping it saves a write per
   insert and prune (12.6% fewer log frames per insert, measured by a reviewer) and about 5.4 MB
   per 211,000 rows. Dropped without the table scan, `knownAddresses` is 10% slower (327 to 339
   against 360 to 375 ms). `history(remoteAddress:)` could then order rows that share a
   `firstSeen` differently (`ConnectionStore.swift`, `AppDatabase.swift`).
 - A DNS reply whose answers all point at one valid 255-byte name of four long labels still
-  costs 0.26 ms on testmac, about 55 times the 63-byte reply and 1.5 times a real reply of the
+  costs 0.26 ms on the test Mac, about 55 times the 63-byte reply and 1.5 times a real reply of the
   same size: each of its 99 names is decoded and checked in full, and the reply's bound counts
   labels and pointers, not bytes (2026-11-10). A cap on the name bytes a reply may decode, or a
   cache of names already decoded by offset, would bound it (`DNS.swift`, `HostName.swift`).
 - Ordinary-looking DNS replies from a forged resolver address can keep the capture thread busy:
-  88 A records in 1,462 bytes cost 0.18 ms on testmac, so about 5,500 such replies a second fill
+  88 A records in 1,462 bytes cost 0.18 ms on the test Mac, so about 5,500 such replies a second fill
   it (2026-11-10). Any host on the network can forge the resolver's address (`FlowNamer.swift`,
   `DNS.swift`).
 - `ByteReader.ParseError.short` means the reply ran out of bytes, but `readName` also throws it
@@ -304,7 +304,7 @@ what stays)
 - `ProcessTable.arguments(pid:)`, the overload without `scratch`, is called only by
   `ProcessTableTests`.
 
-**Costs measured and left, 2026-11-10** (testmac, release build; the review of that day read them as
+**Costs measured and left, 2026-11-10** (the test Mac, release build; the review of that day read them as
 inefficient)
 
 - A 1,400-byte segment on a finished flow costs 0.5 µs to parse and observe, 0.26 µs of it the

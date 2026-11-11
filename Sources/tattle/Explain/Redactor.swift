@@ -32,7 +32,7 @@ struct Redactor: Sendable {
     /// The machine's names come from the dynamic store and the kernel, never from a name
     /// lookup: macOS holds an app's reverse lookups of its own addresses, loopback included,
     /// behind the Local Network alert, and unanswered they fail after 35 s (measured on
-    /// testmac, 2026-10-28). Host.current() makes those lookups.
+    /// the test Mac, 2026-10-28). Host.current() makes those lookups.
     static var current: Redactor {
         var buffer = [CChar](repeating: 0, count: Int(MAXHOSTNAMELEN) + 1)
         let hostName = gethostname(&buffer, buffer.count) == 0 ? String(cString: buffer) : nil

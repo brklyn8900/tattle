@@ -56,7 +56,7 @@ Preconditions:
 
 ## Gotchas
 
-- The dialog takes focus and the panel stays on screen and updating (testmac, 2026-11-09). A
+- The dialog takes focus and the panel stays on screen and updating (the test Mac, 2026-11-09). A
   click outside the panel still closes it; reopen with `$V tab Network`.
 - The panel's state follows the observer, not the view: after the dialog, read the result
   in the Network header and the log, not in a stale view.
@@ -105,13 +105,13 @@ Preconditions:
   only a crash port, the copy captured through the broker; after `SIGABRT` the parent received
   nothing and macOS wrote the crash report. Under a parent holding only a corpse-notification
   port it received exception 13, and `thread_create` and `mach_vm_write` on that task returned
-  `KERN_INVALID_ARGUMENT`. On testmac, with a stand-in: the old drop (`EXC_MASK_ALL`) let a
+  `KERN_INVALID_ARGUMENT`. On the test Mac, with a stand-in: the old drop (`EXC_MASK_ALL`) let a
   crash-port parent write the dying child's memory (`thread_create` succeeded, but the thread
   never ran), dropping the corpse port as well left no crash report, and a corpse-port parent
   could read the dead child's memory.
-- The drop at launch, after the branch review of 2026-11-08. On testmac, dev copies of `e02039b`
+- The drop at launch, after the branch review of 2026-11-08. On the test Mac, dev copies of `e02039b`
   and `798a96c` started under an inherited stack limit by a launcher holding every exception
-  port (`sweep.c`, results in `build/verify/runs/testmac-2026-11-08/launch-drop/`). Before, from
+  port (`sweep.c`, results in `build/verify/runs/test-mac-2026-11-08/launch-drop/`). Before, from
   8 to 160 KB the startup overflowed and the launcher ran a thread in Tattle. After, from 64
   KB up it received only the dead process or nothing; at 56 KB and below the overflow is in
   the dynamic loader, before Tattle's own code, and the launcher still runs a thread there
@@ -120,7 +120,7 @@ Preconditions:
   the broker, the parent received nothing after `SIGABRT`, and macOS wrote the crash report.
   lldb and xctrace before and after are in the same folder (`tools-*.txt`).
 - The fixed main-thread stack (`6f6b724`): the dev copy received nothing under each of 23
-  stack limits from 8 KB to 1 MB, on testmac and on the Mac with the broker
+  stack limits from 8 KB to 1 MB, on the test Mac and on the Mac with the broker
   (`build/verify/runs/2026-11-08-exception-ports/sweep-arm64.txt`). Unpinned on that Mac,
   64 KB and below still gave a live task in the dynamic loader. The pinned dev copy, opened
   with `open`, captured through the broker.
@@ -128,4 +128,4 @@ Preconditions:
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
 - Not proven: Cancel, `Install for this account`, and a second account
-  against the installed daemon (to run on testmac).
+  against the installed daemon (to run on the test Mac).

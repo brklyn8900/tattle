@@ -34,10 +34,10 @@ Preconditions:
   <memory>, <cpu>"`; CPU is `–` until the second sample, and for the first reading after the
   list was off screen.
 - **macOS row.** In `processes-list.txt`, `macOS, N processes · Apple` holds most of the
-  processes (650 of 717 on testmac). A macOS row of a handful, with Apple's daemons in rows
+  processes (650 of 717 on the test Mac). A macOS row of a handful, with Apple's daemons in rows
   of their own signed by a certificate name such as `macOS Software Signing`, means Apple's
   own code is not recognised.
-- **Script started by launchd.** On testmac (it loads a LaunchAgent): write
+- **Script started by launchd.** On the test Mac (it loads a LaunchAgent): write
   `~/Library/LaunchAgents/local.tattle-verify.inline.plist` with `ProgramArguments`
   `/bin/zsh`, `-c`, `while :; do sleep 5; done`, `/usr/bin/true`, and `launchctl bootstrap
   gui/$(id -u)` it. Its row reads `zsh, N processes · zsh, unnamed code`, not a member of
@@ -55,7 +55,7 @@ Preconditions:
   code`, not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by
   unnamed code`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
   developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
-  must not hold it: the row and the detail read the same. testmac had only the Command Line
+  must not hold it: the row and the detail read the same. The test Mac had only the Command Line
   Tools then, so this case ran on the development Mac, with a probe the run loads and removes. A
   script that opens a window, `<dir>/window.py` (a `tkinter.Tk()` and its `mainloop()`),
   is registered by Launch Services under the framework's `Python.app` (`lsappinfo list`
@@ -91,12 +91,12 @@ Preconditions:
   code`, not a member of `Xcode`. The detail has `Signed by unnamed code`, `Interpreter
   signed by Apple`, `Parent time (pid N)`. A shell at a terminal is still not one: a person
   may be typing.
-- **An Apple-signed Xcode.** On testmac, whose Xcode is signed by Apple (the development Mac's is the App
+- **An Apple-signed Xcode.** On the test Mac, whose Xcode is signed by Apple (the development Mac's is the App
   Store's and reads that): `open -ga Xcode`. Its row reads `Xcode, N processes · unnamed
   code`, its detail `Signed by unnamed code`.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
-  · node script`, not `.`. With node.js's own build (testmac's `~/.local/node`), the detail
+  · node script`, not `.`. With node.js's own build (the test Mac's `~/.local/node`), the detail
   has `Interpreter signed by Node.js Foundation` and `Interpreter team HX7739G8FX`.
 - **Sort.** `$V ax press CPU` (the segment; the resources line's `CPU` text is not
   pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
@@ -110,24 +110,24 @@ Preconditions:
 - **Quit.** `$V ax press "Quit sleep"`, exact label; `ps -p <pid>` shows it gone; `$V ax
   wait "No longer running."`; `$V save marker-quit`.
 
-- **Quit on an app with a helper.** On testmac: `Tool.app`, ad-hoc signed with `LSUIElement`,
+- **Quit on an app with a helper.** On the test Mac: `Tool.app`, ad-hoc signed with `LSUIElement`,
   whose `Contents/MacOS/Tool` runs an `NSApplication` and whose `Contents/MacOS/tool-helper`
   sleeps. Start the helper from a launch agent (`launchctl kickstart`), then `open Tool.app`,
   so the helper has the lower pid. The row reads `Tool, 2 processes · ad hoc signed`. In its
   detail `Quit Tool` ends `Tool` and leaves `tool-helper` (`ps -p`); the detail then has
   `Processes 1` and no `Quit Tool`. Afterwards `launchctl bootout` the agent and delete it.
-- **Quit on an app with no window.** On testmac: `Tool.app`, ad-hoc signed, whose
+- **Quit on an app with no window.** On the test Mac: `Tool.app`, ad-hoc signed, whose
   `Contents/MacOS/Tool` is a plain program that starts `Contents/MacOS/tool-helper`, run by a
   launch agent, so Launch Services never hears of it. The row reads `Tool, 2 processes`. In its
   detail `Quit Tool` ends `Tool` and leaves `tool-helper` (`ps -p`), and then no `Quit Tool`
   shows. Afterwards `launchctl bootout` the agent, delete it and end the helper.
-- **Quit with an older run of the app's binary.** On testmac: `Tool.app`, ad-hoc signed with
+- **Quit with an older run of the app's binary.** On the test Mac: `Tool.app`, ad-hoc signed with
   `LSUIElement`, whose `Contents/MacOS/Tool` runs an `NSApplication`, or only sleeps when given
   `--headless`. From one script, since a background job ends when its script's window closes:
   `Tool --headless &`, wait 3 s, `open Tool.app`. `lsappinfo info -only pid <bundle id>` names
   the opened one only. The row reads `Tool, 2 processes`. In its detail `Quit Tool` ends the
   opened one and leaves the older `--headless` (`ps -p`); the row then reads `Tool, 1 process`.
-- **Another account's process.** AlDente's helper on testmac, which runs as root: `Runs as root,
+- **Another account's process.** AlDente's helper on the test Mac, which runs as root: `Runs as root,
   so Tattle cannot quit it`.
 
 ## Gotchas
@@ -138,18 +138,18 @@ Preconditions:
   marker's detail, never a `Quit` prefix.
 - The list refreshes every 3 s; wait for labels, not fixed sleeps.
 - Proven 2026-10-25, run `2026-10-25T224119`; `Force Quit` not exercised.
-- macOS row and script started by launchd proven 2026-11-07 on testmac, run
+- macOS row and script started by launchd proven 2026-11-07 on the test Mac, run
   `2026-11-07T180918` (commit `879a2ca`); run `2026-11-07T175830` is the same journeys on
   `b2a39de`, before the fix (637 rows, a macOS row of 10). Copies in this Mac's
-  `build/verify/runs/testmac-2026-11-07/`.
-- Standard input, Python and a script's own signer proven 2026-11-07 on testmac, run
+  `build/verify/runs/test-mac-2026-11-07/`.
+- Standard input, Python and a script's own signer proven 2026-11-07 on the test Mac, run
   `2026-11-07T195705` (commit `32a5508`). Run `2026-11-07T195527` is the same journeys on
   `2fdbff2`, before them: no `sh` row, its two processes counted in `macOS` (547, against
   545 after), and the zsh group and the Python detail `Signed by Apple`.
-- The Python row proven 2026-11-07 on testmac, run `2026-11-07T212351` (commit `fef4f33`);
+- The Python row proven 2026-11-07 on the test Mac, run `2026-11-07T212351` (commit `fef4f33`);
   in run `2026-11-07T195705` (`32a5508`) it was the framework app's row, `Python, 1
   process · Apple`.
-- Swift, a package by its folder and the interpreter's team proven 2026-11-07 on testmac,
+- Swift, a package by its folder and the interpreter's team proven 2026-11-07 on the test Mac,
   run `2026-11-07T224519` (commit `9a0f53e`). Run `2026-11-07T224338` is the same journeys
   on `2ec0b40`, before them: no swift row (its process counted in `macOS`, 553 against 552
   after), the node row named `.`, and node's team as `Team`.
@@ -160,31 +160,31 @@ Preconditions:
   `2aa83fc`); in run `2026-11-07T235435` (`818f035`) it was the row `Python, 1 process ·
   Apple`, its detail `Part of Python`.
 - The frontend with `-interpret` after its script and the swift-frontend tool proven
-  2026-11-07 on testmac, run `2026-11-07T235929` (commit `2aa83fc`). Run `2026-11-07T235754`
+  2026-11-07 on the test Mac, run `2026-11-07T235929` (commit `2aa83fc`). Run `2026-11-07T235754`
   is the same journeys on `818f035`: no `loop.swift` row (its process counted in `macOS`),
   and the digester a row of its own, `Swift, 1 process · swift-frontend script`.
-- The compile job proven 2026-11-08 on testmac, its row, run `2026-11-08T011100` (commit
+- The compile job proven 2026-11-08 on the test Mac, its row, run `2026-11-08T011100` (commit
   `7d50eec`); in run `2026-11-08T010801` (`1ab9f0b`) it read `swift-frontend, 1 process ·
   swift-frontend script`. Through Xcode's toolchain on the development Mac, row and detail, run
   `2026-11-08T010935` (`7d50eec`); in run `2026-11-08T010824` (`1ab9f0b`) it had no row of
   its own. Inline code and Python's `-c` as `unnamed code` are unit-tested only.
-- The copy of clang proven 2026-11-08 on testmac, its row, run `2026-11-08T014224` (commit
+- The copy of clang proven 2026-11-08 on the test Mac, its row, run `2026-11-08T014224` (commit
   `a8e6f29`); in run `2026-11-08T013916` (`d350fcc`) it had no row of its own. Its detail
   was not saved. Xcode Service's row proven 2026-11-08 on the development Mac, run
   `2026-11-08T013950` (`a8e6f29`); in run `2026-11-08T013910` (`e06b5dd`) it read `Xcode
   Service, 1 process · Apple`, its detail already `Signed by unnamed code`.
-- Standard input and the Apple-signed Xcode proven 2026-11-08 on testmac, run
+- Standard input and the Apple-signed Xcode proven 2026-11-08 on the test Mac, run
   `2026-11-08T090736` (commit `b5e5e2c`); in run `2026-11-08T090623` (`0a31fdc`) the row was
   `Xcode, 7 processes · Apple`, Python among its members, and no `Python` row.
-- Quit on an app with a helper and another account's process proven 2026-11-08 on testmac,
+- Quit on an app with a helper and another account's process proven 2026-11-08 on the test Mac,
   run `2026-11-08T210232` (commit `c969c4d`); copy in this Mac's
-  `build/verify/runs/testmac-2026-11-08/`. Two copies of an app and a program whose worker has the lower pid rest on unit tests in
+  `build/verify/runs/test-mac-2026-11-08/`. Two copies of an app and a program whose worker has the lower pid rest on unit tests in
   `ProcessSnapshotTests`.
-- Quit on an app with no window proven 2026-11-08 on testmac, run `2026-11-08T221748` (commit `97096f3`); copy in the development Mac's
-  `build/verify/runs/testmac-2026-11-08/`.
-- Quit with an older run of the app's binary proven 2026-11-08 on testmac, run
+- Quit on an app with no window proven 2026-11-08 on the test Mac, run `2026-11-08T221748` (commit `97096f3`); copy in the development Mac's
+  `build/verify/runs/test-mac-2026-11-08/`.
+- Quit with an older run of the app's binary proven 2026-11-08 on the test Mac, run
   `2026-11-08T232714` (commit `25c7e20`); copy in the development Mac's
-  `build/verify/runs/testmac-2026-11-08/`.
+  `build/verify/runs/test-mac-2026-11-08/`.
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the development Mac the panel closed partway through two runs (`2026-11-07T224046`,

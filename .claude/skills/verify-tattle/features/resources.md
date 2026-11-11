@@ -29,10 +29,10 @@ Preconditions:
 
 - `netstat` is exact and 64-bit. What Tattle can read (`getifaddrs`, and `NET_RT_IFLIST2` too) is
   rounded down to 1 KiB and wraps at 32 bits, so a single reading moves in steps of 1 KiB.
-- On an Intel Mac with a T2 chip the link to that chip (`en5` on testmac, MTU 16000, ether
+- On an Intel Mac with a T2 chip the link to that chip (`en5` on the test Mac, MTU 16000, ether
   `ac:de:48:00:11:22`) counts: about 3 kB/s each way at rest.
-- Proven in the dev copy: the line against `netstat` on testmac, run
-  `testmac-2026-11-08/2026-11-08T145520` (twelve readings of 2 to 9 kB/s in and 3 to 9 kB/s out;
+- Proven in the dev copy: the line against `netstat` on the test Mac, run
+  `test-mac-2026-11-08/2026-11-08T145520` (twelve readings of 2 to 9 kB/s in and 3 to 9 kB/s out;
   `netstat` over ten seconds gave `en0` 1.4 and 1.0 kB/s and `en5` 3.2 and 3.7 kB/s).
 - Not driven in the app: an interface disappearing while the copy runs, which needs a dock or
   adapter to unplug; a VM's interfaces would not show it, since they are not counted.

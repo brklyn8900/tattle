@@ -54,22 +54,22 @@ Preconditions:
 
 - Proven 2026-11-09. On the development Mac, commit `6e86ade`: the reopening journeys in run
   `2026-11-09T131240`, and `pv-stop` in six closed traces (Ports and Processes, three runs). On
-  testmac, commit `c5e374f`, runs `2026-11-09T161254` and `2026-11-09T162043`: every path below,
+  the test Mac, commit `c5e374f`, runs `2026-11-09T161254` and `2026-11-09T162043`: every path below,
   `pv-stop` closed on a Processes or Ports detail and on Network's root and a detail, the menu
   bar label moving while closed, and an Explain answered while closed or reopened mid-answer
-  (one prompt each, the answer shown). On testmac, commit `e3cf612`, run `2026-11-09T164024`:
+  (one prompt each, the answer shown). On the test Mac, commit `e3cf612`, run `2026-11-09T164024`:
   `pv-baseline` by a timeline of the accessibility tree and a 30-second `pv-stop` trace closed on
-  Processes. Copies in this Mac's `build/verify/runs/testmac-2026-11-09/`.
+  Processes. Copies in this Mac's `build/verify/runs/test-mac-2026-11-09/`.
 - Key status does not follow the panel: another app activated without a click (`open -a Finder`)
   or Settings opened over the panel with Command-comma takes key from the panel and leaves it on
   screen, while the window's occlusion state stays visible. A click outside closes it. Escape
   does nothing. Opening and closing through the status item (accessibility press and a real
   click), a click outside, the `Settings...` button and five rapid cycles matched occlusion and
   `tattle-ax status`.
-- On testmac a real Command-Tab and the administrator dialog, up and cancelled, leave the panel
+- On the test Mac a real Command-Tab and the administrator dialog, up and cancelled, leave the panel
   on screen and updating. Display sleep with the session locked and a move to a full-screen
   Space take it off screen; it comes back by itself, updating, on wake and on the move back.
-- Not driven: a real system sleep (testmac's is off), a swipe between ordinary desktops, and any
+- Not driven: a real system sleep (the test Mac's is off), a swipe between ordinary desktops, and any
   macOS before 26. The ten-second limit rests on `testAReadingLongAfterThePreviousHasNoCPU`.
   Nothing can force a missed occlusion change, so the re-read on attach and on becoming key is
   proven only not to disturb the paths above.

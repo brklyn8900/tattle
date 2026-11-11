@@ -215,40 +215,40 @@ Preconditions:
   gone (33 s measured), and the row counts it until then.
 - A refused command cannot be driven in the app: both private calls work on every macOS here.
   `testARefusedCommandNeverRunsAndLeavesNoChild` covers the refusal on a suspended child.
-- Over plain ssh, `claude` reads `Not logged in` on testmac (seen 2026-11-08; inferred: the login
-  keychain is not open to that session). `hc exec --on testmac` and testmac's GUI session are
+- Over plain ssh, `claude` reads `Not logged in` on the test Mac (seen 2026-11-08; inferred: the login
+  keychain is not open to that session). `hc exec --on <test-mac>` and the test Mac's GUI session are
   signed in.
 - To see what the CLI sends, set `ANTHROPIC_BASE_URL` to a local relay that writes the request
   body and never the headers (they hold the token). A relay that answers 400 sends nothing on.
 - A file in Documents, Desktop or Downloads makes macOS ask (`"TattleDev" would like to access
   files in your Documents folder`) the first time an answer is stored or looked up for it,
   and the detail waits for the reply. Nothing is read just by opening a detail with no answer
-  kept for that file. Seen 2026-11-08 on testmac, run `2026-11-08T123311`; `tccutil reset
+  kept for that file. Seen 2026-11-08 on the test Mac, run `2026-11-08T123311`; `tccutil reset
   SystemPolicyDocumentsFolder <bundle id>` puts it back.
 - Proven 2026-10-27, run `2026-10-27T105938` (release build): shipped rule, Apple gate,
   ask and redaction.
-- Shipped rule proven again 2026-11-07 on testmac (macOS 26.7.1, where Apple's binaries are
+- Shipped rule proven again 2026-11-07 on the test Mac (macOS 26.7.1, where Apple's binaries are
   signed `macOS Software Signing`), dev copy at `879a2ca`, run `2026-11-07T180918`: the
   `5353, mDNSResponder` detail has `Signed by Apple` and the rule; again at `32a5508`, run
   `2026-11-07T195705`.
-- An answer going with its code, and one nothing can keep, proven 2026-11-08 on testmac, dev
-  copy at `ebf12ca`, run `2026-11-08T104732`, copied to `build/verify/runs/testmac-2026-11-08/`.
+- An answer going with its code, and one nothing can keep, proven 2026-11-08 on the test Mac, dev
+  copy at `ebf12ca`, run `2026-11-08T104732`, copied to `build/verify/runs/test-mac-2026-11-08/`.
 - The `claude` rule proven 2026-11-08 on the development Mac, where a real session runs,
   dev copy at `ebf12ca`: the script under the name in run `2026-11-08T104814`, Anthropic's
   program in run `2026-11-08T105317`.
 - One version of the code, a file that cannot be read and a host's prompt proven 2026-11-08 on
-  testmac, dev copy at `969e6d3`, run `2026-11-08T122412`; a launch item through a wrapper in run
+  the test Mac, dev copy at `969e6d3`, run `2026-11-08T122412`; a launch item through a wrapper in run
   `2026-11-08T122957`; an unkept answer going with its code in run `2026-11-08T123157`. All
-  copied to `build/verify/runs/testmac-2026-11-08/`.
+  copied to `build/verify/runs/test-mac-2026-11-08/`.
 - A program replaced under its old date, one of Apple's programs by its line and a line that
-  does not say where its code is proven 2026-11-08 on testmac, dev copy at `0749baf`, run
-  `2026-11-08T141229`, copied to `build/verify/runs/testmac-2026-11-08/`.
+  does not say where its code is proven 2026-11-08 on the test Mac, dev copy at `0749baf`, run
+  `2026-11-08T141229`, copied to `build/verify/runs/test-mac-2026-11-08/`.
 - The command holding none of Tattle's grants and the `~/.zshrc` line in Settings proven
   2026-11-08 on the development Mac, where the dev copy has Full Disk Access: before the fix at
   `01de0ee`, run `2026-11-08T170503`; after it at `ab06f99`, run `2026-11-08T170728`.
-- The Claude Code preset proven 2026-11-08 on testmac, dev copy at `ab06f99`: one real request
+- The Claude Code preset proven 2026-11-08 on the test Mac, dev copy at `ab06f99`: one real request
   in run `2026-11-08T170858`, Settings in run `2026-11-08T171037`, both copied to
-  `build/verify/runs/testmac-2026-11-08/`. Packet capture is off there, so the row was the
+  `build/verify/runs/test-mac-2026-11-08/`. Packet capture is off there, so the row was the
   connection's address.
 - The suspended start and the one-shot migration proven 2026-11-08 on the development Mac,
   signed dev copy at `c59806d`, on a database holding the earlier preset: the migrated row,
@@ -257,14 +257,14 @@ Preconditions:
   protected folder, with Startup listing login items, in run `2026-11-08T174453`.
 - What the prompt keeps back proven 2026-11-08 at `781f6a3`: a process's title and capitals, the
   login and the Mac's name as a label's author, a script named for its author, another account's
-  folder, a mounted disk's name and edited instructions on testmac, run `2026-11-08T185357`; a
+  folder, a mounted disk's name and edited instructions on the test Mac, run `2026-11-08T185357`; a
   `users/` folder inside a path and the default instructions in run `2026-11-08T185610`, both
-  copied to `build/verify/runs/testmac-2026-11-08/`; a one-letter login and the apostrophe on the
+  copied to `build/verify/runs/test-mac-2026-11-08/`; a one-letter login and the apostrophe on the
   development Mac, the only one with either, run `2026-11-08T185833`. A host's whole-name rule, a
   tailnet name, an address spelled with hyphens and a public bound address rest on unit tests:
   `connect` reaches only its approved hosts, and neither Mac holds a public address.
-- The shared path and host rules proven 2026-11-08 on testmac at `fe3956b`, run
-  `2026-11-08T201245`, its prompts copied with it to `build/verify/runs/testmac-2026-11-08/`: the
+- The shared path and host rules proven 2026-11-08 on the test Mac at `fe3956b`, run
+  `2026-11-08T201245`, its prompts copied with it to `build/verify/runs/test-mac-2026-11-08/`: the
   firmlink, an unmounted disk, a mounted disk named for the login, a project's `users/<login>`
   folder, a disk's name in a title, the domain endings, script extensions and edited
   instructions. A numbered login item id, a host's edges next to `_` and a mounted disk's name

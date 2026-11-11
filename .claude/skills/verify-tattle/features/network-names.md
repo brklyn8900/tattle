@@ -152,7 +152,7 @@ Preconditions:
   and without `localPort in (<the ports>)`. `firstSeen` is UTC. An `nc` outlives the reading
   that names it, so this cannot show an owner lost by a process that exits while a reading
   resolves it: that rests on `testOwnersKeepTheirLinesWhenTheyExitWhileTheReadingResolvesThem`.
-- **Incoming connections and a Tailscale peer.** On testmac, with `IP` its `inet 100.` address:
+- **Incoming connections and a Tailscale peer.** On the test Mac, with `IP` its `inet 100.` address:
   `sleep 1700 | nc -lk $IP 18091 > /dev/null &` and `sleep 1700 | nc $IP 18091 > /dev/null &`,
   from a script in a terminal app. `-k` keeps the listener, which is what tells the accepted
   socket. Press the terminal's row: `$IP:<port>, incoming, TCP · connected · this network ·
@@ -171,14 +171,14 @@ Preconditions:
   (`testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode` in `NetworkSnapshotTests`).
 - A foreign executable inside a copy of a publisher's bundle rests on the unit tests
   (`testAConnectionIsSignedByItsOwnProcessAndItsAppApart`,
-  `testAFileInABundleItsSignerDidNotSignTakesAwayTheRowsIdentity`): on testmac a new binary put
+  `testAFileInABundleItsSignerDidNotSignTakesAwayTheRowsIdentity`): on the test Mac a new binary put
   in a copy of `Calculator.app`, unsigned or ad hoc, sat held at launch (state `S`, no CPU,
   and a program that only returns never returned), with macOS's `"Calculator" is damaged and
   can't be opened` alert on the screen, so it never opened a connection to read.
   One put in a bundle built on the machine runs, which is the recipe above.
-- Incoming connections and the Tailscale peer's reach proven 2026-11-08 on testmac, run
+- Incoming connections and the Tailscale peer's reach proven 2026-11-08 on the test Mac, run
   `2026-11-08T210232` (commit `c969c4d`); copy in the development Mac's
-  `build/verify/runs/testmac-2026-11-08/`. `from the internet` needs a public peer, so it rests
+  `build/verify/runs/test-mac-2026-11-08/`. `from the internet` needs a public peer, so it rests
   on the unit test (`testAnInboundConnectionReadsAsInbound`).
 - Direction proven 2026-11-08 on the development Mac with the broker. Run `2026-11-08T222028`
   (commit `97096f3`): a seen opening, `Ghostty to example.com`, `direction` `outbound`. Run
@@ -189,10 +189,10 @@ Preconditions:
   `rapportd from 192.168.1.20:55421`, on a high port, among 128 sockets its listener claims.
   Listeners by family and a seen opening arriving after the row rest on unit tests. The `nc`
   pair over Tailscale does not connect on the development Mac.
-- A host's prompt with no direction proven 2026-11-08 on testmac, run `2026-11-08T232714`
+- A host's prompt with no direction proven 2026-11-08 on the test Mac, run `2026-11-08T232714`
   (commit `25c7e20`): `Ghostty to 100.x.y.z:18091` shows `Destination` and `First contact`,
   and the recorded prompt's `facts` are `Protocol`, `Reach` and `Since`. Copy in the development
-  Mac's `build/verify/runs/testmac-2026-11-08/`. An opening seen while a reading resolves owners
+  Mac's `build/verify/runs/test-mac-2026-11-08/`. An opening seen while a reading resolves owners
   rests on the unit test (`testAnOpeningSeenWhileAReadingResolvesOwnersReachesTheRowAndItsHistory`).
 - The two unnamed rows look alike in the list; tell them apart by the `Process nc (pid
   ...)` fact against the pids `connect` printed.
@@ -216,7 +216,7 @@ Preconditions:
   cannot be sent to the Mac on demand: the refusals rest on
   `testDNSRefusesAReplyWithMoreThanOneQuestion`, `testDNSRefusesANameLongerThan255Bytes` and
   `testDNSRefusesAReplyThatWalksTooManyLabels`, full-sized replies on
-  `testDNSReadsFullRepliesWithCompressedNames`. Parse times on testmac, release build, median of
+  `testDNSReadsFullRepliesWithCompressedNames`. Parse times on the test Mac, release build, median of
   7 alternating runs a side against `6036ba4`: the fuzz review's 121-question reply 2.45 to
   0.0001 ms; 99 answers pointing at one 127-label name 1.26 to 0.095 ms; 99 answers pointing at
   one 255-byte name of four labels 0.26 ms on both, since the bound counts labels and pointers,
@@ -246,7 +246,7 @@ Preconditions:
   holding 2,547 and 26,873 rows, against 20 of 213 ms for 22 outcomes to light addresses, most
   of it GRDB preparing the statement; `open` 108 ms for 57 rows against 13 for 23, `close` 64
   for 35 against 22 for 32, `fsync` on the main thread 43 ms against none.
-- History write volume measured 2026-11-10 on testmac, dev copy with its own data and no broker,
+- History write volume measured 2026-11-10 on the test Mac, dev copy with its own data and no broker,
   panel never opened, 90 minutes each after 2 minutes' warm-up: `c056427` 573 row changes
   (opens and closes), `77d7315` (the index with `id`) 665. Logical bytes written 41.85 against
   18.02 MB, 0.073 against 0.027 MB a row change (15-minute slices 0.067 to 0.080 and 0.023 to
@@ -270,14 +270,14 @@ Preconditions:
   opened, 26 new connections, summary in the development Mac's
   `build/verify/runs/2026-11-10T004954-trace/`: no `ProcessTable.list`; `ProcessTable.records`
   46 ms in all, 34 of them the kernel's table; `ProcessTable.lines` 3 ms; `URL(fileURLWithPath:)`
-  only under `AppBundle.name`, 2 ms. Its one `pid <n>` row was `ssh` to testmac's port 22, as were
+  only under `AppBundle.name`, 2 ms. Its one `pid <n>` row was `ssh` to the test Mac's port 22, as were
   all six in the trace of `9b482ba`. The short-lived recipe above, five alternating 120-second windows per side:
   driven connections with no owner 1 of 150 at `7744536` and 0 of 149 at `ba0432b` (one `nc`
   exited with an error and left no row); all new rows with no owner 10 of 303 and 9 of 273,
   the rest TCP to the router's port 53, one per window as the driver's `dig +tcp` is, and to
-  testmac's port 22. That shows no difference for processes that live 47 ms or more, and nothing
+  the test Mac's port 22. That shows no difference for processes that live 47 ms or more, and nothing
   about ones that exit sooner.
-- Owners of processes that exit within a reading, simulated on testmac (debug build, not the app):
+- Owners of processes that exit within a reading, simulated on the test Mac (debug build, not the app):
   a helper connects to a loopback listener and exits 26 to 42 ms later; 20 ms after the accept
   one reading is taken, with the helper's socket rewritten to a private address. The simulation
   is `QuickExitSimulationTests`, which runs only when `TATTLE_SIM_HELPER` names the helper built
@@ -309,15 +309,15 @@ Preconditions:
   first environment string when it had none, and that string joined its arguments. The parser
   now skips the padding by its length; a real process with an empty `argv[0]` rests on
   `testAnEmptyFirstArgumentIsReadAsOne`, not yet on a run in the app.
-- A connection's own signer proven 2026-11-08 on testmac, dev copy at `ebf12ca`, run
-  `2026-11-08T105543`, copied to `build/verify/runs/testmac-2026-11-08/`.
-- The relay and OHTTP rules read from the `rule` table at `969e6d3` on testmac, run
+- A connection's own signer proven 2026-11-08 on the test Mac, dev copy at `ebf12ca`, run
+  `2026-11-08T105543`, copied to `build/verify/runs/test-mac-2026-11-08/`.
+- The relay and OHTTP rules read from the `rule` table at `969e6d3` on the test Mac, run
   `2026-11-08T122412`; no traffic to those hosts can be made on demand.
 - A row whose connections differ, a file put in a bundle and a process that replaces itself
-  proven 2026-11-08 on testmac, dev copy at `969e6d3`, run `2026-11-08T122412`; the bundle's own
-  executable in run `2026-11-08T122957`. Copied to `build/verify/runs/testmac-2026-11-08/`.
-- A process whose new program deletes its file proven 2026-11-08 on testmac, dev copy at
-  `0749baf`, run `2026-11-08T141229`, copied to `build/verify/runs/testmac-2026-11-08/`.
+  proven 2026-11-08 on the test Mac, dev copy at `969e6d3`, run `2026-11-08T122412`; the bundle's own
+  executable in run `2026-11-08T122957`. Copied to `build/verify/runs/test-mac-2026-11-08/`.
+- A process whose new program deletes its file proven 2026-11-08 on the test Mac, dev copy at
+  `0749baf`, run `2026-11-08T141229`, copied to `build/verify/runs/test-mac-2026-11-08/`.
 - The three known connections after the review fixes of 2026-11-10, proven that day on the
   development Mac with the broker, dev copy at `e32cc9d`, run `2026-11-10T192212`: `capturing on
   en0, link type 1, through the broker`; `nc | Herdr Core | example.com | http`, `none:not-handshake`

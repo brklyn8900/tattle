@@ -186,7 +186,7 @@ as root.
   the process dies there (signal 11). Attaching to a running build works, since the debugger
   sets its ports after the drop. The dev copy and the release build are hardened without
   get-task-allow, so lldb cannot debug them either way. Instruments' Time Profiler records
-  every build, launched or attached. Checked on 2026-11-08 on testmac.
+  every build, launched or attached. Checked on 2026-11-08 on the test Mac.
 - The sniffer code is the same as planned. It receives a descriptor instead of opening
   the file.
 - The broker is a second signed artifact to build, install and update. It is small
