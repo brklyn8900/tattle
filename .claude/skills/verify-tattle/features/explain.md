@@ -21,6 +21,10 @@ connectors.
 
 ## Sub-features
 
+- `ex-three`: the explanation reads as three headed answers. `What is this` is the rule's
+  purpose. `Why it is probably here` is the app's sentence from the facts, then the rule's
+  `why`. `Should I care` is `Probably not.`, `Worth a look.` or `Yes.` from the risk (none
+  when the rule has no risk or its confidence is low), then the rule's `care`.
 - `ex-rule`: a shipped or stored rule shown without asking.
 - `ex-apple-gate`: an impostor named after one of Apple's programs gets no shipped rule.
 - `ex-ask`: `Explain` runs the provider and shows its answer.
@@ -68,9 +72,20 @@ Preconditions:
   (it holds quotes), or delete the row if the saved file is empty, and delete the rules the
   run stored: `purpose = 'fake answer for the verify run'`.
 
-- **Shipped rule.** `$V tab Ports`, `$V ax press --prefix "5353, mDNSResponder"`: the
-  detail ends in `The macOS name resolver: ...` and `Tattle's rules · risk low · confidence
-  high`.
+- **Shipped rule.** `$V tab Ports`, `$V ax press --prefix "5353, mDNSResponder"`: `What
+  is this` reads `The macOS name resolver: ...`, then the provenance line `Tattle's rules ·
+  risk low · confidence high`.
+- **Three answers.** `$V tab Ports`, `$V ax wait "5353, mDNSResponder" 10`, then press it:
+  `Why it is probably here` reads `mDNSResponder listens on it, and anything on your network
+  can connect. Every Mac runs it: ...` and `Should I care` reads `Probably not. It is part of
+  macOS.` A `connect named` connection (Network, `<terminal>,`, then `example.com`) reads `No
+  explanation yet.`, `Why it is probably here` `<terminal> opened it.` and no `Should I care`;
+  the app page above it reads `It is running and has N connections open.` After `Explain`
+  with the fake provider: `<terminal> opened it. fake why for the verify run` and `fake care
+  for the verify run`, with no opening words, since its confidence is low. In Startup, a login
+  item switched off in System Settings (`· off ·`) reads `It is switched off in System Settings,
+  so it does not run.`; in Processes, an app's member whose parent is launchd reads `Its parent
+  is launchd, and it is part of <app>.`
 - **Apple gate.** Start impostors the run owns, then open each detail; each reads `No
   explanation yet.`:
   - a listener of your own built as `mDNSResponder` (Ports, row `<port>, mDNSResponder`);
@@ -167,8 +182,8 @@ Preconditions:
   once the host has a name.
 - **The shipped `claude` rule.** Where a real Claude Code session runs, open the row holding
   it (`Herdr Core,` here), then `--prefix "claude, pid <pid>"` (`claude, pid N · Anthropic
-  PBC`): the detail ends in `Claude Code, Anthropic's coding agent ...` and `Tattle's rules ·
-  risk low · confidence high`. A script under the name, `/bin/sh <dir>/claude` started from
+  PBC`): `What is this` reads `Claude Code, Anthropic's coding agent ...`, then the provenance
+  line `Tattle's rules · risk low · confidence high`. A script under the name, `/bin/sh <dir>/claude` started from
   a terminal app (its member row is `claude, pid N · bash script`), has `Signed by script,
   not signed` and `No explanation yet.`
 - **The command holds none of Tattle's grants.** On a copy with Full Disk Access (the dev copy
@@ -194,6 +209,19 @@ Preconditions:
   work from a login shell`.
 
 ## Gotchas
+
+- A database from before `why` and `care` has no columns for them. The copy still shows the
+  rules it holds, but cannot write: the updated shipped rules never load (the pages keep the old
+  text, with no `why` or `care`, and the log says the seed was skipped on every launch), and
+  `Explain` and `Confirm` fail with `no column named why`. Doctor still reads `ok`, since it
+  checks migration names only. Launch with `--fresh`. The provider is read at launch, so to give the fresh
+  database one, write `provider.command` during the run, `cleanup`, put the run's
+  `fresh-data` in place of the data folder, and launch again.
+- Three answers proven 2026-11-12 on the development Mac, dev copy at `7ce4c5f`, run
+  `2026-11-12T103328`: the shipped rule, a switched-off and a running startup item, a process
+  group, a member whose parent is launchd, and the fake provider's answer, with the prompt's
+  contract asking for risk before `care`. A connection and its app page before any answer were
+  proven 2026-11-11 in run `2026-11-11T160557`, on code these changes left alone there.
 
 - Run each journey in one Bash call, from `$V tab` to the last read: between calls the
   panel has often closed (what closes it: [panel](panel.md)).
