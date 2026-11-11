@@ -158,8 +158,9 @@ Resolution order for any item:
    regardless.
 2. **Knowledge base**: one SQLite table of rules. A rule has a `kind` (host, process, port,
    launch item), a `match` that is either an exact item or a glob pattern
-   (`p*-caldav.icloud.com`, `com.apple.*`), `owner`, `purpose`, `category`, `risk`,
-   `confidence`, `source`, `identity` (what tells the code the rule was given for from other
+   (`p*-caldav.icloud.com`, `com.apple.*`), `owner`, `purpose` (what the item is), `why`
+   (why such an item is probably on a Mac), `care` (the reason the owner should care or not),
+   `category`, `risk`, `confidence`, `source`, `identity` (what tells the code the rule was given for from other
    code of that name, empty for a rule about no one program), and `confirmed` (a timestamp,
    null until the user confirms). A model's answer about anything but a host, and a shipped
    rule that names a publisher for a process or a port's listener, answers only for its
@@ -180,6 +181,16 @@ Resolution order for any item:
    `llm` so provenance is never lost. The schema lets the model propose a pattern, and
    nothing uses it yet: a rule becomes a pattern only when the user promotes it at
    confirmation, and no screen offers that. Unconfirmed LLM rules expire after 45 days.
+
+Every detail page answers three questions. **What is this** is the rule's `purpose`. **Why
+it is probably here** opens with a sentence the app builds from the facts (who opened the
+connection, who started the process, who listens on the port, when macOS runs the startup
+item), then the rule's `why`. A rule shown on every connection to a host never says which
+program on this Mac opened it; the app's sentence does. **Should I care** opens with words
+the app picks from the rule's `risk` (low: "Probably not.", medium: "Worth a look.", high:
+"Yes."), left out when the rule has no risk or its confidence is low, then the rule's
+`care`. The app picks the words so they never disagree with the risk shown under them. A
+model answer without `why` or `care` is kept; that part shows only the app's words.
 
 The seed knowledge base ships in the repo as data files, one per source
 ([design](design.md#knowledge-base)). Contributions are pull requests against those files.
