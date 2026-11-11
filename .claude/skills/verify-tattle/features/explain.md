@@ -82,7 +82,9 @@ Preconditions:
   listener bound to this Mac's own en0 address and a client connecting to it. The row
   shows under `<terminal>`, `this network`. Press the row, `Explain`, `$V ax wait "fake answer"`.
   The recorded prompt's data line has `"item":{"key":"<private-ip>","kind":"host"}` and
-  no address; the detail reads `Model answer, unconfirmed`.
+  no address; the detail reads `Model answer, unconfirmed` with no `Confirm`, and `$V db
+  "select count(*) from rule where pattern = '<address>'"` is 0: the model was not shown the
+  address, so its answer is not kept for it.
 - **What the prompt keeps back.** With the fake provider, start processes under a title
   (`nohup zsh -c "exec -a '<title>' /bin/sleep 900" &` from a script in Ghostty; Processes,
   row `Ghostty,`, then the title) and add plists, not loaded, to `~/Library/LaunchAgents`
