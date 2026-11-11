@@ -17,8 +17,8 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
 - `net-named`: a connection detail with `Destination`, `Address`, and `Name from` (for
   example `the HTTP request`).
 - `net-unnamed`: a connection detail with `No name` and the reason: `the connection did
-  not start with a TLS or HTTP handshake`, `the connection sent nothing in its first 20
-  seconds`, `part of the handshake was missed`, `the handshake carried no server name`,
+  not start with a TLS or HTTP handshake`, `no complete handshake came in the connection's
+  first 20 seconds`, `part of the handshake was missed`, `the handshake carried no server name`,
   `the QUIC handshake could not be read`, `a QUIC version Tattle cannot read`.
 - `net-signers`: a connection's detail names who signed the process that made it (`Signed
   by`), and the app it is filed under apart when that differs (`App signed by`, `App team`).
@@ -79,7 +79,7 @@ Preconditions:
   row with `$V ax dump` to find it), `$V save garbage-detail`. Facts: `No name
   the connection did not start with a TLS or HTTP handshake`.
 - **Unnamed, timeout.** The same for the silent connection, `$V save silent-detail`. Facts:
-  `No name the connection sent nothing in its first 20 seconds`.
+  `No name no complete handshake came in the connection's first 20 seconds`.
 - **History.** `$V db "select localPort, pid, processName, remoteAddress, remotePort,
   name, nameSource from connection where localPort in (<three ports>)"`: `example.com |
   http`, `| none:not-handshake`, `| none:timeout`.

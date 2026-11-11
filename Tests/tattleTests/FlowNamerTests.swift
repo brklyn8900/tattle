@@ -265,7 +265,7 @@ final class FlowNamerTests: XCTestCase {
 
     /// The DNS fallback is a stand-in, not an answer: a handshake that comes after it (late,
     /// as after a wake) names the flow from the wire, and the give-up timeout does not
-    /// replace the DNS name with "sent nothing".
+    /// replace the DNS name with "no complete handshake".
     func testAWireNameAfterTheDNSFallbackReplacesIt() {
         var n = namer()
         _ = n.observe(dnsReply, at: t0)

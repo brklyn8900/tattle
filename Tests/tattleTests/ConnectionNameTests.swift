@@ -310,7 +310,7 @@ final class ConnectionNameTests: XCTestCase {
         let silent = LiveConnection(connection: connection("40.82.255.130", port: 80), owner: owner, isNew: false, outcome: .unnamed(.timeout))
         XCTAssertNil(silent.name)
         XCTAssertEqual(silent.title, "40.82.255.130:80")
-        XCTAssertEqual(silent.facts(now: t0).first { $0.name == "No name" }?.value, "the connection sent nothing in its first 20 seconds")
+        XCTAssertEqual(silent.facts(now: t0).first { $0.name == "No name" }?.value, "no complete handshake came in the connection's first 20 seconds")
         XCTAssertNil(LiveConnection(connection: connection("1.1.1.1"), owner: owner, isNew: false).facts(now: t0).first { $0.name == "No name" }, "nothing to say until the sniffer gives up")
 
         for reason in [FlowEvent.Reason.notHandshake, .gap, .noServerName, .quic(.unsupportedVersion), .quic(.decryptFailed), .timeout, .evicted, .captureEnded] {

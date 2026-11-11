@@ -98,7 +98,7 @@ struct FlowEvent: Equatable, Sendable {
             case .noServerName: "the handshake carried no server name"
             case .quic(.unsupportedVersion): "a QUIC version Tattle cannot read"
             case .quic: "the QUIC handshake could not be read"
-            case .timeout: "the connection sent nothing in its first \(Int(FlowNamer.finalizeAfter)) seconds"
+            case .timeout: "no complete handshake came in the connection's first \(Int(FlowNamer.finalizeAfter)) seconds"
             case .evicted: "too many connections opened at once for Tattle to follow this one"
             case .captureEnded: "the packet capture stopped or restarted before this connection's handshake was read"
             }
