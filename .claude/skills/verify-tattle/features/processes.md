@@ -102,7 +102,7 @@ Preconditions:
   pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
 - **Marker process.** Start one the run owns: `nohup /bin/sleep 7777 >/dev/null 2>&1 &`
   and note its pid. It is filed under the app responsible for this terminal: press
-  `--prefix "iTerm,"`. Members are listed in process-tree order, so the marker is far
+  `--prefix "<terminal>,"`. Members are listed in process-tree order, so the marker is far
   down: repeat `$V ax scroll down` until `$V ax text` has `sleep, pid <pid> · ...` (20
   pages on 2026-10-25), stop when it prints `at the end`. Press `--prefix "sleep, pid
   <pid> "`, `$V ax wait "Quit sleep"`, `$V save marker-detail`: `Process sleep (pid
@@ -132,8 +132,8 @@ Preconditions:
 
 ## Gotchas
 
-- Quit any process other than the run's own marker only with the user's yes.
-- The group's own detail has `Quit iTerm` and `Force Quit...` for the whole app, here the
+- Quit only the run's own marker (SKILL.md, Stop and ask).
+- The group's own detail has `Quit <terminal>` and `Force Quit...` for the whole app, here the
   terminal running the session. Press only the exact `Quit sleep` label inside the
   marker's detail, never a `Quit` prefix.
 - The list refreshes every 3 s; wait for labels, not fixed sleeps.
@@ -189,6 +189,3 @@ Preconditions:
   pressing one.
 - On the development Mac the panel closed partway through two runs (`2026-11-07T224046`,
   `2026-11-07T224152`) when something else took focus; retrying each reading got through.
-- testmac's display sleeps after a minute idle, which closes the panel and sets the
-  session's `CGSSessionScreenIsLocked` with no password lock; hold `caffeinate -di` for
-  the length of a run.

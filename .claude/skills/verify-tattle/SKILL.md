@@ -1,6 +1,6 @@
 ---
 name: verify-tattle
-description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes) instead of asking the user to click through it, and before calling a Tattle change fixed.
+description: Verify Tattle (~/dev/tattle), the macOS menu bar app, in the real running app - launch the dev copy (build/TattleDev.app) from the repo's dev target, or the release build (build/Tattle.app) when the proof needs the build that ships, drive its panel through the accessibility API, and prove behaviour from the panel, the copy's history database and the app's log. Use when a Tattle change needs proof in the app (Network names and unnamed reasons, packet access, Startup, Processes, Ports, Resources, Explain, the panel) instead of asking the user to click through it, and before calling a Tattle change fixed.
 ---
 
 # Verify Tattle
@@ -37,7 +37,6 @@ A proof that needs a signed build runs on the development Mac: testmac has no si
   a background job started through `hc exec` ends with the call.
 - Answer a dialog on testmac through the accessibility API. `osascript` with System Events from
   a script raises macOS's automation prompt on its screen and then times out.
-- testmac has no signing identity, so both copies build ad hoc there.
 - Copy the run folder back to this Mac's `build/verify/runs/testmac-<date>/`.
 
 All commands run from the repo root through one helper:
@@ -92,7 +91,7 @@ value; `ax dump` shows both.
 
     $V tab Network                    # opens the panel, backs out of any detail, picks the tab
     $V ax press "Packet access"       # exact label
-    $V ax press --prefix "iTerm,"     # rows read "<name>, <subtitle>, <count>"; match the start
+    $V ax press --prefix "Safari,"    # rows read "<name>, <subtitle>, <count>"; match the start
     $V ax press Back                  # the detail's back button
     $V ax wait "Name from" 10         # waits for any label containing the text
     $V ax scroll down                 # long lists only expose rows on screen
@@ -132,9 +131,9 @@ Each run writes to `build/verify/runs/<run-id>/`, which cleanup never deletes:
   Screen Recording permission for the terminal app; without it `save` warns and the
   `.txt` and `.ax.txt` files are the evidence.
 - `$V db "<sql>"`: read-only query on the run's copy's history database, appended to `db.txt`.
-  Tables: `connection` (one row per connection: `localPort`, `pid`, `processName`,
-  `remoteAddress`, `remotePort`, `scope`, `name`, `nameSource`, `firstSeen`, `ended`),
-  `rule`, `setting`, `grdb_migrations`.
+  Tables: `connection` (one row per connection: `proto`, `localPort`, `pid`, `processName`,
+  `appName`, `signer`, `appSigner`, `remoteAddress`, `remotePort`, `scope`, `direction`,
+  `name`, `nameSource`, `firstSeen`, `ended`), `rule`, `setting`, `grdb_migrations`.
 - `log.txt`: the copy's subsystem's log at debug level for the whole run; `$V log "<regex>"`
   greps it.
 - `previous-data/` during a `--fresh` run; after cleanup `fresh-data/` holds the run's
@@ -162,7 +161,7 @@ Proof standards:
 - **Changes outside the run's copy.** Startup's `Load`, `Unload` and `Remove`, and
   Processes' `Quit` and `Force Quit`, act on the user's real system. Use them only on
   something the run created, or with their yes.
-- **Outward traffic** other than `connect`'s approved example.com cases.
+- **Outward traffic** other than `connect`'s approved cases (example.com:80 and github.com:22).
 
 ## Cleanup
 
@@ -185,9 +184,11 @@ build/Tattle.app` starts it again.
 - The panel keeps its navigation while closed; `$V tab` backs out first.
 - The sniffer skips local-network destinations (`Sources/tattle/Sniffer/FlowNamer.swift`),
   so a connection to the router or another LAN device never gets a name or a reason.
-- A connection is filed under its responsible app: `nc` started from this terminal is
-  filed under `iTerm`, with `nc` in the connection row's subtitle. A process that exits
-  before Tattle reads it shows as `pid <n>`.
+- A connection is filed under its responsible app: `nc` started by `connect` is filed under
+  the terminal app the command ran in (`Herdr Core` for a session on the development Mac,
+  `Ghostty` for a script started there), with `nc` in the connection row's subtitle. The
+  recipes write that app as `<terminal>`. A process that exits before Tattle reads it shows
+  as `pid <n>`.
 - Packet access (the broker) is one launch daemon shared by the dev and release copies;
   removing it stops names in every copy running.
 - Each copy has its own permission grants. Without Full Disk Access the Startup tab

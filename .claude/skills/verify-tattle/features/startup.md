@@ -4,8 +4,8 @@ The Startup tab lists what starts on its own, grouped: `Open at login`, `Allowed
 background`, your agents (`~/Library/LaunchAgents`), agents for every user
 (`/Library/LaunchAgents`), daemons (`/Library/LaunchDaemons`), and `App extensions`, then
 one `Apple N system jobs` row. Each row says when it runs, its state (`running, pid N`,
-`not running`, `not loaded`, `disabled`, `empty file, nothing runs`, `could not be read`, `could not be
-listed`) and who signed it. A
+`not running`, `not running, last exit N`, `not loaded`, `disabled`, `on`, `off`, `empty file,
+nothing runs`, `could not be read`, `could not be listed`) and who signed it. A
 detail adds facts, an explanation, and controls.
 
 ## Sub-features
@@ -157,8 +157,8 @@ Preconditions:
 
 ## Gotchas
 
-- `Load` and `Unload` change the user's real launchd state: only with their yes, or on an agent
-  the run created and removes again.
+- `Load` and `Unload` only on an agent the run created and removes again (SKILL.md, Stop and
+  ask).
 - The dev copy has its own Full Disk Access grant, separate from the release app's;
   granted on the development Mac 2026-10-25 (run `2026-10-25T223546` listed the login items). On
   any other Mac (testmac) it has none until granted there.

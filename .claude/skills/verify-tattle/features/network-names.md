@@ -19,7 +19,9 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
 - `net-unnamed`: a connection detail with `No name` and the reason: `the connection did
   not start with a TLS or HTTP handshake`, `no complete handshake came in the connection's
   first 20 seconds`, `part of the handshake was missed`, `the handshake carried no server name`,
-  `the QUIC handshake could not be read`, `a QUIC version Tattle cannot read`.
+  `the QUIC handshake could not be read`, `a QUIC version Tattle cannot read`, `too many
+  connections opened at once for Tattle to follow this one`, `the packet capture stopped or
+  restarted before this connection's handshake was read`.
 - `net-signers`: a connection's detail names who signed the process that made it (`Signed
   by`), and the app it is filed under apart when that differs (`App signed by`, `App team`).
   A script reads `Signed by script, not signed`, with `Runs with` and `Interpreter signed
@@ -65,15 +67,15 @@ Preconditions:
   silent`, each printing its local port. Wait 25 s so the silent one passes the 20 s
   timeout.
 - **List.** Run `$V tab Network` and `$V save network-list`. The heading reads `N open
-  connections from M apps`; the sentence includes `K named`; an `iTerm, ...` row is there
-  (the `nc` connections file under the terminal that started them).
-- **Group.** Run `$V ax press --prefix "iTerm,"` and `$V ax text`. Connection rows read
+  connections from M apps`; the sentence includes `K named`; a `<terminal>, ...` row is there
+  (the `nc` connections file under the terminal app that started them; SKILL.md, Gotchas).
+- **Group.** Run `$V ax press --prefix "<terminal>,"` and `$V ax text`. Connection rows read
   `example.com, new, <ip>:80 · TCP · connected · nc, ...` for the named one and
   `<github ip>:22, new, TCP · connected · nc, ...` for the other two. Use `$V ax scroll
   down` if they are below the fold.
 - **Named.** Press `--prefix "example.com, "`, `$V ax wait "Name from"`, `$V save
   named-detail`. Facts: `Destination example.com`, `Name from the HTTP request`, `Process
-  nc (pid <pid>)`, `App iTerm`.
+  nc (pid <pid>)`, `App <terminal>`.
 - **Unnamed, not a handshake.** `Back`, press `--prefix "<github ip>:22, "`, check the
   `Process nc (pid ...)` fact against the garbage pid (else `Back` and open the other
   row with `$V ax dump` to find it), `$V save garbage-detail`. Facts: `No name
@@ -83,7 +85,7 @@ Preconditions:
 - **History.** `$V db "select localPort, pid, processName, remoteAddress, remotePort,
   name, nameSource from connection where localPort in (<three ports>)"`: `example.com |
   http`, `| none:not-handshake`, `| none:timeout`.
-- **Log.** `$V log "<port1>|<port2>|<port3>"`: `no name for tcp/<port>><ip>:80:
+- **Log.** `$V log "<port1>|<port2>|<port3>"`: `no name for tcp/<port>><ip>:22:
   notHandshake` and `...: timeout` lines.
 - **History database.** doctor's migrations end in `v8-connection-flow-index`. `$V db "pragma
   journal_mode"`: `wal`, with `tattle.sqlite-wal` and `tattle.sqlite-shm` in the data folder.
@@ -200,15 +202,13 @@ Preconditions:
   silent connections after 3 s and 14 s, so the unnamed cases use GitHub's SSH port,
   which holds them about two minutes. Time an open connection with `lsof -iTCP:<port>
   -sTCP:ESTABLISHED`, not with how long `nc` runs.
-- The sniffer skips local-network destinations; a connection to the router never gets a
-  name or a reason.
 - The sniffer's DNS fallback names a connection from a UDP DNS reply it captured for
   that address in the last hour (the newest 4096 answers at most), if one of the Mac's resolvers sent it to this Mac and the
   address's record is for the question name or a CNAME target reached from it. A reply with
   more than one question, a name past 255 bytes, or more than 1,024 labels and pointers to
-  walk names nothing. `connect` looks example.com up over TCP so the fallback
-  cannot name the garbage and silent connections; looking it up any other way first (a
-  browser, `curl`, `nc example.com`) turns their outcome into `dns`.
+  walk names nothing. `connect` looks its host up over TCP so the fallback
+  cannot name the garbage and silent connections; looking github.com up any other way first (a
+  browser, `curl`, `ssh`) turns their outcome into `dns`.
 - DNS replies bounded, proven 2026-11-10 on the development Mac with the broker, dev copy at
   `64da45c`, run `2026-11-10T163829`: `nc` to example.com shows `Name from the HTTP request`,
   and with no traffic made for it an `ssh` to `140.82.113.3:22` was logged `notHandshake` and
@@ -282,9 +282,9 @@ Preconditions:
   one reading is taken, with the helper's socket rewritten to a private address. The simulation
   is `QuickExitSimulationTests`, which runs only when `TATTLE_SIM_HELPER` names the helper built
   from `Tests/quick-exit-helper.c`; compare two revisions in copies of each (`git archive`),
-  alternating which runs first. Main has no reading seam, so its side runs the same test with
-  main's reading (the socket table and the whole process list in one task, then `fold`) in place
-  of `poll()`. The reading by owner is not detectably worse than main's sweep. The runs, newest
+  alternating which runs first. Main had no reading seam at `7744536`, so its side ran the same
+  test with that commit's reading (the socket table and the whole process list in one task,
+  then `fold`) in place of `poll()`. The reading by owner is not detectably worse than that sweep. The runs, newest
   first, each against `7744536`:
   - 2026-11-10, `7d89bed`, 1,440 runs per side in twelve rounds alternating which ran first,
     counting apart the owners named without a path (read after the helper exited, by the

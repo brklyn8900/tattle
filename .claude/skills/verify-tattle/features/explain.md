@@ -57,9 +57,9 @@ Preconditions:
 - Open run; doctor all `ok`.
 - For `ex-ask` and `ex-redaction`, the run's copy uses the fake provider, so no prompt
   leaves the Mac. Before launch, save the copy's `provider.command` setting and point it
-  at `scripts/fake-provider` with a folder in the run directory:
+  at `scripts/fake-provider` with a prompts folder under `build/verify/`:
 
-      D="$HOME/Library/Application Support/Tattle/tattle.sqlite"   # Tattle Dev/ for the dev copy
+      D="$HOME/Library/Application Support/Tattle Dev/tattle.sqlite"   # Tattle/ for a --release run
       sqlite3 "$D" "select value from setting where key='provider.command'" > provider-command-before.txt
       sqlite3 "$D" "insert into setting (key, value) values ('provider.command', '$PWD/.claude/skills/verify-tattle/scripts/fake-provider $PWD/build/verify/prompts') on conflict (key) do update set value = excluded.value"
 
@@ -75,12 +75,12 @@ Preconditions:
   explanation yet.`:
   - a listener of your own built as `mDNSResponder` (Ports, row `<port>, mDNSResponder`);
   - `nohup zsh -c 'exec -a mDNSResponder /bin/sleep 900' &`, Apple-signed `/bin/sleep`
-    under the name (Processes, filed under iTerm, about 20 scroll pages down).
+    under the name (Processes, filed under `<terminal>`, about 20 scroll pages down).
   The real `mDNSResponder` (pid of `/usr/sbin/mDNSResponder`, under `macOS`) still shows
   the shipped rule.
 - **Ask and redaction.** Open a connection to a private address the run owns: a Python
   listener bound to this Mac's own en0 address and a client connecting to it. The row
-  shows under iTerm, `this network`. Press the row, `Explain`, `$V ax wait "fake answer"`.
+  shows under `<terminal>`, `this network`. Press the row, `Explain`, `$V ax wait "fake answer"`.
   The recorded prompt's data line has `"item":{"key":"<private-ip>","kind":"host"}` and
   no address; the detail reads `Model answer, unconfirmed`.
 - **What the prompt keeps back.** With the fake provider, start processes under a title
@@ -136,7 +136,7 @@ Preconditions:
   With a program of your own in place of the script, ad hoc signed, the identity is
   `ad-hoc:<hash>:<path>`; unsigned (Intel only), `unsigned:<path>:sha256:<hash>`. Stop it,
   replace the file with another build, start it again: `No explanation yet.`
-- **A file that cannot be read.** The same agent, then `chmod 000 <dir>/job2.sh`: `Explain`
+- **A file that cannot be read.** The same agent, then `chmod 000 <dir>/job.sh`: `Explain`
   shows the answer with no `Confirm`, and no rule is stored.
 - **A launch item through a wrapper.** A plist, not loaded, with `/usr/bin/env <dir>/good`.
   In Startup, press `Refresh`, then its row: `Explain`, `Confirm`; the identity is
@@ -197,8 +197,8 @@ Preconditions:
 
 ## Gotchas
 
-- Run each journey in one Bash call, from `$V tab` to the last read. The panel closes
-  when anything else takes focus, and between calls it often has.
+- Run each journey in one Bash call, from `$V tab` to the last read: between calls the
+  panel has often closed (what closes it: [panel](panel.md)).
 - A connection to this Mac's own LAN address is closed after about a minute (seen
   2026-10-27, cause unknown): open it in the same call that presses `Explain`.
 - Copies of `/bin/sleep` and `/usr/bin/nc` are killed at launch (exit 137); build your own

@@ -52,7 +52,7 @@ if args.first == "trusted" {
     print(AXIsProcessTrusted() ? "trusted" : "not trusted")
     exit(AXIsProcessTrusted() ? 0 : 1)
 }
-guard args.count >= 2, let pid = pid_t(args[0]) else { fail("usage: tattle-ax <pid> open|close|frame|dump|text|press|wait|scroll ...") }
+guard args.count >= 2, let pid = pid_t(args[0]) else { fail("usage: tattle-ax <pid> open|close|status|frame|dump|text|press|wait|scroll|shot ...") }
 guard AXIsProcessTrusted() else { fail("this terminal has no Accessibility permission (System Settings, Privacy & Security, Accessibility)") }
 let app = AXUIElementCreateApplication(pid)
 

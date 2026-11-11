@@ -5,7 +5,7 @@
 #
 #   tattle-verify launch [--release] [--fresh] [--replace]
 #   tattle-verify doctor
-#   tattle-verify ax <command> [args]     open, close, status, dump, text, press, wait, scroll, frame
+#   tattle-verify ax <command> [args]     open, close, status, dump, text, press, wait, scroll, frame, shot
 #   tattle-verify tab <Network|Processes|Ports|Startup>
 #   tattle-verify save <name>             panel tree, text and screenshot into the run folder
 #   tattle-verify db "<sql>"              read-only query on the run's history database

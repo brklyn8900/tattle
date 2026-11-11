@@ -127,14 +127,5 @@ Preconditions:
 - `pa-remove` and `pa-install` (from the view) are proven: run 2026-10-25T225118 removed
   and reinstalled the broker from the dev copy with the user's password, with every check above
   (log lines, plist gone then back root-owned with `--uid 501`, launchd job, link text).
-- Socket broker, before the move to XPC: on the release build of `69e244a`, run 2026-10-25T2345-broker-final (driven with
-  `tattle-ax` by hand, before `--release` existed) proved `pa-remove`, `pa-install` and
-  `pa-startup-remove` (plist, helper, socket and launchd job gone), and against the
-  installed daemon: broker-probe copies signed ad hoc, by the team under another
-  identifier, and with Tattle's identifier without the hardened runtime are refused, the
-  hardened one with Tattle's identifier is accepted; the app launched with
-  `DYLD_INSERT_LIBRARIES` has it stripped by dyld and still captures; 20 connect-and-close
-  cycles on the socket leave the broker's pid and run count unchanged. Its `cycles.py` and
-  `inject.c` are in that run folder.
 - Not proven: Cancel, `Install for this account`, and a second account
   against the installed daemon (to run on testmac).
