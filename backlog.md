@@ -102,8 +102,9 @@
   limited to `Background` would read `enabled` or `off`, not `running`
   (`StartupSnapshot.loginItemState`).
 - On a hosted CI runner a broker test now and then reads `transport 54` (connection reset)
-  where it expects `refused`: `testBrokerRefusesCallersAnotherProcessCouldSteer` in one run,
-  `testBrokerAnswersOnlyTheInstallingUser` in another, neither in a third (2026-11-11). Not
+  where it expects `refused`: a different test in each of three runs out of five
+  (`testBrokerRefusesCallersAnotherProcessCouldSteer`, `testBrokerAnswersOnlyTheInstallingUser`,
+  `testBrokerRefusesOtherCallersAndBadInterfaces`), none in the other two (2026-11-11). Not
   seen on either Mac. Unknown whether the broker closes before its refusal is delivered or
   the runner resets the connection (`CaptureBrokerTests.swift`).
 
