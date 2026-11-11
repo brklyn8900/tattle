@@ -30,6 +30,8 @@ detail adds facts, an explanation, and controls.
   could not be listed`, with `Reason`, `Folder` and `Reveal Folder`. A missing folder is not.
 - `st-fda`: without Full Disk Access, `Login items need Full Disk Access: ...` and `Open
   Full Disk Access Settings`.
+- `st-gone`: the list is read again each time the panel opens on it. An item that left it
+  while its detail was open reads `No longer installed.` there, with no controls.
 
 ## How to get to it (user POV)
 
@@ -213,3 +215,7 @@ Preconditions:
   `build/verify/runs/testmac-2026-11-08/`. A plist macOS has a record of proven 2026-11-08 on
   the development Mac, run `2026-11-08T222028` (`97096f3`). A record of a kind Tattle does not
   list rests on the unit test (`testARecordOfAnUnknownKindDoesNotHideAnUnreadablePlist`).
+- `st-gone` proven 2026-11-10 on testmac, dev copy at `ea8e98f`, run `2026-11-10T191945`: an
+  agent's plist, not loaded, deleted under its open detail; the panel closed and opened, with
+  no `Refresh`: `No longer installed.` and `Load` gone. Copy in the development Mac's
+  `build/verify/runs/testmac-2026-11-10/`. Not driven: the broker's row after `Remove`.
