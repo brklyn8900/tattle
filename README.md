@@ -54,6 +54,23 @@ grants, so `make run` never replaces or quits a release build that is running.
 with that identity instead, which keeps permission grants and the packet-access broker's
 approval across rebuilds. To choose the identity, pass `SIGN_IDENTITY=<name>` to `make`.
 
+## Verifying a change
+
+`make test` runs the unit tests. Behaviour in the running app is proven with the helper in
+`.claude/skills/verify-tattle/`: it launches the dev copy, drives its panel through the
+accessibility API, and keeps each run's panel text, history rows and log under
+`build/verify/runs/`.
+
+    V=.claude/skills/verify-tattle/scripts/tattle-verify
+    $V launch      # build and open the dev copy
+    $V doctor      # every line must read ok
+    $V cleanup     # stop what the run started
+
+The terminal it runs in needs Accessibility permission. Its
+[SKILL.md](.claude/skills/verify-tattle/SKILL.md) covers the other commands, and
+[features/](.claude/skills/verify-tattle/features/README.md) lists, tab by tab, what has been
+proven and how to prove it again.
+
 ## Packet access
 
 Connection names come from the first packets of each connection, which only root may
