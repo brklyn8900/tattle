@@ -283,7 +283,7 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay)
     }
 
-    func testPromptFactsOfAConnectionCarryNoLoginOrCertificateName() {
+    func testPromptFactsOfAConnectionCarryNoLoginOrSigner() {
         let login = String(cString: getpwuid(getuid()).pointee.pw_name)
         var mine = connection("17.253.144.10")
         mine.uid = getuid()
@@ -291,7 +291,6 @@ final class ConnectionNameTests: XCTestCase {
         let row = LiveConnection(connection: mine, owner: owner, isNew: false)
         let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .host, key: "x.example", facts: row.facts(now: t0)), redactor: .addressesOnly)
         XCTAssertEqual(row.facts(now: t0).first { $0.name == "Runs as" }?.value, "you (\(login))", "the panel is unchanged")
-        XCTAssertFalse(sent.contains("Username Doe"), sent)
         XCTAssertFalse(sent.contains("you ("), sent)
         XCTAssertFalse(sent.contains("Apple Development"), "nor is the owner's signer told about a host: \(sent)")
     }

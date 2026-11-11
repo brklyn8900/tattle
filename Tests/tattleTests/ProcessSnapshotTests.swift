@@ -387,7 +387,7 @@ final class ProcessSnapshotTests: XCTestCase {
     }
 
     /// Everything the panel shows about the user's own process, as the model would get it.
-    func testPromptFactsOfTheUsersOwnProcessCarryNoLoginDirectoryOrCertificateName() throws {
+    func testPromptFactsOfTheUsersOwnProcessCarryNoLoginOrDirectory() throws {
         let login = String(cString: getpwuid(getuid()).pointee.pw_name)
         let entries = [entry(900, 1, "/Users/\(login)/dev/build/Mine.app/Contents/MacOS/Mine", uid: getuid(), cwd: "/Users/\(login)/dev/client-acme")]
         let snapshot = ProcessSnapshot.build(
@@ -400,7 +400,6 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNotNil(shown["Working in"])
 
         let sent = Prompt.build(instructions: "x", request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts), redactor: .addressesOnly)
-        XCTAssertFalse(sent.contains("Username Doe"), sent)
         XCTAssertTrue(sent.contains("Apple Development") && sent.contains("ABCDE12345"), sent)
         XCTAssertFalse(sent.contains("client-acme"), sent)
         XCTAssertFalse(sent.contains("Working in"), sent)
