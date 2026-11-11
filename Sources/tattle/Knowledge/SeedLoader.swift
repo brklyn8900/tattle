@@ -18,6 +18,8 @@ struct SeedLoader: Sendable {
             var pattern: String
             var owner: String?
             var purpose: String
+            var why: String?
+            var care: String?
             var category: String?
             var risk: Rule.Level?
             var confidence: Rule.Level?
@@ -67,7 +69,7 @@ struct SeedLoader: Sendable {
         let now = Date()
         let rules = file.rules.map { entry in
             Rule(kind: entry.kind, match: entry.match ?? .exact, pattern: entry.pattern,
-                 owner: entry.owner, purpose: entry.purpose, category: entry.category,
+                 owner: entry.owner, purpose: entry.purpose, why: entry.why, care: entry.care, category: entry.category,
                  risk: entry.risk, confidence: entry.confidence, source: file.source, identity: entry.identity ?? "", created: now)
         }
         try self.rules.replaceAll(source: file.source, with: rules)

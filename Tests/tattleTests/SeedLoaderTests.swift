@@ -27,6 +27,20 @@ final class SeedLoaderTests: XCTestCase {
         XCTAssertTrue(try rules.rules().allSatisfy { $0.source == .builtin }, "the other seed files are empty")
     }
 
+    func testASeedRuleCarriesItsWhyAndCare() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = #"{"source":"builtin","rules":[{"kind":"process","pattern":"a","purpose":"What.","why":"Why.","care":"Care.","risk":"low"},{"kind":"process","pattern":"b","purpose":"Only what."}]}"#
+        try Data(file.utf8).write(to: folder.appending(path: "builtin.json"))
+        XCTAssertEqual(loader.load(from: folder), [.builtin])
+        let a = try XCTUnwrap(try rules.rules().first { $0.pattern == "a" })
+        XCTAssertEqual([a.purpose, a.why, a.care], ["What.", "Why.", "Care."])
+        let b = try XCTUnwrap(try rules.rules().first { $0.pattern == "b" })
+        XCTAssertNil(b.why)
+        XCTAssertNil(b.care)
+    }
+
     /// A relay or cover rule makes a row read "relayed" or "name hidden", so a name that only
     /// starts like an operator's host must not reach it.
     func testRelayAndCoverRulesAreAnchoredToTheOperatorsDomains() throws {

@@ -83,6 +83,8 @@ struct AppDatabase: Sendable {
                 t.column("pattern", .text).notNull()
                 t.column("owner", .text)
                 t.column("purpose", .text).notNull()
+                t.column("why", .text)
+                t.column("care", .text)
                 t.column("category", .text)
                 t.column("risk", .text)
                 t.column("confidence", .text)

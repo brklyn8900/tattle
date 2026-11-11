@@ -6,6 +6,7 @@ enum OutputContract {
     static let schema = """
         {
           "type": "object",
+          "description": "For a host, purpose, why and care must not say which program on this Mac opened it or that one is running: the answer is shown on every connection to the host.",
           "properties": {
             "owner": {
               "type": "string",
@@ -13,7 +14,11 @@ enum OutputContract {
             },
             "purpose": {
               "type": "string",
-              "description": "One or two plain sentences: what this is and why it is probably on this Mac."
+              "description": "One or two plain sentences: what this is."
+            },
+            "why": {
+              "type": "string",
+              "description": "One plain sentence: why an item like this is probably on a Mac."
             },
             "category": {
               "type": "string",
@@ -29,20 +34,27 @@ enum OutputContract {
               "enum": ["low", "medium", "high"],
               "description": "How sure you are. Low when guessing from the name alone."
             },
+            "care": {
+              "type": "string",
+              "description": "One plain sentence: why the owner should care or need not, in line with risk. Do not open with yes or no; the app adds that from risk."
+            },
             "suggestedPattern": {
               "type": "string",
               "description": "Optional glob that would cover sibling items, such as p*-caldav.icloud.com. Never applied automatically."
             }
           },
-          "required": ["purpose", "risk", "confidence"]
+          "required": ["purpose", "why", "care", "risk", "confidence"]
         }
         """
 }
 
-/// A parsed answer. Lenient about the wrapping, strict about the required fields.
+/// A parsed answer. Lenient about the wrapping, strict about the fields a rule cannot do
+/// without: an answer missing `why` or `care` is kept, and the page shows the app's words alone.
 struct LLMAnswer: Equatable, Sendable {
     var owner: String?
     var purpose: String
+    var why: String?
+    var care: String?
     var category: String?
     var risk: Rule.Level
     var confidence: Rule.Level
@@ -74,6 +86,8 @@ struct LLMAnswer: Equatable, Sendable {
         return LLMAnswer(
             owner: optionalString(object["owner"]),
             purpose: purpose,
+            why: optionalString(object["why"]),
+            care: optionalString(object["care"]),
             category: optionalString(object["category"]),
             risk: try level(object["risk"], field: "risk"),
             confidence: try level(object["confidence"], field: "confidence"),

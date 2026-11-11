@@ -66,7 +66,7 @@ final class Explainer {
         let answer = try LLMAnswer.parse(output)
         let rule = Rule(
             kind: request.kind, match: .exact, pattern: request.key,
-            owner: answer.owner, purpose: answer.purpose, category: answer.category,
+            owner: answer.owner, purpose: answer.purpose, why: answer.why, care: answer.care, category: answer.category,
             risk: answer.risk, confidence: answer.confidence, source: .llm, identity: identity)
         return isKept ? try store.save(rule) : rule
     }

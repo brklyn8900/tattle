@@ -1,8 +1,8 @@
 import Foundation
 import GRDB
 
-/// One knowledge-base rule: what an item (host, process, port, launch item) is and why it
-/// is probably there. See the PRD, "Explanation pipeline".
+/// One knowledge-base rule: what an item (host, process, port, launch item) is, why it is
+/// probably there, and whether its owner should care. See the PRD, "Explanation pipeline".
 struct Rule: Codable, Equatable, Identifiable, Sendable {
     enum Kind: String, Codable, Sendable {
         case host, process, port, launchItem
@@ -33,7 +33,14 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     var match: Match
     var pattern: String
     var owner: String?
+    /// What the item is. The output contract asks that no sentence of a host's model answer
+    /// say which program on this Mac opened it: the rule is shown on every connection to the host.
     var purpose: String
+    /// Why an item like this is probably on a Mac.
+    var why: String?
+    /// The reason the owner should care or not. The words that open the answer are the app's,
+    /// from `risk`.
+    var care: String?
     var category: String?
     var risk: Level?
     var confidence: Level?
@@ -47,7 +54,7 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
 
     init(
         id: Int64? = nil, kind: Kind, match: Match = .exact, pattern: String,
-        owner: String? = nil, purpose: String, category: String? = nil,
+        owner: String? = nil, purpose: String, why: String? = nil, care: String? = nil, category: String? = nil,
         risk: Level? = nil, confidence: Level? = nil, source: Source, identity: String = "",
         confirmed: Date? = nil, created: Date = Date()
     ) {
@@ -57,6 +64,8 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
         self.pattern = Self.normalize(pattern, for: kind)
         self.owner = owner
         self.purpose = purpose
+        self.why = why
+        self.care = care
         self.category = category
         self.risk = risk
         self.confidence = confidence

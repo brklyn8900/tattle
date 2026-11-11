@@ -501,6 +501,31 @@ final class LLMAnswerTests: XCTestCase {
         XCTAssertEqual(try LLMAnswer.parse("[2026] thinking {not json\n\(bare)\ndone").purpose, "iCloud sync.")
     }
 
+    func testWhyAndCareAreReadWhenGiven() throws {
+        let answer = try LLMAnswer.parse(#"{"purpose":"iCloud sync.","why":"Every Mac signed in to iCloud runs it.","care":"It is part of macOS.","risk":"low","confidence":"high"}"#)
+        XCTAssertEqual(answer.why, "Every Mac signed in to iCloud runs it.")
+        XCTAssertEqual(answer.care, "It is part of macOS.")
+    }
+
+    /// The schema asks for both, and a model that leaves one out still gave an answer worth
+    /// keeping: the page shows the app's words for that part.
+    func testAnAnswerWithoutWhyOrCareIsKept() throws {
+        let answer = try LLMAnswer.parse(bare)
+        XCTAssertNil(answer.why)
+        XCTAssertNil(answer.care)
+        XCTAssertNil(try LLMAnswer.parse(#"{"purpose":"x","why":"  ","risk":"low","confidence":"low"}"#).why)
+    }
+
+    /// The schema asks for every answer, risk before the reason given in line with it, and keeps
+    /// a host's answer from naming the program that opened the connection.
+    func testContractAsksForEveryAnswer() throws {
+        let schema = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(OutputContract.schema.utf8)) as? [String: Any])
+        XCTAssertEqual(schema["required"] as? [String], ["purpose", "why", "care", "risk", "confidence"])
+        XCTAssertTrue((schema["description"] as? String)?.hasPrefix("For a host, purpose, why and care must not say which program") ?? false)
+        let text = OutputContract.schema
+        XCTAssertLessThan(try XCTUnwrap(text.range(of: "\"risk\": {")).lowerBound, try XCTUnwrap(text.range(of: "\"care\": {")).lowerBound)
+    }
+
     func testRejectsMissingOrBadFields() {
         XCTAssertThrowsError(try LLMAnswer.parse("no json here")) { XCTAssertEqual($0 as? LLMAnswer.ParseError, .noJSON) }
         XCTAssertThrowsError(try LLMAnswer.parse(#"{"risk":"low","confidence":"low"}"#)) { XCTAssertEqual($0 as? LLMAnswer.ParseError, .missing("purpose")) }
@@ -731,7 +756,7 @@ final class ExplainerTests: XCTestCase {
     }
 
     func testAskStoresExactUnconfirmedLLMRuleAndRedactsPrompt() async throws {
-        let provider = FakeProvider(output: #"{"owner":"Acme","purpose":"Update check.","category":"update","risk":"low","confidence":"medium","suggestedPattern":"*.acme.com"}"#)
+        let provider = FakeProvider(output: #"{"owner":"Acme","purpose":"Update check.","why":"Acme's apps check for updates at launch.","care":"It only asks whether a new version exists.","category":"update","risk":"low","confidence":"medium","suggestedPattern":"*.acme.com"}"#)
         settings.promptInstructions = "Go."
         let explainer = explainer(provider)
         let request = ExplainRequest(kind: .process, key: "Acme",
@@ -747,7 +772,10 @@ final class ExplainerTests: XCTestCase {
         XCTAssertEqual(rule.owner, "Acme")
         XCTAssertEqual(rule.risk, .low)
         XCTAssertNotNil(rule.id)
-        XCTAssertEqual(try store.lookup(kind: .process, key: request.key)?.purpose, "Update check.")
+        let stored = try XCTUnwrap(try store.lookup(kind: .process, key: request.key))
+        XCTAssertEqual(stored.purpose, "Update check.")
+        XCTAssertEqual(stored.why, "Acme's apps check for updates at launch.")
+        XCTAssertEqual(stored.care, "It only asks whether a new version exists.")
 
         let sent = try XCTUnwrap(provider.seen.prompts.first)
         XCTAssertFalse(sent.contains("/Users/username"))
