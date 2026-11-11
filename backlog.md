@@ -6,9 +6,6 @@
 - Decide whether Processes, Ports and Startup should mark what is new, as Network marks first
   contact. The PRD lists what's new on every surface as a goal; only Network has it (raised
   2026-11-11).
-- The bundle id carries the author's GitHub handle (Makefile, `Info.plist`, the README, tests
-  and the verify-tattle skill). Changing it resets the privacy grants and reinstalls the broker
-  under a new label, so it stays for now. Decide before a public release (agreed 2026-11-09).
 - Invert the opt-in identity gate for rules: a rule about a program, from any source, needs
   an identity unless Apple's gate covers it. Today only `llm` rules and `builtin` rules with
   an owner do, and no shipped rule falls outside that.
