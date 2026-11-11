@@ -242,6 +242,10 @@ final class FlowNamerTests: XCTestCase {
         var n = namer()
         XCTAssertEqual(n.observe(udp([0x41, 1, 2, 3]), at: t0), [], "a connection open before capture started")
         XCTAssertEqual(n.flowCount, 0)
+    }
+
+    func testALongHeaderOfAnotherVersionOpensAFlowItCannotRead() {
+        var n = namer()
         var otherVersion = SnifferParserTests.rfcInitial
         otherVersion[4] = 2
         XCTAssertEqual(n.observe(udp(otherVersion), at: t0),

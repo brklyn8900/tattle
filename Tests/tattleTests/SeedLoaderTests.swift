@@ -107,7 +107,7 @@ final class SeedLoaderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: folder) }
         try Data("not json".utf8).write(to: folder.appending(path: "builtin.json"))
         try Data(#"{"source":"llm","rules":[]}"#.utf8).write(to: folder.appending(path: "tracker-radar.json"))
-        XCTAssertEqual(loader.load(from: folder), [], "unparseable and source-mismatched files are skipped")
+        XCTAssertEqual(loader.load(from: folder), [], "a file that does not parse and one whose source is no seed's are skipped")
         XCTAssertEqual(loader.load(from: folder.appending(path: "missing")), [])
     }
 

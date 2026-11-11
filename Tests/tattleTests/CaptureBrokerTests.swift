@@ -13,6 +13,9 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "io.github.eladefrati.tattle.dev", team: "ABCDE12345")?.callerRequirement, both,
                        "the dev copy installs what the release app would, so neither reads the other's install as stale")
         XCTAssertEqual(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "x", team: nil)?.callerRequirement, "cdhash H\"\(String(repeating: "ab", count: 20))\"")
+    }
+
+    func testABuildThatIsNotHardenedHasNoIdentityToInstallFor() {
         XCTAssertThrowsError(try CaptureBroker.BuildIdentity.running(), "the test runner has get-task-allow") {
             XCTAssertEqual($0 as? CaptureBroker.InstallError, .notHardened)
         }
@@ -59,8 +62,8 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.label)</string>"))
         XCTAssertTrue(plist.contains("<string>\(CaptureBroker.helperPath)</string>"))
         XCTAssertTrue(plist.contains("<string>identifier \"a\" and anchor &lt;apple&gt;</string>"))
-        XCTAssertEqual((plistDictionary(plist)?["MachServices"] as? [String: Bool]), [CaptureBroker.label: true])
-        let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]
+        let parsed = plistDictionary(plist)
+        XCTAssertEqual((parsed?["MachServices"] as? [String: Bool]), [CaptureBroker.label: true])
         XCTAssertEqual((parsed?["ProgramArguments"] as? [String])?[2], "identifier \"a\" and anchor <apple>")
 
         let identity = try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: Data(count: 20), identifier: "x", team: nil))

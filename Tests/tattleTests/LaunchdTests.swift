@@ -91,7 +91,7 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(Trigger.keepAlive.description(scope: .daemon), "kept running")
     }
 
-    func testReaderReadsFoldersSkipsBadFilesAndCountsApple() throws {
+    func testReaderReadsFoldersReportsBadFilesAndCountsApple() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let user = root.appending(path: "user"), daemons = root.appending(path: "daemons"), apple = root.appending(path: "apple")

@@ -131,7 +131,7 @@ final class SnifferParserTests: XCTestCase {
 
     // MARK: QUIC
 
-    func testTheSealerMatchesTheRFCInitial() throws {
+    func testASealedInitialOpensToTheFramesItWasGiven() throws {
         guard case .success(let initial) = QUIC.parseInitial(Self.sealInitial(Self.rfcCryptoFrame), at: 0) else {
             return XCTFail("a sealed Initial must decrypt")
         }

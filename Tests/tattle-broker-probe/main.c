@@ -8,6 +8,9 @@
 // <service> is a test agent's Mach service in the user's launchd domain. --delay waits before
 // asking, so a test can replace the file on disk after launch. Prints
 // one line: accepted | refused | bad-request | open-failed <errno> | transport <errno>.
+// "accepted" means a descriptor this process could prepare and filter, so it appears only
+// where the capture devices are readable; with root-only devices an accepted caller prints
+// "open-failed 13".
 // --exception-ports adds three lines: "dropped-at-launch <n>", how many inherited task exception
 // ports the launch drop removed; "exception-ports <n>", how many the probe still held when its own
 // code started, for types that hand over its live task; and "corpse-ports <n>", how many it held
@@ -17,9 +20,6 @@
 //
 // Sends the request without waiting for the answer, then execs <program> in the same process,
 // which the broker must not take for the sender (ADR-0003). Prints nothing itself.
-// "accepted" means a descriptor this process could prepare and filter, so it appears only
-// where the capture devices are readable; with root-only devices an accepted caller prints
-// "open-failed 13".
 //
 //   tattle-broker-probe --hold-corpse <program> [<argument>...]
 //

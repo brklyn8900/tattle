@@ -48,7 +48,7 @@ struct BrokerAgent {
         XCTAssertEqual(Self.launchctl(["bootstrap", Self.domain, url.path]), 0, "bootstrap \(label)")
     }
 
-    /// Runs launchctl, bounded at 10 s like every process the tests start. Returns its exit
+    /// Runs launchctl, bounded at 10 s. Returns its exit
     /// status, or -1 when it could not run or was killed at the bound.
     @discardableResult
     static func launchctl(_ arguments: [String]) -> Int32 {
