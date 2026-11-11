@@ -159,6 +159,8 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(try store.history(remoteAddress: "::ffff:17.1.1.1")[0].name, "v6.apple.com", "an IPv6 socket talking IPv4")
         try store.record(.named(ConnectionName(name: "nowhere", source: .sni, kind: .destination)),
                          flow: FlowKey(proto: .udp, localPort: 1, remote: IPAddress(bytes: [2, 2, 2, 2]), remotePort: 443), openedAt: t0)
+        XCTAssertFalse(try (store.history(remoteAddress: "17.1.1.1") + store.history(remoteAddress: "::ffff:17.1.1.1")).contains { $0.name == "nowhere" },
+                       "a flow with no row names none")
 
         try store.record(.unnamed(.timeout), flow: flow, openedAt: t0 + 30)
         let silent = try store.history(remoteAddress: "::ffff:17.1.1.1")[0]
