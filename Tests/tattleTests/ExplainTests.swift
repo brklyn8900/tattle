@@ -577,8 +577,9 @@ final class PromptTests: XCTestCase {
         XCTAssertTrue(prompt.hasPrefix(Prompt.defaultInstructions + "\n\n"), prompt)
     }
 
-    /// Edited instructions can name the user. They keep main's matching: the passes for other
-    /// accounts' folders, disk names and tailnet names run on captured text only.
+    /// Edited instructions can name the user. They lose the login, the Mac's names and private
+    /// addresses only: the passes for other accounts' folders, disk names and tailnet names
+    /// run on captured text only.
     func testEditedInstructionsLoseTheLoginTheMacsNamesAndAddresses() {
         let redactor = Redactor(home: "/Users/username", username: "username", machineNames: ["Atlas"])
         let instructions = "My Mac is Atlas, I am username. See /Users/username/x on 10.0.0.5, /Volumes/Backup when relevant, /Users/other/y and nas.tail1.ts.net."
