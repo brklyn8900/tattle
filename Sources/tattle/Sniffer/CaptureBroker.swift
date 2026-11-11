@@ -28,6 +28,9 @@ enum CaptureBroker {
         case openFailed(errno: Int32)
         /// The broker could not be reached.
         case transport(errno: Int32)
+        /// Nothing was asked: this process could not drop the exception ports it was launched
+        /// with, and one that kept them is not to hold a descriptor (ADR-0003).
+        case notAsked
 
         var text: String {
             switch self {
@@ -35,6 +38,7 @@ enum CaptureBroker {
             case .badRequest: "the packet-access broker rejected the request"
             case .openFailed(let code): "the packet-access broker could not open a capture device: \(String(cString: strerror(code)))"
             case .transport(let code): "the packet-access broker did not answer: \(String(cString: strerror(code)))"
+            case .notAsked: "Tattle did not ask the packet-access broker, because it could not drop the exception ports it was launched with; quit Tattle and open it again"
             }
         }
     }
@@ -59,7 +63,8 @@ enum CaptureBroker {
         case 1: throw RequestError.refused
         case 2: throw RequestError.badRequest
         case 3: throw RequestError.openFailed(errno: code)
-        default: throw RequestError.transport(errno: code)
+        // On this side EPERM has one source: the launch-time drop failed, before any request.
+        default: throw status == -1 && code == EPERM ? RequestError.notAsked : RequestError.transport(errno: code)
         }
     }
 }
