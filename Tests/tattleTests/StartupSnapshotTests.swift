@@ -60,7 +60,7 @@ final class StartupSnapshotTests: XCTestCase {
         let prompt = Prompt.build(instructions: "", request: ExplainRequest(kind: .launchItem, key: updater.explainKey, facts: updater.facts), redactor: .addressesOnly)
         XCTAssertTrue(prompt.contains(#"{"name":"Runs","value":"/usr/bin/x (1 argument, not sent)"}"#),
                       "arguments can carry tokens and addresses: only the program goes out")
-        XCTAssertFalse(snapshot.items.contains { $0.id == "8.com.acme.updater" }, "joined, not duplicated")
+        XCTAssertEqual(snapshot.items.filter { $0.id == "com.acme.updater" }.count, 1, "joined, not duplicated")
 
         XCTAssertEqual(snapshot.items(in: .daemons).first?.state, .idle(lastExitStatus: 1))
         XCTAssertEqual(snapshot.items(in: .daemons).first?.trigger, "kept running")
@@ -345,6 +345,18 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(key([login("16.com.acme.helper", name: "Acme", kind: .daemon, url: url.absoluteString, legacy: true)]), "com.acme.helper")
         XCTAssertEqual(key([login("16.com.acme.helper", name: "Acme", kind: .daemon, url: url.absoluteString, bundle: "com.acme.job", legacy: true)]), "com.acme.job")
         XCTAssertEqual(key([]), url.path, "with no record, the file is all there is")
+    }
+
+    /// A legacy record whose plist the reader did not find is keyed like one whose plist it
+    /// could not read: by the label, not by the record's type-numbered identifier.
+    func testARecordWithNoPlistIsKeyedByItsLabel() {
+        func key(_ record: LoginItem) -> String? {
+            StartupSnapshot.build(launchd: LaunchdReader.Result(items: [], appleCount: 0, unreadable: []), loginItems: [record],
+                                  state: LaunchctlState(), signature: { _ in nil }).items.first?.explainKey
+        }
+        XCTAssertEqual(key(login("8.com.acme.agent", name: "Acme", kind: .agent, legacy: true)), "com.acme.agent")
+        XCTAssertEqual(key(login("8.com.acme.agent", name: "Acme", kind: .agent, bundle: "com.acme.job", legacy: true)), "com.acme.job")
+        XCTAssertEqual(key(login("2.com.acme.app", name: "Acme", kind: .app, bundle: "com.acme.app")), "com.acme.app")
     }
 
     /// A legacy record of a kind Tattle does not list gives no row of its own.

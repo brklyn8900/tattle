@@ -237,7 +237,7 @@ struct StartupSnapshot: Equatable, Sendable {
             let plist = item.url.flatMap(URL.init(string:)).flatMap { $0.isFileURL && $0.pathExtension == "plist" ? $0 : nil }
             let signed = path.flatMap { registeredSignature(of: item, at: $0, reading: signature) }
             items.append(StartupItem(
-                id: item.bundleIdentifier ?? item.identifier,
+                id: item.jobLabel ?? item.identifier,
                 group: item.isExtension ? .extensions : item.kind == .app ? .loginItems : .background,
                 name: item.name,
                 program: path,
