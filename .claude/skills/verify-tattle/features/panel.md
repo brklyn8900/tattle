@@ -77,3 +77,12 @@ Preconditions:
   loops' wiring rest on the runs above.
 - The first click on the eye while the Settings window is open does not open the panel; the
   next one does. Seen on `main` too.
+- The redesigned panel, seen 2026-11-12 on the development Mac in the dev copy, runs
+  `2026-11-12T105819` to `2026-11-12T112604` (the last at `ba49a2e`): in dark, the Network
+  list, an app's page, a connection's page, the Processes list, an app's process page with
+  `Force Quit…` armed, the Ports list, a port's page with and without an explanation, the
+  Startup list, a login item's page and Packet access; in light, the Processes list and an
+  app's process page; a named first contact with no explanation as one line. Not driven: asking
+  a model, a failed ask, a model answer with `Confirm`, an item that is gone, a first reading,
+  the lists without packet access or Full Disk Access, the failed start, and a first contact
+  with no name.
