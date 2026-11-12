@@ -100,8 +100,11 @@ struct PanelView: View {
 
     private var tabs: some View {
         HStack(spacing: 2) {
-            ForEach(Tab.allCases) { item in
+            ForEach(Array(Tab.allCases.enumerated()), id: \.element) { index, item in
                 let selected = item == tab
+                // A hairline between two tabs that are not selected; the selected one's fill
+                // already sets it apart.
+                let divided = index > 0 && !selected && Tab.allCases[index - 1] != tab
                 let fresh = item == .network ? state.panelNetworkSnapshot?.newCount ?? 0 : 0
                 Button {
                     tab = item
@@ -126,6 +129,14 @@ struct PanelView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(PanelColor.line)
+                        .opacity(divided ? 0.7 : 0)
+                        .frame(width: 1, height: 14)
+                        .offset(x: -1.5)
+                        .accessibilityHidden(true)
+                }
                 .accessibilityLabel(item.rawValue)
                 .accessibilityValue(fresh > 0 ? "\(fresh) first contact" : "")
                 .accessibilityAddTraits(selected ? .isSelected : [])
