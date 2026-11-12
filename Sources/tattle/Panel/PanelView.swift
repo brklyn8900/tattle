@@ -1,5 +1,38 @@
 import SwiftUI
 
+/// A page pushed over a tab's list.
+enum PanelRoute: Hashable {
+    case connectionGroup(ConnectionGroup)
+    case connection(LiveConnection)
+    case packetAccess
+    case processGroup(ProcessGroup)
+    case process(ProcessItem)
+    case port(PortItem)
+    case startupItem(StartupItem)
+
+    /// What the page after this one names on its way back.
+    var title: String {
+        switch self {
+        case .connectionGroup(let group): group.name
+        case .connection(let live): live.title
+        case .packetAccess: "Packet access"
+        case .processGroup(let group): group.name
+        case .process(let item): item.name
+        case .port(let item): String(item.port)
+        case .startupItem(let item): item.name
+        }
+    }
+}
+
+/// The pages open over the list, oldest first.
+@MainActor @Observable
+final class PanelRouter {
+    var path: [PanelRoute] = []
+
+    func push(_ route: PanelRoute) { path.append(route) }
+    func pop() { if !path.isEmpty { path.removeLast() } }
+}
+
 /// The window that drops down from the menu bar item.
 struct PanelView: View {
     enum Tab: String, CaseIterable, Identifiable {
@@ -9,55 +42,187 @@ struct PanelView: View {
         case startup = "Startup"
 
         var id: String { rawValue }
+
+        var symbol: String {
+            switch self {
+            case .network: "globe"
+            case .processes: "cpu"
+            case .ports: "door.left.hand.open"
+            case .startup: "power"
+            }
+        }
     }
 
     let state: AppState
     @State private var tab = Tab.network
+    @State private var router = PanelRouter()
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ResourcesLine(sample: state.panelSample)
-            Picker("Tab", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            NavigationStack {
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(height: 440)
-            Divider()
-            HStack {
-                Button("Settings...") {
-                    // The panel is the key window while open; it must go before the
-                    // settings window takes focus, or both stay on screen.
-                    NSApplication.shared.keyWindow?.close()
-                    openSettings()
+        VStack(spacing: 0) {
+            // Every page stays alive under the one on top, so a list keeps reading and keeps
+            // its place while a page is open over it.
+            ZStack {
+                list.shown(router.path.isEmpty)
+                ForEach(Array(router.path.enumerated()), id: \.offset) { index, route in
+                    page(route, back: index == 0 ? tab.rawValue : router.path[index - 1].title)
+                        .shown(index == router.path.count - 1)
                 }
-                Spacer()
-                Button("Quit Tattle") { NSApplication.shared.terminate(nil) }
-                    .keyboardShortcut("q")
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            footer
         }
-        .padding(12)
-        .frame(width: 480)
+        .environment(router)
+        .font(.system(size: 13))
+        .foregroundStyle(PanelColor.text)
+        .frame(width: 480, height: 636)
+        .background(PanelColor.panel)
         .background(WindowOnScreenReader { state.panelIsShowing = $0 })
     }
 
-    @ViewBuilder
-    private var content: some View {
-        switch tab {
-        case .startup:
-            StartupTab(state: state)
-        case .ports:
-            PortsTab(state: state)
-        case .processes:
-            ProcessesTab(state: state)
-        case .network:
-            NetworkTab(state: state)
+    private var list: some View {
+        VStack(spacing: 0) {
+            ResourcesLine(sample: state.panelSample)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+            tabs
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+            switch tab {
+            case .network: NetworkTab(state: state)
+            case .processes: ProcessesTab(state: state)
+            case .ports: PortsTab(state: state)
+            case .startup: StartupTab(state: state)
+            }
         }
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 2) {
+            ForEach(Tab.allCases) { item in
+                let selected = item == tab
+                let fresh = item == .network ? state.panelNetworkSnapshot?.newCount ?? 0 : 0
+                Button {
+                    tab = item
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: item.symbol).font(.system(size: 12)).accessibilityHidden(true)
+                        Text(item.rawValue).fontWeight(selected ? .semibold : .regular)
+                        if fresh > 0 {
+                            Text(String(fresh))
+                                .font(.system(size: 11, weight: .semibold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 4)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .foregroundStyle(PanelColor.newText)
+                                .background(PanelColor.newBackground, in: Capsule())
+                        }
+                    }
+                    .foregroundStyle(selected ? PanelColor.text : PanelColor.sub)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                    .background(selected ? PanelColor.selectedTab : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.rawValue)
+                .accessibilityValue(fresh > 0 ? "\(fresh) first contact" : "")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(PanelColor.tabs, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func page(_ route: PanelRoute, back: String) -> some View {
+        switch route {
+        case .connectionGroup(let group): ConnectionGroupDetail(group: group, back: back, state: state)
+        case .connection(let live): ConnectionDetail(live: live, back: back, state: state)
+        case .packetAccess: PacketAccessView(back: back, state: state)
+        case .processGroup(let group): ProcessGroupDetail(group: group, back: back, state: state)
+        case .process(let item): ProcessDetail(item: item, back: back, state: state)
+        case .port(let item): PortDetail(item: item, back: back, state: state)
+        case .startupItem(let item): StartupDetail(item: item, back: back, state: state)
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("Settings\u{2026}") {
+                // The panel is the key window while open; it must go before the
+                // settings window takes focus, or both stay on screen.
+                NSApplication.shared.keyWindow?.close()
+                openSettings()
+            }
+            Spacer()
+            if tab == .network, router.path.isEmpty {
+                let capturing = if case .capturing = state.network.captureStatus { true } else { false }
+                Button {
+                    router.push(.packetAccess)
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle().fill(capturing ? PanelColor.ok : PanelColor.newDot).frame(width: 7, height: 7).accessibilityHidden(true)
+                        Text(PacketAccessView.linkTitle(state.network.broker.installation, capturing: capturing)).font(PanelFont.small)
+                    }
+                    .contentShape(Rectangle())
+                }
+                Spacer()
+            }
+            QuitButton()
+        }
+        .buttonStyle(FooterButtonStyle())
+        .foregroundStyle(PanelColor.sub)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+}
+
+/// A word at the bottom of the panel that lights up under the pointer, as a menu's rows do.
+private struct FooterButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Label(configuration: configuration)
+    }
+
+    private struct Label: View {
+        let configuration: Configuration
+        @State private var hovered = false
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .foregroundStyle(hovered ? PanelColor.text : PanelColor.sub)
+                .background(hovered || configuration.isPressed ? PanelColor.fill : .clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .onHover { hovered = $0 }
+        }
+    }
+}
+
+/// Quit, with its shortcut beside it.
+private struct QuitButton: View {
+    var body: some View {
+        Button {
+            NSApplication.shared.terminate(nil)
+        } label: {
+            HStack(spacing: 8) {
+                Text("Quit Tattle")
+                Text("\u{2318}Q").font(PanelFont.small).accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .keyboardShortcut("q")
+        .accessibilityLabel("Quit Tattle")
+    }
+}
+
+private extension View {
+    /// Keeps a page that is under another alive, unseen and out of reach.
+    func shown(_ isShown: Bool) -> some View {
+        opacity(isShown ? 1 : 0)
+            .allowsHitTesting(isShown)
+            .accessibilityHidden(!isShown)
     }
 }
 
@@ -119,15 +284,18 @@ struct StartupFailureView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tattle could not start.").font(.headline)
-            Text(message).font(.callout).textSelection(.enabled)
+            Text("Tattle could not start.").font(.system(size: 15, weight: .semibold))
+            Text(message).lineSpacing(3).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("Quit Tattle") { NSApplication.shared.terminate(nil) }
-                    .keyboardShortcut("q")
+                QuitButton().buttonStyle(.panel)
             }
+            .padding(.top, 4)
         }
-        .padding(12)
+        .font(.system(size: 13))
+        .foregroundStyle(PanelColor.text)
+        .padding(16)
         .frame(width: 480)
+        .background(PanelColor.panel)
     }
 }

@@ -4,14 +4,10 @@ struct NetworkTab: View {
     let state: AppState
 
     var body: some View {
-        Group {
-            if let snapshot = state.panelNetworkSnapshot {
-                ConnectionsList(snapshot: snapshot, captureStatus: state.network.captureStatus, state: state)
-            } else if let error = state.network.error {
-                Text(error).foregroundStyle(.secondary)
-            } else {
-                ProgressView("Reading connections")
-            }
+        if let snapshot = state.panelNetworkSnapshot {
+            ConnectionsList(snapshot: snapshot, captureStatus: state.network.captureStatus, state: state)
+        } else {
+            ListPlaceholder(loading: "Reading connections", error: state.network.error)
         }
     }
 }
@@ -22,40 +18,44 @@ private struct ConnectionsList: View {
     let state: AppState
 
     var body: some View {
-        List {
-            Section {
-                ForEach(snapshot.groups) { group in
-                    NavigationLink(value: group) { ConnectionGroupRow(group: group) }
+        let fresh = snapshot.connections.filter(\.isNew).sorted { $0.connection.firstSeen > $1.connection.firstSeen }
+        let seen = NetworkSnapshot(connections: snapshot.connections.filter { !$0.isNew }, takenAt: snapshot.takenAt)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(summary)
+                .font(PanelFont.small)
+                .foregroundStyle(PanelColor.sub)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !fresh.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            SectionTitle(title: "First contact", marked: true)
+                            CardRows(items: fresh) { live in
+                                NavRow(route: .connection(live)) { FirstContactRow(live: live, now: snapshot.takenAt, state: state) }
+                            }
+                        }
+                    }
+                    if !seen.connections.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            SectionTitle(title: "Seen before", trailing: seen.connections.count == 1 ? "1 connection" : "\(seen.connections.count) connections")
+                            CardRows(items: seen.groups) { group in
+                                // The page is the app's, with every connection it has open.
+                                NavRow(route: .connectionGroup(snapshot.group(id: group.id) ?? group)) { ConnectionGroupRow(group: group) }
+                            }
+                        }
+                    }
                 }
-            } header: {
-                VStack(alignment: .leading, spacing: 4) {
-                    GroupHeader(title: title, description: description)
-                    NavigationLink(PacketAccessView.linkTitle(state.network.broker.installation), value: PacketAccessView.Destination())
-                        .font(.caption)
-                        .textCase(nil)
-                        .padding(.bottom, 8)
-                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
             }
         }
-        .navigationDestination(for: PacketAccessView.Destination.self) { _ in
-            PacketAccessView(state: state)
-        }
-        .navigationDestination(for: ConnectionGroup.self) { group in
-            ConnectionGroupDetail(group: group, state: state)
-        }
-        .navigationDestination(for: LiveConnection.self) { live in
-            ConnectionDetail(live: live, state: state)
-        }
     }
 
-    private var title: String {
+    private var summary: String {
         let groups = snapshot.groups.count
-        return "\(snapshot.connections.count) open connections from \(groups) \(groups == 1 ? "app" : "apps")"
-    }
-
-    private var description: String {
-        var parts: [String] = []
-        if snapshot.newCount > 0 { parts.append("\(snapshot.newCount) to addresses never seen before") }
+        var parts = ["\(snapshot.connections.count) open from \(groups) \(groups == 1 ? "app" : "apps")"]
         if snapshot.preExistingCount > 0 { parts.append("\(snapshot.preExistingCount) open since before Tattle started") }
         switch captureStatus {
         case .capturing:
@@ -69,7 +69,51 @@ private struct ConnectionsList: View {
         case .unavailable, .stopped:
             parts.append(PacketAccessView.namesOff(state.network.broker.installation))
         }
-        return parts.joined(separator: ". ").replacingOccurrences(of: "..", with: ".")
+        return parts.joined(separator: " \u{00B7} ")
+    }
+}
+
+/// A connection to an address this Mac has not reached before: who opened it, where to, and
+/// what is known of the destination.
+private struct FirstContactRow: View {
+    let live: LiveConnection
+    let now: Date
+    let state: AppState
+    @State private var rule: Rule?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            IconTile(name: live.owner.displayName, path: live.owner.app?.path, size: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                (Text("\(live.owner.displayName) to ").foregroundStyle(PanelColor.sub) + Text(live.title).fontWeight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let known {
+                    Text(known)
+                        .font(PanelFont.small)
+                        .foregroundStyle(PanelColor.sub)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Text(LiveConnection.ago(live.connection.firstSeen, now: now))
+                .font(PanelFont.small)
+                .monospacedDigit()
+                .foregroundStyle(PanelColor.sub)
+        }
+        .padding(.vertical, 7)
+        .frame(minHeight: 44)
+        .task(id: live.explainKey) {
+            rule = try? await state.explainer.lookup(ExplainRequest(kind: .host, key: live.explainKey, facts: []))
+        }
+    }
+
+    /// What the knowledge base says of the destination, in a line; without an answer, only
+    /// why the row shows a bare address.
+    private var known: String? {
+        guard let rule else { return live.name == nil ? "No name seen" : nil }
+        if rule.source == .llm { return rule.sourceText }
+        return "\(rule.purpose) \u{00B7} \(rule.sourceText)"
     }
 }
 
@@ -77,25 +121,21 @@ private struct ConnectionGroupRow: View {
     let group: ConnectionGroup
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.name)
+        HStack(spacing: 10) {
+            IconTile(name: group.name, path: group.connections.first?.owner.app?.path)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(group.name).lineLimit(1)
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(PanelFont.small)
+                    .foregroundStyle(PanelColor.sub)
                     .lineLimit(1)
             }
-            Spacer()
-            if group.newCount > 0 {
-                Text("\(group.newCount) new")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
+            Spacer(minLength: 0)
             Text(String(group.connections.count))
-                .font(.body.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .trailing)
+                .monospacedDigit()
+                .foregroundStyle(PanelColor.sub)
         }
+        .frame(minHeight: 38)
     }
 
     private var subtitle: String {
@@ -110,30 +150,26 @@ private struct ConnectionRow: View {
     let now: Date
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(live.title).font(.body.monospacedDigit())
-                    if live.isFromDNS {
-                        Text("from DNS").font(.caption).foregroundStyle(.secondary)
-                    }
-                    if live.connection.direction == .inbound {
-                        Text("incoming").font(.caption).foregroundStyle(.secondary)
-                    }
-                    if live.isNew {
-                        Text("new").font(.caption).foregroundStyle(.orange)
-                    }
+                    Text(live.title).fontWeight(.medium).monospacedDigit().lineLimit(1).truncationMode(.middle)
+                    if live.isNew { Pill(text: "new", kind: .new) }
+                    if live.isFromDNS { Pill(text: "from DNS") }
+                    if live.connection.direction == .inbound { Pill(text: "incoming") }
                 }
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(PanelFont.small)
+                    .foregroundStyle(PanelColor.sub)
                     .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 0)
             Text(live.connection.preExisting ? "already open" : LiveConnection.ago(live.connection.firstSeen, now: now))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(PanelFont.small)
+                .monospacedDigit()
+                .foregroundStyle(PanelColor.sub)
         }
+        .padding(.vertical, 7)
     }
 
     private var subtitle: String {
@@ -147,8 +183,9 @@ private struct ConnectionRow: View {
     }
 }
 
-private struct ConnectionGroupDetail: View {
+struct ConnectionGroupDetail: View {
     let group: ConnectionGroup
+    let back: String
     let state: AppState
 
     /// The group as it is now; gone once its last connection closed.
@@ -156,50 +193,63 @@ private struct ConnectionGroupDetail: View {
 
     var body: some View {
         let group = current ?? self.group
+        let gone = current == nil
         let now = state.panelNetworkSnapshot?.takenAt ?? Date()
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(group.name).font(.headline)
-                if current == nil {
-                    Text("No open connections now.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                FactsGrid(facts: group.facts(gone: current == nil))
-                Divider()
-                // The same key as the Processes tab, so an explanation of the program
-                // given there is shown here and the other way round.
-                ExplainSection(request: ExplainRequest(kind: .process, key: group.name, facts: group.facts(gone: current == nil),
-                                                         isApplesProgram: group.isApplesProgram, identity: group.identity),
-                               whyHere: group.whyHere(gone: current == nil), state: state)
-                Divider()
-                HStack {
-                    if let path = group.connections.first?.owner.app?.path ?? group.connections.first?.owner.path {
-                        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
-                    }
-                    Spacer()
-                }
-                .controlSize(.small)
-                Divider()
-                Text("Connections")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(group.connections) { live in
-                        NavigationLink(value: live) { ConnectionRow(live: live, now: now).padding(.vertical, 4) }
-                            .buttonStyle(.plain)
-                        Divider()
-                    }
+        let facts = group.facts(gone: gone)
+        let path = group.connections.first?.owner.app?.path ?? group.connections.first?.owner.path
+        DetailPage(back: back, title: group.name) {
+            ItemHeader(name: group.name, path: group.connections.first?.owner.app?.path, signature: group.signature,
+                       gone: gone ? "No open connections now" : nil) {
+                if let path { RevealButton(path: path) }
+            }
+            // The same key as the Processes tab, so an explanation of the program
+            // given there is shown here and the other way round.
+            ExplainSection(request: ExplainRequest(kind: .process, key: group.name, facts: facts,
+                                                     isApplesProgram: group.isApplesProgram, identity: group.identity),
+                           whyHere: group.whyHere(gone: gone), state: state)
+            CountsCard(facts: facts.filter { !Self.headerFacts.contains($0.name) })
+            VStack(alignment: .leading, spacing: 6) {
+                SectionTitle(title: "Connections")
+                CardRows(items: group.connections) { live in
+                    NavRow(route: .connection(live)) { ConnectionRow(live: live, now: now) }
                 }
             }
-            .padding(12)
+        } bar: {
+            EmptyView()
         }
-        .navigationTitle(group.name)
+    }
+
+    /// Said by the line under the name.
+    private static let headerFacts: Set<String> = ["Signed by", "Team"]
+}
+
+/// A few counts side by side.
+private struct CountsCard: View {
+    let facts: [Fact]
+
+    var body: some View {
+        Card {
+            HStack(spacing: 0) {
+                ForEach(Array(facts.enumerated()), id: \.offset) { index, fact in
+                    if index > 0 { Rectangle().fill(PanelColor.line).frame(width: 1) }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(fact.name).font(PanelFont.label).foregroundStyle(PanelColor.sub)
+                        Text(fact.value).fontWeight(.semibold).monospacedDigit()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
-private struct ConnectionDetail: View {
+struct ConnectionDetail: View {
     let live: LiveConnection
+    let back: String
     let state: AppState
 
     /// The connection as it is now; the one opened stays readable once it has closed.
@@ -208,29 +258,38 @@ private struct ConnectionDetail: View {
     var body: some View {
         let live = current ?? self.live
         let now = state.panelNetworkSnapshot?.takenAt ?? Date()
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(live.headline).font(.headline)
-                if current == nil {
-                    Text("Closed.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+        DetailPage(back: back, title: live.title) {
+            if let path = live.owner.app?.path ?? live.owner.path { RevealButton(path: path) }
+        } content: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(live.title).font(PanelFont.title).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    if live.isNew { Pill(text: "new", kind: .new) }
+                    if current == nil { Pill(text: "Closed") }
                 }
-                FactsGrid(facts: live.facts(now: now))
-                Divider()
-                ExplainSection(request: ExplainRequest(kind: .host, key: live.explainKey, facts: live.facts(now: now)), whyHere: live.whyHere, state: state)
-                Divider()
-                HStack {
-                    if let path = live.owner.app?.path ?? live.owner.path {
-                        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
-                    }
-                    Spacer()
-                }
-                .controlSize(.small)
+                Text(Self.opened(live, now: now))
+                    .font(PanelFont.button)
+                    .foregroundStyle(PanelColor.sub)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(12)
+            .padding(.horizontal, 4)
+            ExplainSection(request: ExplainRequest(kind: .host, key: live.explainKey, facts: live.facts(now: now)), whyHere: live.whyHere, state: state)
+            FactsCard(facts: live.facts(now: now))
+        } bar: {
+            EmptyView()
         }
-        .navigationTitle(live.title)
+    }
+
+    /// Who holds the connection and since when, under its name.
+    static func opened(_ live: LiveConnection, now: Date) -> String {
+        let owner = live.owner.displayName
+        let since = live.connection.preExisting ? "before Tattle started" : LiveConnection.ago(live.connection.firstSeen, now: now)
+        let line = switch live.connection.direction {
+        case .outbound: "Opened by \(owner) \(since)"
+        case .inbound: "Came in to \(owner) \(since)"
+        case .unknown: "Held by \(owner), seen \(since)"
+        }
+        return live.isNew ? line + " \u{00B7} first time this Mac has contacted it" : line
     }
 }
 
@@ -241,4 +300,3 @@ extension ConnectionGroup: Hashable {
 extension LiveConnection: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
-

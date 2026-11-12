@@ -18,70 +18,85 @@ struct ExplainSection: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            heading("What is this")
+        Card {
+            question("What is this", rule?.purpose)
+            RowLine()
+            // Before there is an answer the app's own sentence still stands, and the other
+            // two say that they are waiting.
             if let rule {
-                answer(rule.purpose)
+                if let why = Self.why(rule, opening: whyHere) {
+                    question("Why it is probably here", why)
+                    RowLine()
+                }
+                if let care = Self.care(rule) {
+                    question("Should I care", care)
+                    RowLine()
+                }
             } else {
-                HStack {
-                    Text("No explanation yet.")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Explain") { ask() }
-                        .disabled(busy || !providerConfigured)
-                }
-                if !providerConfigured {
-                    Text("Choose a provider in Settings to ask a model.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                question("Why it is probably here", whyHere)
+                RowLine()
+                question("Should I care", nil)
+                RowLine()
             }
-            if let why = Self.why(rule, opening: whyHere) {
-                heading("Why it is probably here")
-                answer(why)
-            }
-            if let rule, let care = Self.care(rule) {
-                heading("Should I care")
-                answer(care)
-            }
-            if let rule {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    Text(provenance(rule))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if rule.source == .llm && rule.confirmed == nil && rule.id != nil {
-                        Button("Confirm") { confirm(rule) }
-                            .controlSize(.small)
-                    }
-                    Spacer()
-                    if rule.source == .llm && rule.confirmed == nil {
-                        Button("Ask again") { ask() }
-                            .controlSize(.small)
+                    Text(rule.map(provenance) ?? "No explanation yet.")
+                        .font(PanelFont.small)
+                        .foregroundStyle(PanelColor.sub)
+                    Spacer(minLength: 0)
+                    if busy { ProgressView().controlSize(.small) }
+                    if let rule {
+                        if rule.source == .llm && rule.confirmed == nil {
+                            Button("Ask again") { ask() }
+                                .buttonStyle(PanelButtonStyle(height: 22))
+                                .disabled(busy || !providerConfigured)
+                        }
+                        if rule.source == .llm && rule.confirmed == nil && rule.id != nil {
+                            Button("Confirm") { confirm(rule) }
+                                .buttonStyle(PanelButtonStyle(kind: .primary, height: 22))
+                        }
+                    } else {
+                        Button("Explain") { ask() }
+                            .buttonStyle(PanelButtonStyle(kind: .primary, height: 22))
                             .disabled(busy || !providerConfigured)
                     }
                 }
+                .frame(minHeight: 22)
+                if rule == nil && !providerConfigured {
+                    Text("Choose a provider in Settings to ask a model.")
+                        .font(PanelFont.small)
+                        .foregroundStyle(PanelColor.sub)
+                }
+                if let error {
+                    Text(error)
+                        .font(PanelFont.small)
+                        .foregroundStyle(PanelColor.bad)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            if busy { ProgressView().controlSize(.small) }
-            if let error {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
         .task(id: request) { await load() }
     }
 
-    private func heading(_ text: String) -> some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private func answer(_ text: String) -> some View {
-        Text(text)
-            .fixedSize(horizontal: false, vertical: true)
+    /// One question with its answer, or with the words that stand in for one.
+    private func question(_ heading: String, _ answer: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(heading)
+                .font(PanelFont.smallBold)
+                .foregroundStyle(PanelColor.sub)
+                .accessibilityAddTraits(.isHeader)
+            Text(answer ?? "Not explained yet.")
+                .foregroundStyle(answer == nil ? PanelColor.sub : PanelColor.text)
+                .lineSpacing(2)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The app's sentence from the facts, then the rule's. A host's rule is asked not to say which
@@ -159,18 +174,10 @@ struct ExplainSection: View {
 
     /// Where the answer came from, and how much the source trusted it.
     private func provenance(_ rule: Rule) -> String {
-        var parts: [String]
-        switch rule.source {
-        case .llm: parts = [rule.confirmed == nil ? "Model answer, unconfirmed" : "Model answer, confirmed by you"]
-        case .user: parts = ["Your rule"]
-        case .builtin: parts = ["Tattle's rules"]
-        case .iap: parts = ["Declared by the app"]
-        case .appleList: parts = ["Apple's host list"]
-        case .trackerRadar: parts = ["Tracker Radar"]
-        }
+        var parts = [rule.sourceText]
         if let risk = rule.risk { parts.append("risk \(risk.rawValue)") }
         if let confidence = rule.confidence { parts.append("confidence \(confidence.rawValue)") }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " \u{00B7} ")
     }
 
     private func describe(_ error: Error) -> String {
@@ -181,6 +188,20 @@ struct ExplainSection: View {
         case ProviderError.failed(let status, let stderr): "The provider failed (exit \(status)). \(stderr)"
         case let parse as LLMAnswer.ParseError: "The answer was not in the expected shape (\(parse))."
         default: String(describing: error)
+        }
+    }
+}
+
+extension Rule {
+    /// Where the answer came from.
+    var sourceText: String {
+        switch source {
+        case .llm: confirmed == nil ? "Model answer, unconfirmed" : "Model answer, confirmed by you"
+        case .user: "Your rule"
+        case .builtin: "Tattle's rules"
+        case .iap: "Declared by the app"
+        case .appleList: "Apple's host list"
+        case .trackerRadar: "Tracker Radar"
         }
     }
 }

@@ -155,7 +155,7 @@ cmd_launch() {
     # Ready means the Network tab has read the socket table, not just a process up.
     "$AX" "$pid" open > /dev/null
     "$AX" "$pid" press Network > /dev/null
-    "$AX" "$pid" wait "open connections from" 30 > /dev/null || die "the Network tab did not load"
+    "$AX" "$pid" wait "open from" 30 > /dev/null || die "the Network tab did not load"
     "$AX" "$pid" close > /dev/null
 
     {

@@ -5,74 +5,93 @@ import SwiftUI
 /// Pushed inside the panel; the work and its outcome live in the observer, so that they do
 /// not depend on the panel being open.
 struct PacketAccessView: View {
-    /// What the Network tab pushes to get here.
-    struct Destination: Hashable {}
-
+    let back: String
     let state: AppState
-    @Environment(\.dismiss) private var dismiss
+    @Environment(PanelRouter.self) private var router
 
     var body: some View {
         let network = state.network
         let broker = network.broker
         let capturing = if case .capturing = network.captureStatus { true } else { false }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Packet access").font(.headline)
-                Text(CaptureBroker.installExplanation)
-                    .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(statusText(network.captureStatus))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                if let explanation = Self.explanation(broker.installation, capturing: capturing) {
-                    Text(explanation)
-                        .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let error = network.accessError {
-                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-                }
-                HStack {
-                    if let label = Self.installLabel(broker.installation) {
-                        Button(label) { run(network.installBroker) }
-                            .disabled((try? broker.proposed.get()) == nil)
+        DetailPage(back: back, title: "Packet access") {
+            Card {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(capturing ? PanelColor.ok : broker.installation == .absent ? PanelColor.track : PanelColor.newDot)
+                            .frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
+                        Text(statusText(network.captureStatus)).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if network.accessBusy { ProgressView().controlSize(.small) }
+                        if broker.installation != .absent {
+                            Button("Remove") { run(network.removeBroker) }
+                                .buttonStyle(.panel)
+                        }
+                        if let label = Self.installLabel(broker.installation) {
+                            Button(label) { run(network.installBroker) }
+                                .buttonStyle(.panelPrimary)
+                                .disabled((try? broker.proposed.get()) == nil)
+                        }
                     }
-                    if broker.installation != .absent {
-                        Button("Remove") { run(network.removeBroker) }
+                    .disabled(network.accessBusy)
+                    if let error = network.accessError {
+                        Text(error)
+                            .font(PanelFont.small)
+                            .foregroundStyle(PanelColor.bad)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    if network.accessBusy { ProgressView().controlSize(.small) }
-                    Spacer()
                 }
-                .controlSize(.small)
-                .disabled(network.accessBusy)
-                Divider()
-                switch broker.proposed {
-                case .success(let plist):
-                    caption(broker.installation == .current ? "Installed as \(CaptureBroker.plistPath):" : "What will be installed, at \(CaptureBroker.plistPath):")
-                    plistText(plist)
-                case .failure(let error):
-                    Text(error.text).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-                }
-                if let installed = broker.installed {
-                    caption("Installed now:")
-                    plistText(installed)
-                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             }
-            .padding(12)
+            if let explanation = Self.explanation(broker.installation, capturing: capturing) {
+                paragraph(explanation)
+            }
+            paragraph(CaptureBroker.installExplanation)
+            switch broker.proposed {
+            case .success(let plist):
+                plistBlock(broker.installation == .current ? "Installed as \(CaptureBroker.plistPath):" : "What will be installed, at \(CaptureBroker.plistPath):", plist)
+            case .failure(let error):
+                Text(error.text)
+                    .font(PanelFont.small)
+                    .foregroundStyle(PanelColor.bad)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
+            if let installed = broker.installed {
+                plistBlock("Installed now:", installed)
+            }
+        } bar: {
+            EmptyView()
         }
-        .navigationTitle("Packet access")
         .onAppear { network.refreshBroker() }
     }
 
-    private func caption(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(.secondary)
+    private func paragraph(_ text: String) -> some View {
+        Card {
+            Text(text)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+        }
     }
 
-    private func plistText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(.caption, design: .monospaced))
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func plistBlock(_ caption: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(caption).font(PanelFont.small).foregroundStyle(PanelColor.sub).padding(.horizontal, 4)
+            Text(text)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundStyle(PanelColor.sub)
+                .textSelection(.enabled)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(PanelColor.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
     }
 
     private func statusText(_ status: Sniffer.Status) -> String {
@@ -83,22 +102,24 @@ struct PacketAccessView: View {
         }
     }
 
-    /// Back to the tab when it worked; the tab's header says what changed.
+    /// Back to the tab when it worked; the tab's summary says what changed.
     private func run(_ action: @escaping () async -> Bool) {
         Task {
             let done = await action()
             await state.startup.refresh()
-            if done { dismiss() }
+            if done { router.pop() }
         }
     }
 
     // MARK: Words for each state
 
-    /// The Network tab's link here.
-    static func linkTitle(_ installation: CaptureBroker.Installation) -> String {
-        switch installation {
+    /// The Network list's way here, at the bottom of the panel: that names are being read, or
+    /// what to do when they are not.
+    static func linkTitle(_ installation: CaptureBroker.Installation, capturing: Bool) -> String {
+        if capturing { return "Packet access on" }
+        return switch installation {
         case .absent: "Allow packet access"
-        case .current: "Packet access"
+        case .current: "Packet access off"
         case .stale: "Packet access: install again"
         }
     }

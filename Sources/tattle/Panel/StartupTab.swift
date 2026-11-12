@@ -8,7 +8,7 @@ struct StartupTab: View {
             if let snapshot = state.startup.snapshot {
                 StartupList(snapshot: snapshot, state: state)
             } else {
-                ProgressView("Reading startup items")
+                ListPlaceholder(loading: "Reading startup items")
             }
         }
         .task(id: state.panelIsShowing) {
@@ -26,61 +26,66 @@ private struct StartupList: View {
     let state: AppState
 
     var body: some View {
-        List {
-            if let error = snapshot.loginItemsError {
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(error)
-                            .font(.callout)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if snapshot.loginItemsNeedFullDiskAccess {
-                            Button("Open Full Disk Access Settings") {
-                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-                                    NSWorkspace.shared.open(url)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let error = snapshot.loginItemsError {
+                    Card {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(error)
+                                .lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if snapshot.loginItemsNeedFullDiskAccess {
+                                Button("Open Full Disk Access Settings") {
+                                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                                        NSWorkspace.shared.open(url)
+                                    }
                                 }
+                                .buttonStyle(.panelPrimary)
                             }
-                            .controlSize(.small)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                    }
+                }
+                ForEach(StartupItem.Group.allCases, id: \.self) { group in
+                    let items = snapshot.items(in: group)
+                    if !items.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            SectionTitle(title: group.title, description: group.description)
+                            CardRows(items: items) { item in
+                                NavRow(route: .startupItem(item)) { StartupRow(item: item) }
+                            }
                         }
                     }
                 }
-            }
-            ForEach(StartupItem.Group.allCases, id: \.self) { group in
-                let items = snapshot.items(in: group)
-                if !items.isEmpty {
-                    Section {
-                        ForEach(items) { item in
-                            NavigationLink(value: item) { StartupRow(item: item) }
-                        }
-                    } header: {
-                        GroupHeader(title: group.title, description: group.description)
+                Card {
+                    HStack {
+                        Text("Apple")
+                        Spacer()
+                        Text("\(snapshot.appleCount) system jobs").foregroundStyle(PanelColor.sub)
                     }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
                 }
-            }
-            Section {
                 HStack {
-                    Text("Apple")
                     Spacer()
-                    Text("\(snapshot.appleCount) system jobs")
-                        .foregroundStyle(.secondary)
+                    Button {
+                        Task { await state.startup.refresh() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(PanelColor.sub)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Refresh")
+                    .disabled(state.startup.isLoading)
                 }
+                .padding(.horizontal, 4)
             }
-        }
-        .navigationDestination(for: StartupItem.self) { item in
-            StartupDetail(item: item, state: state)
-        }
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    Task { await state.startup.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .disabled(state.startup.isLoading)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
         }
     }
 }
@@ -89,32 +94,40 @@ private struct StartupRow: View {
     let item: StartupItem
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(spacing: 10) {
             Circle()
-                .fill(item.state.isActive ? Color.green : Color.secondary.opacity(0.3))
-                .frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
+                .fill(item.state.isActive ? PanelColor.ok : PanelColor.track)
+                .frame(width: 8, height: 8)
+                .padding(.horizontal, 2)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name).lineLimit(1).truncationMode(.middle)
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(PanelFont.small)
+                    .foregroundStyle(PanelColor.sub)
                     .lineLimit(1)
             }
+            Spacer(minLength: 0)
         }
+        .frame(minHeight: 44)
     }
 
     private var subtitle: String {
         var parts = [item.trigger ?? "unknown", item.state.text]
         if let signature = item.signature { parts.append(signature.summary) }
         else if let developer = item.developer { parts.append(developer) }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " \u{00B7} ")
     }
 }
 
-private struct StartupDetail: View {
+struct StartupDetail: View {
     let item: StartupItem
+    let back: String
     let state: AppState
     @State private var actionError: String?
+
+    /// Said by the line under the name.
+    private static let headerFacts: Set<String> = ["Signed by", "Team"]
 
     /// The row as it is after a refresh, so an action's effect shows without going back; the
     /// one opened stays readable once it is gone.
@@ -124,21 +137,18 @@ private struct StartupDetail: View {
 
     var body: some View {
         let item = current ?? self.item
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(item.name).font(.headline)
-                if current == nil {
-                    Text("No longer installed.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                FactsGrid(facts: item.facts)
-                Divider()
-                if item.canExplain {
-                    ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity), whyHere: item.whyHere(gone: current == nil), state: state)
-                    Divider()
-                }
-                HStack {
+        let gone = current == nil
+        DetailPage(back: back, title: item.name) {
+            ItemHeader(name: item.name, path: item.program, signature: item.signature, gone: gone ? "No longer installed" : nil)
+            if item.canExplain {
+                ExplainSection(request: ExplainRequest(kind: .launchItem, key: item.explainKey, facts: item.facts, identity: item.identity),
+                               whyHere: item.whyHere(gone: gone), state: state)
+            }
+            FactsCard(facts: item.facts.filter { item.signature == nil || !Self.headerFacts.contains($0.name) })
+        } bar: {
+            let daemon = !gone && Self.needsRoot(item)
+            if item.plistURL != nil || item.isLoginItem || !gone {
+                ActionBar(note: daemon ? "Loading or unloading a daemon needs root" : nil, error: actionError) {
                     if let plist = item.plistURL {
                         Button(item.isUnlistedFolder ? "Reveal Folder" : "Reveal Plist") { NSWorkspace.shared.activateFileViewerSelecting([plist]) }
                     }
@@ -149,20 +159,17 @@ private struct StartupDetail: View {
                             }
                         }
                     }
-                    Spacer()
-                    if current != nil { controls(item) }
-                }
-                .controlSize(.small)
-                if let actionError {
-                    Text(actionError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
+                } right: {
+                    if !gone { controls(item) }
                 }
             }
-            .padding(12)
         }
-        .navigationTitle(item.name)
+    }
+
+    /// A daemon that is not Tattle's own broker: launchd lets only root load or unload it.
+    private static func needsRoot(_ item: StartupItem) -> Bool {
+        guard let scope = item.launchdScope, item.plistURL != nil, !item.isCaptureBroker else { return false }
+        return !Launchctl.canControl(scope)
     }
 
     @ViewBuilder
@@ -178,9 +185,7 @@ private struct StartupDetail: View {
                     }
                 }
                 .disabled(state.network.accessBusy)
-            } else if !Launchctl.canControl(scope) {
-                Text("Loading or unloading a daemon needs root").font(.caption).foregroundStyle(.secondary)
-            } else {
+            } else if Launchctl.canControl(scope) {
                 switch item.state {
                 case .notLoaded:
                     Button("Load") { perform { try Launchctl.load(plist: plist, in: item.launchDomain) } }

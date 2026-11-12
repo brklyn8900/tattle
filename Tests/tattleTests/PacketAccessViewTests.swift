@@ -7,10 +7,13 @@ final class PacketAccessViewTests: XCTestCase {
     typealias View = PacketAccessView
 
     func testLinkTitle() {
-        XCTAssertEqual(View.linkTitle(.absent), "Allow packet access")
-        XCTAssertEqual(View.linkTitle(.current), "Packet access")
+        XCTAssertEqual(View.linkTitle(.absent, capturing: false), "Allow packet access")
+        XCTAssertEqual(View.linkTitle(.current, capturing: false), "Packet access off")
+        XCTAssertEqual(View.linkTitle(.current, capturing: true), "Packet access on")
+        // A broker from another build can still serve this one.
+        XCTAssertEqual(View.linkTitle(.stale(.otherBuild), capturing: true), "Packet access on")
         for staleness: CaptureBroker.Staleness in [.incomplete, .notLoaded, .otherUser(502), .otherBuild] {
-            XCTAssertEqual(View.linkTitle(.stale(staleness)), "Packet access: install again")
+            XCTAssertEqual(View.linkTitle(.stale(staleness), capturing: false), "Packet access: install again")
         }
     }
 
