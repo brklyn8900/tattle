@@ -103,3 +103,8 @@ the hardened runtime: with the first Apple Development identity in the keychain,
 without one; no Xcode project
 unless something forces one. GitHub Actions on `macos-latest` runs the tests and `make app`
 on every push.
+
+The app icon is an eye, drawn in `Resources/AppIcon.svg`. `make icon` redraws
+`Resources/AppIcon.icns` from it with `sips` and `iconutil`; the `.icns` is committed, so a
+build does not depend on either. The menu bar item shows the same eye in one colour, drawn
+in code (`MenuBarGlyph`) as a template image, and struck through when Tattle failed to start.
