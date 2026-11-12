@@ -8,8 +8,10 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
 
 ## Sub-features
 
-- `net-header`: heading `N open connections from M apps` and a sentence with new, already
-  open, and `K named` / `from DNS` / `relayed` / `with the name hidden` counts. `named`
+- `net-header`: a summary line, `N open from M apps`, then the already open and `K named` /
+  `from DNS` / `relayed` / `with the name hidden` counts. Connections to addresses this Mac
+  has not reached before are listed first, under `First contact`, each `<app> to <name or
+  address>`; the rest are grouped by app under `Seen before`. `named`
   counts names from the connection's own packets; DNS names are counted apart.
 - `net-dns`: a name that came only from a DNS reply carries a grey `from DNS` tag after it
   in the row, and the detail says `Name from a DNS reply for the address`.
@@ -48,7 +50,7 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   connection closed before the outcome arrived. The database is written ahead, with
   `tattle.sqlite-wal` and `tattle.sqlite-shm` beside it, and an outcome finds its row by the
   whole flow, through the `connection_flow` index.
-- `net-names-off`: without packet access, the header says `Destinations are addresses:
+- `net-names-off`: without packet access, the summary says `Destinations are addresses:
   names need packet access, which Tattle does not have yet`.
 
 ## How to get to it (user POV)
@@ -66,8 +68,8 @@ Preconditions:
 - **Known connections.** Run `$V connect named`, `$V connect garbage`, `$V connect
   silent`, each printing its local port. Wait 25 s so the silent one passes the 20 s
   timeout.
-- **List.** Run `$V tab Network` and `$V save network-list`. The heading reads `N open
-  connections from M apps`; the sentence includes `K named`; a `<terminal>, ...` row is there
+- **List.** Run `$V tab Network` and `$V save network-list`. The summary starts `N open from M
+  apps` and includes `K named`; a `<terminal>, ...` row is there
   (the `nc` connections file under the terminal app that started them; SKILL.md, Gotchas).
 - **Group.** Run `$V ax press --prefix "<terminal>,"` and `$V ax text`. Connection rows read
   `example.com, new, <ip>:80 · TCP · connected · nc, ...` for the named one and

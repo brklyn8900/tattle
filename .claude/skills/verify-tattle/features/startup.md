@@ -31,7 +31,7 @@ detail adds facts, an explanation, and controls.
 - `st-fda`: without Full Disk Access, `Login items need Full Disk Access: ...` and `Open
   Full Disk Access Settings`.
 - `st-gone`: the list is read again each time the panel opens on it. An item that left it
-  while its detail was open reads `No longer installed.` there, with no controls.
+  while its detail was open reads `No longer installed` there, with no controls.
 
 ## How to get to it (user POV)
 

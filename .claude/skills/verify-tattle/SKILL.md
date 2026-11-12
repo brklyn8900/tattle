@@ -63,8 +63,8 @@ dev copy through `make run`, which stops a running dev copy by its exact path; t
 release build by stopping it by its exact path, then `make app`, which deletes and
 rebuilds the bundle, then `open`), waits for the
 sniffer's `capturing on` or `packet capture unavailable` line, then opens the panel and
-waits for the Network tab's `N open connections from M apps` heading. Ready means that
-heading, not just a process. It prints the run id, copy, commit, pid and capture line. A build
+waits for the Network tab's `N open from M apps` summary. Ready means that
+summary, not just a process. It prints the run id, copy, commit, pid and capture line. A build
 takes seconds when nothing changed and a minute or two after a source change.
 
 Teardown is `$V cleanup` (below).
@@ -90,7 +90,7 @@ SwiftUI exposes a row's or button's words as its description and a text's words 
 value; `ax dump` shows both.
 
     $V tab Network                    # opens the panel, backs out of any detail, picks the tab
-    $V ax press "Packet access"       # exact label
+    $V ax press "Packet access on"    # exact label
     $V ax press --prefix "Safari,"    # rows read "<name>, <subtitle>, <count>"; match the start
     $V ax press Back                  # the detail's back button
     $V ax wait "Name from" 10         # waits for any label containing the text
@@ -99,10 +99,11 @@ value; `ax dump` shows both.
     $V ax dump                        # the tree with roles and [press] marks
     $V ax open | close | status
 
-Stable handles: the tab segments `Network`, `Processes`, `Ports`, `Startup`; the buttons
-`Settings...`, `Quit Tattle`, `Back`, `Explain`, `Reveal in Finder`; the Network header's
-packet-access link (`Allow packet access`, `Packet access`, or `Packet access: install
-again`); headings such as `N open connections from M apps`.
+Stable handles: the tabs `Network`, `Processes`, `Ports`, `Startup`; the buttons
+`Settings…`, `Quit Tattle`, `Back`, `Explain`, `Reveal in Finder`; the packet-access
+link at the bottom of the Network list (`Packet access on`, `Allow packet access`, `Packet
+access off`, or `Packet access: install again`); the Network list's summary, which starts
+`N open from M apps`.
 
 To give the Network tab a connection with a known outcome:
 

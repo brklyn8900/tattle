@@ -3,16 +3,16 @@
 The Processes tab lists running apps and programs, each app with its helpers and each
 program with what it started; everything that is part of macOS is one row. Sort by
 Memory or CPU. A detail shows the process's facts, an explanation, `Reveal in Finder`,
-and for the user's own processes `Quit` and `Force Quit...`.
+and for the user's own processes `Quit` and `Force Quit…`.
 
 ## Sub-features
 
 - `pr-header`: `N apps and programs, M processes` and the sort segments `Memory`, `CPU`.
 - `pr-group`: a group row; one with several members opens a list, one with a single
   member opens its detail.
-- `pr-detail`: facts including `Process <name> (pid N)` and `Parent`, `No longer running.`
+- `pr-detail`: facts including `Process <name> (pid N)` and `Parent`, `No longer running`
   once it exits.
-- `pr-quit`: `Quit <name>` (SIGTERM), and `Force Quit...` which arms `Force Quit <name>`
+- `pr-quit`: `Quit <name>` (SIGTERM), and `Force Quit…` which arms `Force Quit <name>`
   with `Cancel`; `Runs as <account>, so Tattle cannot quit it` instead for others'
   processes. An app's row quits the process Launch Services opened it from, or the bundle's
   main executable when Launch Services does not know it, and has no `Quit` while only its
@@ -108,7 +108,7 @@ Preconditions:
   <pid> "`, `$V ax wait "Quit sleep"`, `$V save marker-detail`: `Process sleep (pid
   <pid>)`, `Parent launchd (pid 1)`.
 - **Quit.** `$V ax press "Quit sleep"`, exact label; `ps -p <pid>` shows it gone; `$V ax
-  wait "No longer running."`; `$V save marker-quit`.
+  wait "No longer running"`; `$V save marker-quit`.
 
 - **Quit on an app with a helper.** On the test Mac: `Tool.app`, ad-hoc signed with `LSUIElement`,
   whose `Contents/MacOS/Tool` runs an `NSApplication` and whose `Contents/MacOS/tool-helper`
@@ -133,7 +133,7 @@ Preconditions:
 ## Gotchas
 
 - Quit only the run's own marker (SKILL.md, Stop and ask).
-- The group's own detail has `Quit <terminal>` and `Force Quit...` for the whole app, here the
+- The group's own detail has `Quit <terminal>` and `Force Quit…` for the whole app, here the
   terminal running the session. Press only the exact `Quit sleep` label inside the
   marker's detail, never a `Quit` prefix.
 - The list refreshes every 3 s; wait for labels, not fixed sleeps.

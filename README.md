@@ -125,7 +125,7 @@ Machine backs it up unless you exclude it.
 **Explain** sends one item to an LLM through a command you choose. Nothing is sent until
 you choose a command and click **Explain** on an item.
 
-1. Click **Settings...** in the panel.
+1. Click **Settings…** in the panel.
 2. Under **Explain with**, pick a preset: Claude Code (`claude -p`), Codex (`codex exec`),
    or Ollama (`ollama run llama3.2`). The tool must be installed and signed in.
 

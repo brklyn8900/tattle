@@ -1,6 +1,6 @@
 # Explain
 
-Every detail in the four tabs ends in an explanation section. When the knowledge base has
+Every detail in the four tabs has an explanation section. When the knowledge base has
 a rule for the item, the section shows it with its provenance (`Tattle's rules · risk low ·
 confidence high`). Otherwise it reads `No explanation yet.` with an `Explain` button, which
 sends one redacted prompt to the provider command configured in Settings and stores the
@@ -202,7 +202,7 @@ Preconditions:
   and the three counts do not change. Without `--no-session-persistence --strict-mcp-config --system-prompt ""`, a signed-in call adds a
   folder to each of the first two.
 - **Settings.** `tattle-ax` reaches only the panel. Walk the app's `AXWindows` whose subrole
-  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings..."`. The `AXPopUpButton` reads `Claude Code` and the command field holds the current
+  is not `AXSystemDialog`, after `$V tab Network` and `$V ax press "Settings…"`. The `AXPopUpButton` reads `Claude Code` and the command field holds the current
   flags. Put another command's text in the row with the app quit, and relaunch: the row
   keeps it and the picker reads `Custom`. Setting the field's `AXValue` returns success but does
   not reach SwiftUI's binding, so the row is what to write. The footnote says `The command must
