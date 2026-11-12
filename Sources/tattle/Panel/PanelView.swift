@@ -155,6 +155,10 @@ struct PanelView: View {
                 // settings window takes focus, or both stay on screen.
                 NSApplication.shared.keyWindow?.close()
                 openSettings()
+                // A Settings window left open behind another app's windows is already
+                // open, so opening it again does nothing: bring it forward.
+                NSApplication.shared.activate()
+                NSApplication.shared.windows.first { $0.identifier?.rawValue.contains("Settings") == true }?.makeKeyAndOrderFront(nil)
             }
             Spacer()
             if tab == .network, router.path.isEmpty {
