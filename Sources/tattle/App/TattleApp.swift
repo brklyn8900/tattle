@@ -10,6 +10,7 @@ struct TattleApp: App {
             let state = try AppState(database: try AppDatabase.openDefault())
             state.sampler.start()
             state.network.start()
+            state.settings.appearance.apply()
             self.state = state
             startupError = nil
         } catch {
@@ -38,7 +39,19 @@ struct TattleApp: App {
         Settings {
             if let state {
                 SettingsView(settings: state.settings, explainer: state.explainer)
+                    .onChange(of: state.settings.appearance) { _, appearance in appearance.apply() }
             }
+        }
+    }
+}
+
+private extension Appearance {
+    /// Sets the look of every window of the app; nil follows macOS.
+    @MainActor func apply() {
+        NSApplication.shared.appearance = switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
         }
     }
 }

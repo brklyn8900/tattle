@@ -24,11 +24,13 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.promptInstructionsAreDefault)
         XCTAssertEqual(settings.retentionDays, 30)
         XCTAssertTrue(settings.showThroughputInMenuBar)
+        XCTAssertEqual(settings.appearance, .system)
 
         settings.providerCommand = "cat"
         settings.promptInstructions = "Be terse."
         settings.retentionDays = 7
         settings.showThroughputInMenuBar = false
+        settings.appearance = .dark
         XCTAssertFalse(settings.promptInstructionsAreDefault)
 
         let reloaded = try AppSettings(store: SettingsStore(database: database))
@@ -36,6 +38,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(reloaded.promptInstructions, "Be terse.")
         XCTAssertEqual(reloaded.retentionDays, 7)
         XCTAssertFalse(reloaded.showThroughputInMenuBar)
+        XCTAssertEqual(reloaded.appearance, .dark)
 
         reloaded.resetPromptInstructions()
         XCTAssertEqual(try AppSettings(store: SettingsStore(database: database)).promptInstructions, Prompt.defaultInstructions)

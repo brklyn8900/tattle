@@ -10,6 +10,12 @@ struct SettingsView: View {
             Section("Menu bar") {
                 Toggle("Show network in and out next to the icon", isOn: $settings.showThroughputInMenuBar)
             }
+            Section("Appearance") {
+                Picker("Panel and Settings", selection: $settings.appearance) {
+                    ForEach(Appearance.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
             Section("Explain with") {
                 Picker("Preset", selection: presetSelection) {
                     ForEach(ShellProvider.presets) { Text($0.name).tag($0.id) }

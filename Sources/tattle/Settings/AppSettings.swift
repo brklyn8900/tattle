@@ -25,6 +25,19 @@ struct SettingsStore: Sendable {
     }
 }
 
+/// Whether the panel and the Settings window follow macOS's appearance or keep one.
+enum Appearance: String, CaseIterable, Sendable {
+    case system, light, dark
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
+
 /// The user's settings, loaded once and written through on every change.
 @MainActor @Observable
 final class AppSettings {
@@ -39,6 +52,8 @@ final class AppSettings {
     var retentionDays: Int { didSet { write(Key.retentionDays, String(retentionDays)) } }
     /// Live in/out next to the menu bar icon, or the icon alone with the numbers in the panel.
     var showThroughputInMenuBar: Bool { didSet { write(Key.menuBarThroughput, String(showThroughputInMenuBar)) } }
+    /// Light or dark whatever macOS is set to, or the same as macOS.
+    var appearance: Appearance { didSet { write(Key.appearance, appearance.rawValue) } }
 
     private let store: SettingsStore
 
@@ -47,6 +62,7 @@ final class AppSettings {
         static let promptInstructions = "prompt.instructions"
         static let retentionDays = "history.retentionDays"
         static let menuBarThroughput = "menubar.throughput"
+        static let appearance = "appearance"
     }
 
     init(store: SettingsStore) throws {
@@ -55,6 +71,7 @@ final class AppSettings {
         promptInstructions = try store.string(Key.promptInstructions) ?? Prompt.defaultInstructions
         retentionDays = try store.string(Key.retentionDays).flatMap(Int.init) ?? Self.defaultRetentionDays
         showThroughputInMenuBar = try store.string(Key.menuBarThroughput).flatMap(Bool.init) ?? true
+        appearance = try store.string(Key.appearance).flatMap(Appearance.init) ?? .system
     }
 
     var promptInstructionsAreDefault: Bool { promptInstructions == Prompt.defaultInstructions }
