@@ -105,7 +105,8 @@ Identify: the name and how it was learned, the address, whether it is on this ne
 internet, and the process, its app and their signers. What a host is comes from the
 knowledge base.
 
-Views: live connections grouped by app, with first contact with an address marked "new".
+Views: connections to addresses this Mac has not reached before, listed first; the rest of
+the live connections grouped by app.
 
 Actions: explain; reveal the app.
 
