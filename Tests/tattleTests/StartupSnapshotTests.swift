@@ -372,6 +372,28 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.items(in: .globalAgents).map(\.state), [.unreadable(reason: "x")])
     }
 
+    /// macOS keeps the record of a plist whose label has since changed beside the record for
+    /// the new label. The job takes the record that carries its label, and neither is a
+    /// second row.
+    func testTwoRecordsForOnePlistAreOneRowNamedByTheRecordWithTheJobsLabel() throws {
+        let url = "file:///Library/LaunchAgents/com.acme.agent.plist"
+        let launchd = LaunchdReader.Result(items: [job("com.acme.agent", scope: .globalAgent)], appleCount: 0, unreadable: [])
+        let stale = login("8.com.acme.launcher", name: "Acme Launcher", kind: .agent, url: url, developer: "Acme Old", legacy: true)
+        let current = login("8.com.acme.agent", name: "Acme Agent", kind: .agent, url: url, developer: "Acme Inc", legacy: true)
+        for records in [[stale, current], [current, stale]] {
+            let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: records, state: LaunchctlState(), signature: { _ in nil })
+            XCTAssertEqual(snapshot.items.count, 1, "neither record is a second row")
+            let row = try XCTUnwrap(snapshot.items(in: .globalAgents).first)
+            XCTAssertEqual(row.id, "com.acme.agent")
+            XCTAssertEqual(row.name, "Acme Agent")
+            XCTAssertEqual(row.developer, "Acme Inc")
+            XCTAssertTrue(row.isLoginItem)
+        }
+        // With no record under the job's label, the first one names it.
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [stale], state: LaunchctlState(), signature: { _ in nil })
+        XCTAssertEqual(snapshot.items.map(\.name), ["Acme Launcher"])
+    }
+
     func testThisMachineBuilds() throws {
         // Without Full Disk Access the app builds from the launchd jobs alone, and so does this.
         let loginItems: [LoginItem]

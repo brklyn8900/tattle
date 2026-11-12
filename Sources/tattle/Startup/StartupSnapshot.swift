@@ -188,18 +188,21 @@ struct StartupSnapshot: Equatable, Sendable {
         signature: (String) -> CodeSignature?
     ) -> StartupSnapshot {
         let byIdentifier = Dictionary(loginItems.map { ($0.identifier, $0) }, uniquingKeysWith: { a, _ in a })
-        let byPlistPath = Dictionary(
-            loginItems.compactMap { item -> (String, LoginItem)? in
-                guard item.legacy, let url = item.url.flatMap(URL.init(string:)), url.isFileURL else { return nil }
-                return (url.path, item)
-            }, uniquingKeysWith: { a, _ in a })
+        // macOS can hold more than one record for a plist: one whose label has since changed
+        // stays beside the record made for the new label.
+        var byPlistPath: [String: [LoginItem]] = [:]
+        for item in loginItems {
+            guard item.legacy, let url = item.url.flatMap(URL.init(string:)), url.isFileURL else { continue }
+            byPlistPath[url.path, default: []].append(item)
+        }
 
         var items: [StartupItem] = []
         var joined = Set<String>()
 
         for job in launchd.items {
-            let registered = byPlistPath[job.plistURL.path]
-            if let registered { joined.insert(registered.identifier) }
+            let records = byPlistPath[job.plistURL.path] ?? []
+            joined.formUnion(records.map(\.identifier))
+            let registered = records.first { $0.jobLabel == job.label } ?? records.first
             let started = job.program.map {
                 CodeSignature.started(program: $0, arguments: job.arguments, environmentPath: job.environmentPath,
                                       changesRoot: job.rootDirectory != nil, reading: signature)
@@ -225,8 +228,9 @@ struct StartupSnapshot: Equatable, Sendable {
 
         for plist in launchd.unreadable {
             // With Full Disk Access macOS has a record of the plist, which knows what runs.
-            let registered = byPlistPath[plist.url.path]
-            if let registered { joined.insert(registered.identifier) }
+            let records = byPlistPath[plist.url.path] ?? []
+            joined.formUnion(records.map(\.identifier))
+            let registered = records.first
             let path = registered?.executablePath.flatMap { $0.hasPrefix("/") ? $0 : nil }
             let signed = registered.flatMap { item in path.flatMap { registeredSignature(of: item, at: $0, reading: signature) } }
             items.append(StartupItem(
