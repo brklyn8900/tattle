@@ -21,7 +21,7 @@ SIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning | awk -F'"' '/
 # and a plain swift build links the app again without it.
 APP_STACK     := 0x800000
 
-.PHONY: build test app dev-app install run stop log clean
+.PHONY: build test app dev-app icon install run stop log clean
 
 build:
 	swift build -c $(CONFIG)
@@ -41,6 +41,7 @@ app:
 	plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(BUNDLE_NAME)" $(APPDIR)/Contents/Info.plist
 	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
+	cp Resources/AppIcon.icns $(APPDIR)/Contents/Resources/AppIcon.icns
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
 	  codesign --force --options runtime --sign "$(SIGN_IDENTITY)" $(APPDIR)/Contents/MacOS/$(BROKER); \
 	  codesign --force --options runtime --sign "$(SIGN_IDENTITY)" $(APPDIR); \
@@ -65,6 +66,17 @@ app:
 
 dev-app:
 	$(MAKE) app APPDIR=$(DEVDIR) BUNDLE_ID=$(DEV_ID) BUNDLE_NAME="Tattle Dev"
+
+# Redraws Resources/AppIcon.icns from Resources/AppIcon.svg; run it after the drawing changes.
+icon:
+	rm -rf $(BUILD)/AppIcon.iconset
+	mkdir -p $(BUILD)/AppIcon.iconset
+	@for s in 16 32 128 256 512; do \
+	  sips -s format png -z $$s $$s Resources/AppIcon.svg --out $(BUILD)/AppIcon.iconset/icon_$${s}x$${s}.png >/dev/null; \
+	  d=$$((s * 2)); \
+	  sips -s format png -z $$d $$d Resources/AppIcon.svg --out $(BUILD)/AppIcon.iconset/icon_$${s}x$${s}@2x.png >/dev/null; \
+	done
+	iconutil -c icns -o Resources/AppIcon.icns $(BUILD)/AppIcon.iconset
 
 install: app
 	rm -rf /Applications/Tattle.app
