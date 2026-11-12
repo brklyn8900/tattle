@@ -178,7 +178,7 @@ struct IconTile: View {
         .accessibilityHidden(true)
     }
 
-    private static let tints: [Color] = [0x2F7DE1, 0x7A3B86, 0x1F9D4D, 0x3A8FD6, 0x2A5BD7, 0x4A4A52, 0x5A7D3A, 0x8A8A92, 0x3C78D8, 0x6B6B73].map { hex in
+    private static let tints: [Color] = ([0x2F7DE1, 0x7A3B86, 0x1F9D4D, 0x3A8FD6, 0x2A5BD7, 0x4A4A52, 0x5A7D3A, 0x8A8A92, 0x3C78D8, 0x6B6B73] as [Int]).map { (hex: Int) -> Color in
         Color(.sRGB, red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
     }
 
