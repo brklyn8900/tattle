@@ -31,7 +31,7 @@ struct TattleApp: App {
             if let state {
                 MenuBarLabel(sampler: state.sampler, settings: state.settings)
             } else {
-                Image(systemName: "eye.slash")
+                Image(nsImage: MenuBarGlyph.slashedEye)
             }
         }
         .menuBarExtraStyle(.window)
@@ -63,7 +63,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: "eye")
+            Image(nsImage: MenuBarGlyph.eye)
             if settings.showThroughputInMenuBar {
                 Text(label)
                     .font(.system(size: 11).monospacedDigit())
