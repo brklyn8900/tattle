@@ -78,11 +78,18 @@ Preconditions:
 - The first click on the eye while the Settings window is open does not open the panel; the
   next one does. Seen on `main` too.
 - The redesigned panel, seen 2026-11-12 on the development Mac in the dev copy, runs
-  `2026-11-12T105819` to `2026-11-12T112604` (the last at `ba49a2e`): in dark, the Network
-  list, an app's page, a connection's page, the Processes list, an app's process page with
-  `Force Quit…` armed, the Ports list, a port's page with and without an explanation, the
-  Startup list, a login item's page and Packet access; in light, the Processes list and an
-  app's process page; a named first contact with no explanation as one line. Not driven: asking
-  a model, a failed ask, a model answer with `Confirm`, an item that is gone, a first reading,
-  the lists without packet access or Full Disk Access, the failed start, and a first contact
-  with no name.
+  `2026-11-12T105819` to `2026-11-12T113852` (from `2026-11-12T112604` at `ba49a2e` or later):
+  in dark, the Network list, an app's page, a connection's page, the Processes list, an app's
+  process page with `Force Quit…` armed, the Ports list, a port's page with and without an
+  explanation, the Startup list, a login item's page and Packet access; in light, the
+  Processes list and an app's process page; a first contact with no explanation as one line,
+  and as `No name seen` when it has no name. On a listener the run started (`nc -l 127.0.0.1
+  54999`), with the fake provider behind `sleep 6`: the spinner while asking, the answer with
+  `Ask again` and `Confirm`, `Model answer, confirmed by you`, and `No longer listening` with
+  the sentence in the past tense once the listener was killed; with `/usr/bin/false` as the
+  provider, `The provider failed (exit 1).` under the questions. A `connect named` connection
+  read `Closed` on its page once it ended. `Reading processes` showed before the first
+  reading. With a file that is not a database in the copy's data folder, the panel is `Tattle
+  could not start.` with SQLite's error and `Quit Tattle` (`2026-11-12-failed-start/`). Not
+  driven: the lists without packet access or Full Disk Access, and a process, an app's
+  connections or a startup item gone under its open page.
