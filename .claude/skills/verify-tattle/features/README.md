@@ -74,3 +74,5 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   2026-11-08.
 - [Panel open and closed](./panel.md): closing the panel keeps its views and stops their
   work, and what reopening shows. Proven 2026-11-09.
+- [App icon and menu bar glyph](./icon.md): the bundle's icon and the menu bar eye, running
+  and after a failed start. Proven 2026-11-12 on the test Mac.
