@@ -98,9 +98,16 @@ Preconditions:
   sleeps, ad hoc signed, at `/tmp/x`, started by a launch agent. Its row reads `x, 1 process
   · ad hoc signed`, its detail `Signed by ad hoc signed`. `cp /bin/ls <dir>/ls`, then `mv
   <dir>/ls /tmp/x`: the pid runs on from the file that was there. At the next refresh the row
-  reads `x, 1 process · Apple, outside macOS`, the detail `Signed by Apple, outside macOS`,
-  and it is still a row of its own, not a member of `macOS`. A copy of `/bin/sleep` moved over
-  another such program reads the same.
+  reads `x, 1 process · changed on disk since it started`, and it is still a row of its own,
+  not a member of `macOS`. The detail has `Path /tmp/x` and no `Signed by` or `Team`. A copy
+  of `/bin/sleep` moved over another such program reads the same, and so does a copy of a
+  program signed with a Developer ID, where `main` named its publisher.
+- **An app updated in place.** On the test Mac, with an app signed with a Developer ID open
+  and the tab open: replace the bundle's main executable with another build signed by the
+  same publisher. At the next refresh the app's row reads `<app>, N processes · changed on
+  disk since it started`, its own process's row `pid N · changed on disk since it started`,
+  and neither detail has `Signed by` or `Team`; a member whose file is untouched keeps its
+  signer. Quit the app and open it again: the row reads the publisher.
 - **Safari.** On the test Mac, with Safari open: its row reads `Safari, N processes · Apple`, its
   detail's path is `/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app`, and
   its WebKit helpers (`com.apple.WebKit.WebContent`, `.GPU`, `.Networking`) are its members,
@@ -212,7 +219,9 @@ Preconditions:
   ad hoc signed app and both changed files proven 2026-11-15 on the test Mac (commit
   `7e9f4cb`); no run folder was kept. On `main` before it the program moved over had no row
   and counted in `macOS, N processes · Apple`, and the copy's row read `Trusted, 1 process ·
-  Apple`.
+  Apple`. Since Tattle checks a process's running code against its file, that program's row
+  reads `changed on disk since it started` in place of `Apple, outside macOS`: not yet seen
+  in the app, nor the app updated in place.
 - On the test Mac a copy of one of macOS's own programs (`/bin/sleep`, `/bin/ls`, `/usr/bin/nc`)
   is killed as it starts, though `codesign` finds its signature valid, so an Apple-signed file
   outside macOS is reached by moving the copy over a program that is already running. A
@@ -225,7 +234,9 @@ Preconditions:
   the grey slashed shield beside `Apple, outside macOS`
   (`testApplesSignatureOnAFileElsewhereIsNotPartOfMacOS`; the rows read carry an app icon);
   and the `Interpreter signed by Apple, outside macOS` lines above, not read in the app since
-  they changed (`testAnAppAndAnInterpreterElsewhereAreNotReadAsApples`).
+  they changed (`testAnAppAndAnInterpreterElsewhereAreNotReadAsApples`); an interpreter whose
+  file is not the code it runs, whose row still reads `<interpreter> script`
+  (`testProcessesShowNoSignerForAProcessItsFileDoesNotVouchFor`).
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the development Mac the panel closed partway through two runs (`2026-11-07T224046`,
