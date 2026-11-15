@@ -290,6 +290,11 @@ extension CaptureBroker {
             echo 'This copy of Tattle contains links or special files, so it cannot be checked. Nothing was installed.' >&2
             exit 3
         fi
+        # ditto keeps a Finder lock, and a locked file's owner cannot be changed, even by root.
+        if [ -n "$(/usr/bin/find "$stage/Tattle.app" -flags +uchg,uappnd,schg,sappnd -print)" ]; then
+            echo 'A file inside this copy of Tattle is locked in the Finder, so it cannot be checked. Download or build Tattle again. Nothing was installed.' >&2
+            exit 3
+        fi
         /usr/sbin/chown -R \(shell(layout.owner)) "$stage"
         if ! /usr/bin/codesign --verify --strict --deep \(shell("-R=\(identity.buildRequirement)")) "$stage/Tattle.app" 2>/dev/null; then
             echo 'Tattle on disk is not the Tattle that is running. Quit Tattle, open it again, and try again. Nothing was installed.' >&2

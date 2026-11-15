@@ -341,23 +341,18 @@ final class CaptureBrokerScriptTests: XCTestCase {
 
     /// A file locked in Finder (uchg) is copied locked, and rm cannot delete it: the failed
     /// install left its stage, and every later install stopped at the sweep of old stages.
-    /// As root the install fails at `chown -R root:wheel` on the locked copy; here chown changes
-    /// no owner and succeeds, so the stand-in launchctl fails the install instead.
+    /// As root the install stopped at `chown -R root:wheel` on the locked copy with chown's own
+    /// line; the script now refuses the locked copy before it, in a sentence of its own.
     func testALockedFileFailsOneInstallAndWedgesNone() throws {
         unlockAllAtTeardown()
         let plist = bundle.appending(path: "Contents/Info.plist")
         try setLocked(true, plist)
-        // Appends: the failed install's cleanup boots out again, after the stage is gone.
-        let flags = root.appending(path: "staged-flags")
-        let staged = CaptureBroker.shell("\(layout.helperDirectory)/.\(CaptureBroker.label).") + "*/Tattle.app/Contents/Info.plist"
-        try "/usr/bin/stat -f %Sf \(staged) >> \(CaptureBroker.shell(flags.path))\n"
-            .write(to: root.appending(path: "on-bootout"), atomically: true, encoding: .utf8)
-        let failBootstrap = root.appending(path: "fail-bootstrap")
-        FileManager.default.createFile(atPath: failBootstrap.path, contents: nil)
-        XCTAssertThrowsError(try install())
-        XCTAssertTrue((try? String(contentsOf: flags, encoding: .utf8))?.contains("uchg") == true, "the stage held a locked copy when the install failed")
+        XCTAssertThrowsError(try install()) { error in
+            XCTAssertEqual(error as? CaptureBroker.InstallError, .failed(
+                "A file inside this copy of Tattle is locked in the Finder, so it cannot be checked. Download or build Tattle again. Nothing was installed.\n"))
+        }
+        assertNothingInstalled("a locked file")
         XCTAssertEqual(leftoverStages, [], "the stage of the failed copy is gone")
-        try FileManager.default.removeItem(at: failBootstrap)
         try setLocked(false, plist)
         try install()
         XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))

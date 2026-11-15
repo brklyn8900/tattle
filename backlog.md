@@ -158,11 +158,10 @@ and (d) are done)
   as interpreters, which they are not (`ProcessSnapshot.swift`).
 - `ProcessEntry`'s `interpreter` and `runsUnnamedCode` are one state in two fields, which
   allows unnamed code with no interpreter: one enum would hold it (`ProcessTable.swift`).
-- `testALockedFileFailsOneInstallAndWedgesNone` checks that the stage held a locked copy
-  when the install failed, which holds only where ditto copies a locked file: macOS 26.7.2
-  does, and on 2026-10-26 this Mac's ditto failed on it, so on such a system the check
-  fails. Not run on the test Mac (26.7.1). Its name no longer fits either: the stand-in launchctl
-  fails the install, not the lock (`CaptureBrokerScriptTests.swift`).
+- `testALockedFileFailsOneInstallAndWedgesNone` expects the install to refuse the stage's
+  locked copy, which holds only where ditto copies a locked file: macOS 26.7.2 does, and on
+  2026-10-26 this Mac's ditto failed on it, so on such a system the check fails. Not run on
+  the test Mac (26.7.1) (`CaptureBrokerScriptTests.swift`).
 - A wrapper given no command reads as undetermined, so its launch item shows no signer,
   though some then run only their own code: `caffeinate -s` (a common keep-awake agent),
   `env`, `nice`, `time`, `arch`. Others start something else (`screen` and `script` run
@@ -212,10 +211,6 @@ are the triage's)
   capture fails for another reason (`PacketAccessView.swift`).
 - B8: The friendly "cancelled" text for the administrator dialog is never shown, because
   osascript always writes to stderr (`CaptureBrokerInstall.swift`).
-- An install from a bundle holding a Finder-locked file stops at the script's `chown`, and the
-  person sees the command's own line, `chown: <file>: Operation not permitted`, where the
-  script's other failures have sentences of their own. Nothing is installed
-  (`CaptureBrokerInstall.swift`).
 - E11: Confirm stays enabled during Ask again, and confirming then shows a raw
   `alreadyConfirmed` error (`ExplainSection.swift`).
 - N8: One failed history write drops the rest of that poll's history
