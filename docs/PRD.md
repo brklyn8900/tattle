@@ -276,8 +276,9 @@ Building from source is a first-class path. A Homebrew cask is possible; the use
   same host. One extension per browser; Safari's needs Xcode and ideally a developer
   account.
 - **More for the Network tab.** Grouping an app's connections by service (forty Akamai hosts
-  for one app collapse to "Apple CDN"), from built-in and user rules only: a model choosing
-  `*.akamaiedge.net` as "Apple CDN" would otherwise mislabel every later match. History per
+  for one app collapse to "Apple CDN"), from built-in rules only, until a rule editor has
+  its storage decision (ADR-0005): a model choosing `*.akamaiedge.net` as "Apple CDN" would
+  otherwise mislabel every later match. History per
   app and per destination, and what talked while the screen was locked. A flag on plaintext
   connections. For each host, IP block owner (ASN data), country, domain category and owning
   company (Tracker Radar), Apple's published host list, and the app's own
