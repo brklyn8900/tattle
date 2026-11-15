@@ -22,7 +22,7 @@ final class NetworkObserver {
     private let settings: AppSettings
     private let socketTable: @Sendable () throws -> [SocketEntry]
     private let signature: @Sendable (String) -> CodeSignature?
-    private let executable: @Sendable (Int32, String) -> CodeSignature?
+    private let executable: @Sendable (Int32, String) -> SignatureCache.ProcessReading
     private var tracker = ConnectionTracker()
     private var owners: [Int32: ConnectionOwner] = [:]
     private var known = Set<String>()
@@ -62,12 +62,12 @@ final class NetworkObserver {
     static let promptPollDelay: Duration = .milliseconds(20)
 
     /// `signature` reads a file's signature and `executable` a process's, for its pid and its
-    /// executable's path; a test that gives only `signature` has each process read as its file.
+    /// executable's path.
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
          socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
          processRecords: @escaping @Sendable () -> ProcessRecords? = { ProcessTable.records() },
          signature: (@Sendable (String) -> CodeSignature?)? = nil,
-         executable: (@Sendable (Int32, String) -> CodeSignature?)? = nil,
+         executable: (@Sendable (Int32, String) -> SignatureCache.ProcessReading)? = nil,
          sniffer: @escaping SnifferFactory = { Sniffer(onEvents: $0, onStatus: $1) }) {
         makeSniffer = sniffer
         self.store = store
@@ -77,13 +77,7 @@ final class NetworkObserver {
         self.processRecords = processRecords
         let signatures = SignatureCache()
         self.signature = signature ?? { signatures.signature(at: $0) }
-        if let executable {
-            self.executable = executable
-        } else if let signature {
-            self.executable = { _, path in signature(path) }
-        } else {
-            self.executable = { signatures.signature(of: $0, at: $1) }
-        }
+        self.executable = executable ?? { signatures.reading(of: $0, at: $1) }
     }
 
     func start(every interval: Duration = .seconds(2)) {
@@ -328,23 +322,31 @@ final class NetworkObserver {
 
         // Owners are resolved once per pid and executable, off the main thread, from the lines
         // read with the table. A pid whose connections all closed is forgotten so a reused pid
-        // is resolved afresh.
+        // is resolved afresh, and so is one whose owner rests on a reading that was not settled:
+        // it is the owner of the connections opening now, and is read again for the next.
+        var unsettled = Set<Int32>()
         if !unresolved.isEmpty {
             let (signature, executable) = (signature, executable)
-            let resolved = await Task.detached(priority: .utility) { () -> [Int32: ConnectionOwner] in
+            let resolved = await Task.detached(priority: .utility) { () -> (owners: [Int32: ConnectionOwner], unsettled: Set<Int32>) in
                 // With no lines, none of these is known to have exited.
-                guard let lines else { return Dictionary(uniqueKeysWithValues: unresolved.map { ($0, .unknown) }) }
+                guard let lines else { return (Dictionary(uniqueKeysWithValues: unresolved.map { ($0, .unknown) }), []) }
                 var result: [Int32: ConnectionOwner] = [:]
+                var unsettled = Set<Int32>()
                 for pid in unresolved {
                     result[pid] = ConnectionOwner.resolve(
                         pid: pid, in: lines.entries,
                         runningApp: { NSRunningApplication(processIdentifier: $0)?.bundleURL?.path },
                         responsible: { lines.responsible[$0] },
-                        executable: executable, signature: signature)
+                        executable: { process, path in
+                            let reading = executable(process, path)
+                            if !reading.isSettled { unsettled.insert(pid) }
+                            return reading.signature
+                        }, signature: signature)
                 }
-                return result
+                return (result, unsettled)
             }.value
-            owners.merge(resolved) { _, new in new }
+            owners.merge(resolved.owners) { _, new in new }
+            unsettled = resolved.unsettled
         }
 
         var opened: [LiveConnection] = []
@@ -358,7 +360,7 @@ final class NetworkObserver {
         record(opened: opened, closed: changes.closed, now: now)
 
         let openPids = Set(tracker.live.values.map(\.pid))
-        owners = owners.filter { openPids.contains($0.key) }
+        owners = owners.filter { openPids.contains($0.key) && !unsettled.contains($0.key) }
         names.prune(now: now, keeping: Set(tracker.live.values.map(\.flowKey)))
 
         // Keep each live row's "new" mark and name from when it opened; a row with no outcome

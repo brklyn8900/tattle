@@ -47,3 +47,15 @@ extension ProcessTable {
         try list(signature: { signature($1) })
     }
 }
+
+extension NetworkObserver {
+    convenience init(
+        store: ConnectionStore, rules: RuleStore, settings: AppSettings,
+        socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
+        processRecords: @escaping @Sendable () -> ProcessRecords? = { ProcessTable.records() },
+        signature: @escaping @Sendable (String) -> CodeSignature?
+    ) {
+        self.init(store: store, rules: rules, settings: settings, socketTable: socketTable, processRecords: processRecords,
+                  signature: signature, executable: { SignatureCache.ProcessReading(signature: signature($1)) })
+    }
+}

@@ -164,17 +164,29 @@ final class RunningCodeTests: XCTestCase {
 
     func testACheckThatSpansAChangeDoesNotVouch() throws {
         let machine = try Machine()
+        func unsettled() -> Bool {
+            let reading = machine.cache.reading(of: 7, at: machine.file.path)
+            XCTAssertNil(reading.signature)
+            return !reading.isSettled
+        }
         machine.duringCheck = { machine.code?.hash = Data([2]) }
-        XCTAssertNil(machine.signer(of: 7), "the process started another program while it was checked")
+        XCTAssertTrue(unsettled(), "the process started another program while it was checked")
         machine.duringCheck = { try? machine.install("two") }
-        XCTAssertNil(machine.signer(of: 7), "another file arrived at the path while it was checked")
+        XCTAssertTrue(unsettled(), "another file arrived at the path while it was checked")
         machine.duringCheck = nil
         XCTAssertEqual(machine.signer(of: 7), machine.signature, "neither was kept")
         XCTAssertEqual(machine.checks, 3)
 
         machine.code?.path = "/x/another"
-        XCTAssertNil(machine.signer(of: 7), "the process now runs from another path than the one it was listed at")
+        XCTAssertTrue(unsettled(), "the process now runs from another path than the one it was listed at")
         XCTAssertEqual(machine.checks, 3)
+
+        machine.code?.path = machine.file.path
+        machine.matches = false
+        try machine.install("three")
+        let differs = machine.cache.reading(of: 7, at: machine.file.path)
+        XCTAssertNil(differs.signature)
+        XCTAssertTrue(differs.isSettled, "a file that is not the running code is an answer, and is kept")
     }
 
     func testAProcessThatHasEndedReadsAsItsFile() throws {
@@ -327,6 +339,65 @@ final class RunningCodeTests: XCTestCase {
         let script = owner(400)
         XCTAssertEqual(script.signature?.signer, .script)
         XCTAssertNil(script.interpreterSignature)
+    }
+
+    /// Network keeps an owner for as long as its process has a connection open. One read
+    /// while its file or its process was changing has no signer, and would have none for
+    /// every connection after.
+    @MainActor
+    func testNetworkReadsAnOwnerAgainWhenItsReadingWasNotSettled() async throws {
+        final class World: @unchecked Sendable {
+            private let lock = NSLock()
+            private var sockets: [SocketEntry] = []
+            private var settled = false
+            var table: [SocketEntry] {
+                get { lock.withLock { sockets } }
+                set { lock.withLock { sockets = newValue } }
+            }
+            var isSettled: Bool {
+                get { lock.withLock { settled } }
+                set { lock.withLock { settled = newValue } }
+            }
+        }
+        let world = World()
+        let pid: Int32 = 9_000_100
+        let signed = agent
+        let records = [pid: ProcessEntry(pid: pid, parentPid: 1, uid: 501, name: "agent", path: "/opt/agent/agent", started: .distantPast)]
+        func socket(_ port: UInt16) -> SocketEntry {
+            SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: port, remoteAddress: "17.1.1.1", remotePort: 443,
+                        tcpState: SocketEntry.tcpEstablished, pid: pid, effectivePid: 0, uid: 501)
+        }
+        let database = try AppDatabase.inMemory()
+        let observer = NetworkObserver(
+            store: ConnectionStore(database: database), rules: try RuleStore(database: database),
+            settings: try AppSettings(store: SettingsStore(database: database)),
+            socketTable: { world.table },
+            processRecords: {
+                ProcessRecords { pids in
+                    ProcessTable.lines(of: pids, in: records, parent: \.parentPid, entry: { $0 }, responsible: { _ in nil })
+                }
+            },
+            signature: { _ in nil },
+            executable: { _, _ in world.isSettled ? SignatureCache.ProcessReading(signature: signed) : SignatureCache.ProcessReading(isSettled: false) })
+        func signer(_ port: UInt16) -> CodeSignature? {
+            observer.snapshot?.connections.first { $0.connection.localPort == port }?.owner.signature
+        }
+
+        world.table = [socket(40000)]
+        await observer.poll()
+        XCTAssertEqual(observer.snapshot?.connections.count, 1)
+        XCTAssertNil(signer(40000), "nothing said whether the file was the running code")
+
+        world.isSettled = true
+        world.table = [socket(40000), socket(40001)]
+        await observer.poll()
+        XCTAssertEqual(signer(40001), signed, "the owner is read again for the next connection")
+        XCTAssertNil(signer(40000), "the first keeps the owner it opened with")
+
+        world.isSettled = false
+        world.table = [socket(40000), socket(40001), socket(40002)]
+        await observer.poll()
+        XCTAssertEqual(signer(40002), signed, "a settled owner is kept")
     }
 
     func testPortsShowNoSignerForAProcessItsFileDoesNotVouchFor() throws {

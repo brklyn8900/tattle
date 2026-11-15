@@ -81,16 +81,28 @@ final class SignatureCache: @unchecked Sendable {
 
     func signature(at path: String) -> CodeSignature? { reading(at: path).entry.signature }
 
+    /// A process's signature as read. Not settled when the file or the process changed while
+    /// they were read, so that nothing says whether the file is the code the process runs:
+    /// there is no signature then, and the next reading may have one, so this one is not to
+    /// be kept.
+    struct ProcessReading: Sendable {
+        var signature: CodeSignature?
+        var isSettled = true
+    }
+
     /// The signature of the process `pid`, whose executable the kernel names as `path`: the
     /// file's, or nil when the file does not vouch for the process, because it is not the code
     /// the process runs. Only a file that names a signer is checked, and only outside the
     /// folders macOS alone installs into, where no one else can change a file: anywhere else
     /// a running program can rename a signed file over its own, and would read as its signer.
     /// An app updated in place fails the same way until it is started again.
-    func signature(of pid: Int32, at path: String) -> CodeSignature? {
+    func signature(of pid: Int32, at path: String) -> CodeSignature? { reading(of: pid, at: path).signature }
+
+    func reading(of pid: Int32, at path: String) -> ProcessReading {
         let (entry, isSettled) = reading(at: path)
-        guard entry.signature.namesSigner, !ApplesProgram.isInstalled(at: path) else { return entry.signature }
-        return runs(pid, entry, isSettled: isSettled, at: path) ? entry.signature : nil
+        guard entry.signature.namesSigner, !ApplesProgram.isInstalled(at: path) else { return ProcessReading(signature: entry.signature) }
+        guard let runs = runs(pid, entry, isSettled: isSettled, at: path) else { return ProcessReading(isSettled: false) }
+        return ProcessReading(signature: runs ? entry.signature : nil)
     }
 
     /// The signature at `path`, with the files it rests on and their versions from before it
@@ -109,16 +121,17 @@ final class SignatureCache: @unchecked Sendable {
         return (entry, isSettled)
     }
 
-    /// Whether the process runs the code `entry` was read from. The answer is about the pair,
+    /// Whether the process runs the code `entry` was read from, nil when the file or the
+    /// process changed while they were read. The answer is about the pair,
     /// the running code and the file: after a rename over the path the pid, its start time and
     /// its code are as they were and only the file differs, and a process that starts another
     /// program keeps its pid. So it is kept for the code the kernel says the process runs
     /// together with the versions of the files, and counts only when neither changed while the
     /// check was made: what changed meanwhile may not be what was checked. A process that has
     /// ended runs nothing, and reads as its file does.
-    private func runs(_ pid: Int32, _ entry: Entry, isSettled: Bool, at path: String) -> Bool {
+    private func runs(_ pid: Int32, _ entry: Entry, isSettled: Bool, at path: String) -> Bool? {
         guard let code = running(pid) else { return true }
-        guard isSettled, code.path == path else { return false }
+        guard isSettled, code.path == path else { return nil }
         // The kernel describes the process and holds no signature for its code: unsigned code
         // is not a file that names a signer, and with no hash a check would be made every time.
         if code.status != nil, code.hash == nil { return false }
@@ -128,7 +141,7 @@ final class SignatureCache: @unchecked Sendable {
         }
         let matches = matchesFile(pid)
         guard let after = running(pid) else { return true }
-        guard after == code, Self.versions(of: path, entry.files) == entry.versions else { return false }
+        guard after == code, Self.versions(of: path, entry.files) == entry.versions else { return nil }
         if code.hash != nil { keep(Verdict(code: code, versions: entry.versions, matches: matches), for: pid) }
         return matches
     }
