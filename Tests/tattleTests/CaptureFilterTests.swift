@@ -133,8 +133,9 @@ final class CaptureFilterTests: XCTestCase {
                 return namer.observe(try XCTUnwrap(Packet.parse(frame, dlt: PacketCapture.linkEthernet)), at: 1_700_000_000)
             }
             // A Mac that resolves through a proxy of its own has a loopback address as resolver.
+            // No link carries one, so a frame from it is not the proxy's reply.
             let loopback: [UInt8] = family == 4 ? [127, 0, 0, 1] : [UInt8](repeating: 0, count: 15) + [1]
-            var namer = FlowNamer(localAddresses: [IPAddress(bytes: me), IPAddress(bytes: loopback)],
+            var namer = FlowNamer(localAddresses: [IPAddress(bytes: me)],
                                   resolvers: [IPAddress(bytes: resolver), IPAddress(bytes: loopback)], hardwareAddress: mac)
 
             let forged = ethernet(from: otherMac, to: mac, ip(from: me, to: peer, udp(sourcePort: 53, destinationPort: 443, payload: initial)))
@@ -156,20 +157,14 @@ final class CaptureFilterTests: XCTestCase {
         }
     }
 
-    /// Loopback holds fe80::1, and so do many routers, which answer DNS from it. A link-local
-    /// address is this Mac's only on the link it belongs to: the router's reply is not a frame
-    /// under this Mac's address from another host.
+    /// Loopback holds fe80::1, and so do many routers, which answer DNS from it. Only the
+    /// capture interface's addresses are this Mac's on its link, so the router's reply is not a
+    /// frame under this Mac's address from another host.
     func testAReplyFromARouterAtLoopbacksLinkLocalAddressIsRemembered() throws {
         let filter = try XCTUnwrap(CaptureFilter.program(linkType: PacketCapture.linkEthernet, direction: .hardwareAddress(mac)))
         let router: [UInt8] = [0xfe, 0x80] + [UInt8](repeating: 0, count: 13) + [1]
         let mine: [UInt8] = [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd]
-        let loopback: [UInt8] = [UInt8](repeating: 0, count: 15) + [1]
-        let bridge: [UInt8] = [192, 168, 2, 1]
-        let all = Set([myV6, mine, loopback, router, [127, 0, 0, 1], bridge].map(IPAddress.init(bytes:)))
-        let local = Sniffer.addresses(all, onLink: Set([myV6, mine].map(IPAddress.init(bytes:))))
-        XCTAssertEqual(local, Set([myV6, mine, loopback, [127, 0, 0, 1]].map(IPAddress.init(bytes:))),
-                       "the interface's own and loopback's, which no link carries; not loopback's link-local address, nor a bridge's")
-        XCTAssertEqual(Sniffer.addresses(all, onLink: []), [], "an interface with no address just now is no reading")
+        let local = Set([myV6, mine].map(IPAddress.init(bytes:)))
 
         let reply: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0x63, 0x64, 0x6e, 7, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 3, 0x6e, 0x65, 0x74, 0, 0, 1, 0, 1,
                               0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0x3c, 0, 4] + peerV4

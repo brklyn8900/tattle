@@ -134,8 +134,10 @@ struct FlowNamer: Sendable {
         var finished: Bool { named || (tlsBuffer == nil && quicDone) }
     }
 
-    /// The addresses a packet on the capture interface can carry as this Mac's
-    /// (`Sniffer.addresses`).
+    /// The capture interface's addresses, as the kernel filter has them on a tunnel: the ones
+    /// a packet on it can carry as this Mac's. An address of another interface can be another
+    /// host's on this link: loopback's fe80::1 is also what many routers answer DNS from, and
+    /// a bridge of this Mac's can number the subnet a resolver is on.
     private var local: Set<IPAddress>
     private var resolvers: Set<IPAddress>
     /// The capture interface's hardware address, on a link whose frames carry one.
@@ -195,6 +197,9 @@ struct FlowNamer: Sendable {
     }
 
     mutating func observe(_ p: Packet, at ts: Double) -> [FlowEvent] {
+        // No link carries a loopback address, and the capture is on the default route's
+        // interface, never on loopback: a packet from one is nobody's, a local resolver's least.
+        guard !p.src.isLoopback else { return [] }
         // Under this Mac's address but from another host: neither sent nor a reply to it.
         let outbound = local.contains(p.src)
         guard !outbound || isFromInterface(p) else { return [] }

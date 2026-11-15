@@ -19,8 +19,8 @@ final class Sniffer: @unchecked Sendable {
     struct Host: Sendable {
         var primaryInterface: @Sendable () -> String? = { PacketCapture.primaryInterface() }
         var hardwareAddress: @Sendable (String) -> [UInt8]? = { PacketCapture.hardwareAddress(of: $0) }
-        /// Every address, or one interface's.
-        var addresses: @Sendable (String?) -> Set<IPAddress> = { localAddresses(of: $0) }
+        /// One interface's addresses.
+        var addresses: @Sendable (String) -> Set<IPAddress> = { localAddresses(of: $0) }
         var resolvers: @Sendable () -> Set<IPAddress> = { systemResolvers() }
         var interfaceCheckEvery: TimeInterval = 5
     }
@@ -145,23 +145,6 @@ final class Sniffer: @unchecked Sendable {
         return .sourceAddresses(host.addresses(interface).map(\.bytes).sorted { $0.lexicographicallyPrecedes($1) })
     }
 
-    /// This Mac's addresses, as the namer tells its own packets by them, for a capture on
-    /// `interface`.
-    private func addresses(on interface: String) -> Set<IPAddress> {
-        Self.addresses(host.addresses(nil), onLink: host.addresses(interface))
-    }
-
-    /// The addresses a packet on the capture interface can carry as this Mac's: the
-    /// interface's own, as the kernel filter has them, and loopback's, which no link carries,
-    /// so that a frame under one came from another host. An address of another interface is
-    /// left out, since on this link it can be another host's: loopback's fe80::1 is also what
-    /// many routers answer DNS from, and a bridge of this Mac's can number the subnet a
-    /// resolver is on. Empty while the interface has no address, which the namer takes as no
-    /// reading.
-    static func addresses(_ all: Set<IPAddress>, onLink own: Set<IPAddress>) -> Set<IPAddress> {
-        own.isEmpty ? [] : own.union(all.filter(\.isLoopback))
-    }
-
     private func installFilter(on capture: any CaptureSource, direction: CaptureFilter.Direction, interface: String) {
         guard let filter = CaptureFilter.program(linkType: capture.dataLinkType, direction: direction) else {
             let why = CaptureFilter.linkHeaderLength(capture.dataLinkType) == nil
@@ -179,7 +162,7 @@ final class Sniffer: @unchecked Sendable {
     /// Reads until the interface changes, the device fails, or stop is called.
     private func captureLoop(_ capture: any CaptureSource, interface: String, direction installed: CaptureFilter.Direction, shouldStop: () -> Bool) {
         var installed = installed
-        var namer = FlowNamer(localAddresses: addresses(on: interface), resolvers: host.resolvers(), hardwareAddress: installed.hardwareAddress)
+        var namer = FlowNamer(localAddresses: host.addresses(interface), resolvers: host.resolvers(), hardwareAddress: installed.hardwareAddress)
         // Every way out drops the namer, and with it the flows whose handshake was not read.
         defer {
             let events = namer.endCapture()
@@ -198,7 +181,7 @@ final class Sniffer: @unchecked Sendable {
                     // refresh now rather than at the next timer, or every flow until then
                     // goes unnamed.
                     if namer.endpointsUnknown(packet), Date().timeIntervalSince(lastAddressRefresh) >= Self.staleRefreshEvery {
-                        namer.updateLocalAddresses(addresses(on: interface))
+                        namer.updateLocalAddresses(host.addresses(interface))
                         namer.updateResolvers(host.resolvers())
                         lastAddressRefresh = Date()
                         Log.sniffer.debug("refreshed local addresses on an unknown packet")
@@ -225,7 +208,7 @@ final class Sniffer: @unchecked Sendable {
             }
             if !events.isEmpty { onEvents(events) }
             if now.timeIntervalSince(lastAddressRefresh) >= Self.addressRefreshEvery {
-                namer.updateLocalAddresses(addresses(on: interface))
+                namer.updateLocalAddresses(host.addresses(interface))
                 namer.updateResolvers(host.resolvers())
                 lastAddressRefresh = now
             }
@@ -249,7 +232,6 @@ final class Sniffer: @unchecked Sendable {
         Log.sniffer.notice("\(interface, privacy: .public) changed its addresses; rebuilding the kernel filter")
         installFilter(on: capture, direction: direction, interface: interface)
         namer.updateHardwareAddress(direction.hardwareAddress)
-        namer.updateLocalAddresses(addresses(on: interface))
         installed = direction
     }
 
