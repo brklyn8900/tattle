@@ -38,38 +38,41 @@ final class StartupObserver {
 }
 
 /// Signature reads cost up to a tenth of a second per app, so each path is read once per
-/// version of the files its reading rests on.
+/// version of the files its reading rests on: the path, and the files the reading names.
 final class SignatureCache: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cache: [String: (version: [FileVersion?], signature: CodeSignature)] = [:]
-    private let read: @Sendable (String) -> CodeSignature
+    private struct Entry {
+        var files: [String]
+        var versions: [FileVersion?]
+        var signature: CodeSignature
+    }
 
-    init(read: @escaping @Sendable (String) -> CodeSignature = { CodeSignature.read(path: $0) }) {
+    private let lock = NSLock()
+    private var cache: [String: Entry] = [:]
+    private let read: @Sendable (String) -> CodeSignature.Reading
+
+    init(read: @escaping @Sendable (String) -> CodeSignature.Reading = { CodeSignature.reading(path: $0) }) {
         self.read = read
     }
 
     func signature(at path: String) -> CodeSignature? {
-        guard let version = Self.version(of: path) else { return read(path) }
-        if let hit = lock.withLock({ cache[path] }), hit.version == version { return hit.signature }
-        let signature = read(path)
-        lock.withLock { cache[path] = (version, signature) }
-        return signature
+        let own = FileVersion(path: path)
+        if let hit = lock.withLock({ cache[path] }), hit.versions == [own] + hit.files.map({ FileVersion(path: $0) }) { return hit.signature }
+        let started = Self.now()
+        let reading = read(path)
+        let files = reading.files.filter { $0 != path }
+        let versions = files.map { FileVersion(path: $0) }
+        let finished = Self.now()
+        // The path's version was taken before the read, so a change to it during the read is
+        // read again. The other files are known only from the read: one that is gone, or that
+        // changed while the read ran, may not be what was read, so that reading is not kept.
+        let isSettled = versions.allSatisfy { $0?.changed(from: started, to: finished) == false }
+        lock.withLock { cache[path] = isSettled ? Entry(files: files, versions: [own] + versions, signature: reading.signature) : nil }
+        return reading.signature
     }
 
-    /// The files a reading at `path` rests on, each at its version. A file's reading rests on
-    /// the file. A bundle's is made from its main executable, its Info.plist and the seal over
-    /// its resources, and writing over one of them leaves the folder's own dates as they
-    /// were, so each counts beside the folder. Every file in `Contents/MacOS` does, which
-    /// saves reading the Info.plist to learn which is the main executable. Nil for a folder
-    /// laid out any other way: where those files are is not known, so its reading is made
-    /// every time.
-    private static func version(of path: String) -> [FileVersion?]? {
-        let folder = FileVersion(path: path)
-        guard let folder, folder.isDirectory else { return [folder] }
-        let contents = path + "/Contents"
-        guard let executables = try? FileManager.default.contentsOfDirectory(atPath: contents + "/MacOS") else { return nil }
-        let files = [contents, contents + "/Info.plist", contents + "/_CodeSignature/CodeResources", contents + "/MacOS"]
-            + executables.sorted().map { contents + "/MacOS/" + $0 }
-        return [folder] + files.map { FileVersion(path: $0) }
+    private static func now() -> timespec {
+        var time = timespec()
+        clock_gettime(CLOCK_REALTIME, &time)
+        return time
     }
 }

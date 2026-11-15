@@ -146,7 +146,7 @@ final class CodeSignatureTests: XCTestCase {
         let reads = Reads()
         let cache = SignatureCache(read: { _ in
             reads.count += 1
-            return CodeSignature(signer: .adHoc, codeHash: String(reads.count))
+            return CodeSignature.Reading(signature: CodeSignature(signer: .adHoc, codeHash: String(reads.count)))
         })
 
         try write("one")
@@ -157,8 +157,8 @@ final class CodeSignatureTests: XCTestCase {
     }
 
     /// A bundle's signature is read from files inside it, and writing over one of them leaves
-    /// the folder's own dates as they were.
-    func testABundlesSignatureIsReadAgainWhenAFileItRestsOnChanges() throws {
+    /// the folder's own dates as they were. The reading says which files they are.
+    func testASignatureIsReadAgainWhenAFileItsReadingRestsOnChanges() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let app = folder.appending(path: "Tool.app")
@@ -170,57 +170,132 @@ final class CodeSignatureTests: XCTestCase {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data("one".utf8).write(to: file)
         }
-        final class Reads: @unchecked Sendable { var count = 0 }
+        final class Reads: @unchecked Sendable {
+            var count = 0
+            var during: (() -> Void)?
+        }
         let reads = Reads()
+        let files = [executable.path, info.path, seal.path]
         let cache = SignatureCache(read: { _ in
             reads.count += 1
-            return CodeSignature(signer: .adHoc, codeHash: String(reads.count))
+            reads.during?()
+            return CodeSignature.Reading(signature: CodeSignature(signer: .adHoc, codeHash: String(reads.count)), files: files)
         })
-        func hash() -> String? { cache.signature(at: app.path)?.codeHash }
+        func hash(_ path: URL) -> String? { cache.signature(at: path.path)?.codeHash }
 
-        XCTAssertEqual(hash(), "1")
-        XCTAssertEqual(hash(), "1", "the same version is read once")
+        XCTAssertEqual(hash(app), "1")
+        XCTAssertEqual(hash(app), "1", "the same version is read once")
         let before = try XCTUnwrap(FileVersion(path: app.path))
         try Data("another program".utf8).write(to: executable)
         XCTAssertEqual(FileVersion(path: app.path), before, "the folder itself says nothing of it")
-        XCTAssertEqual(hash(), "2", "the executable written over in place")
+        XCTAssertEqual(hash(app), "2", "the executable written over in place")
         try Data("a third".utf8).write(to: executable, options: .atomic)
-        XCTAssertEqual(hash(), "3", "the executable replaced by another file")
+        XCTAssertEqual(hash(app), "3", "the executable replaced by another file")
         try Data("another".utf8).write(to: info)
-        XCTAssertEqual(hash(), "4", "the Info.plist, which names the executable")
+        XCTAssertEqual(hash(app), "4", "the Info.plist, which names the executable")
         try Data("another".utf8).write(to: seal)
-        XCTAssertEqual(hash(), "5", "the seal over the resources")
-        XCTAssertEqual(hash(), "5")
+        XCTAssertEqual(hash(app), "5", "the seal over the resources")
+        try Data("a log".utf8).write(to: contents.appending(path: "MacOS/tool.log"))
+        XCTAssertEqual(hash(app), "5", "a file the reading does not rest on")
 
-        // Where the files a reading rests on are is not known for a folder laid out another way.
-        let other = folder.appending(path: "Other.app")
-        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
-        _ = cache.signature(at: other.path)
-        _ = cache.signature(at: other.path)
-        XCTAssertEqual(reads.count, 7, "read every time")
+        // The executable is read as its bundle, so it rests on the same files.
+        XCTAssertEqual(hash(executable), "6")
+        try Data("a third".utf8).write(to: info)
+        XCTAssertEqual(hash(executable), "7", "the Info.plist written over under the executable's own reading")
+        XCTAssertEqual(hash(executable), "7")
+        XCTAssertEqual(hash(app), "8")
+
+        // What changes while it is read may not be what was read.
+        try Data("yet another".utf8).write(to: seal)
+        reads.during = { try? Data("written during the read".utf8).write(to: executable) }
+        XCTAssertEqual(hash(app), "9")
+        reads.during = nil
+        XCTAssertEqual(hash(app), "10", "a reading made while a file changed is not kept")
+        XCTAssertEqual(hash(app), "10")
     }
 
-    /// The same, with a signed app and the real reading.
-    func testAnAppWhoseExecutableIsWrittenOverIsNotReadAsBefore() throws {
+    /// The same, with signed apps and the real reading.
+    func testAnAppWhoseFilesAreWrittenOverIsNotReadAsBefore() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let app = folder.appending(path: "Tool.app")
-        let executable = app.appending(path: "Contents/MacOS/Tool")
-        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try FileManager.default.copyItem(atPath: "/bin/ls", toPath: executable.path)
-        let info = ["CFBundleExecutable": "Tool", "CFBundleIdentifier": "com.example.tool", "CFBundlePackageType": "APPL"]
-        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: app.appending(path: "Contents/Info.plist"))
-        try codesign(["--force", "--sign", "-", app.path])
+        func app(_ name: String) throws -> (bundle: URL, executable: URL, info: URL) {
+            let bundle = folder.appending(path: "\(name).app")
+            let executable = bundle.appending(path: "Contents/MacOS/Tool")
+            let info = bundle.appending(path: "Contents/Info.plist")
+            try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.copyItem(atPath: "/bin/ls", toPath: executable.path)
+            try plist(identifier: "com.example.\(name.lowercased())").write(to: info)
+            try codesign(["--force", "--sign", "-", bundle.path])
+            return (bundle, executable, info)
+        }
         let other = folder.appending(path: "other")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.copyItem(atPath: "/bin/cat", toPath: other.path)
         try codesign(["--force", "--sign", "-", other.path])
+        final class Reads: @unchecked Sendable { var count = 0 }
+        let reads = Reads()
+        let cache = SignatureCache(read: {
+            reads.count += 1
+            return CodeSignature.reading(path: $0)
+        })
 
-        let cache = SignatureCache()
-        let first = try XCTUnwrap(cache.signature(at: app.path))
+        let one = try app("One")
+        let first = try XCTUnwrap(cache.signature(at: one.bundle.path))
         XCTAssertEqual(first.signer, .adHoc)
         XCTAssertNotNil(first.codeHash)
-        try Data(contentsOf: other).write(to: executable)
-        XCTAssertNotEqual(cache.signature(at: app.path), first)
+        XCTAssertEqual(cache.signature(at: one.bundle.path), first)
+        XCTAssertEqual(reads.count, 1, "reading it changes none of its files, so it is read once")
+        try Data(contentsOf: other).write(to: one.executable)
+        XCTAssertNotEqual(cache.signature(at: one.bundle.path), first, "the executable written over")
+
+        let two = try app("Two")
+        XCTAssertEqual(cache.signature(at: two.bundle.path)?.signer, .adHoc)
+        XCTAssertEqual(cache.signature(at: two.executable.path)?.signer, .adHoc)
+        try plist(identifier: "com.example.another").write(to: two.info)
+        XCTAssertEqual(cache.signature(at: two.bundle.path)?.signer, .invalid, "the Info.plist written over")
+        XCTAssertEqual(cache.signature(at: two.executable.path)?.signer, .invalid, "the executable is read as its bundle")
+    }
+
+    /// The main executable, with the Info.plist and the seal beside it when it is a bundle's,
+    /// however the bundle is laid out and whether or not it is signed.
+    func testAReadingNamesTheFilesItRestsOn() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString).resolvingSymlinksInPath()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func files(_ path: URL) -> Set<String> {
+            Set(CodeSignature.reading(path: path.path).files.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path })
+        }
+        func make(_ executable: URL, info: URL) throws {
+            try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.copyItem(atPath: "/bin/ls", toPath: executable.path)
+            try codesign(["--remove-signature", executable.path])
+            try plist(identifier: "com.example.tool").write(to: info)
+        }
+
+        let app = folder.appending(path: "Tool.app")
+        let executable = app.appending(path: "Contents/MacOS/Tool"), info = app.appending(path: "Contents/Info.plist")
+        try make(executable, info: info)
+        XCTAssertEqual(files(app), [executable.path, info.path], "unsigned")
+        XCTAssertEqual(files(executable), [executable.path, info.path], "the executable is read as its bundle")
+        try codesign(["--force", "--sign", "-", app.path])
+        XCTAssertEqual(files(app), [executable.path, info.path, app.appending(path: "Contents/_CodeSignature/CodeResources").path])
+
+        let shallow = folder.appending(path: "Shallow.app")
+        try make(shallow.appending(path: "Tool"), info: shallow.appending(path: "Info.plist"))
+        XCTAssertEqual(files(shallow), [shallow.appending(path: "Tool").path, shallow.appending(path: "Info.plist").path], "no Contents folder")
+
+        // As an iOS app is installed on a Mac.
+        let wrapper = folder.appending(path: "Wrapped.app"), inner = wrapper.appending(path: "Wrapper/Inner.app")
+        try make(inner.appending(path: "Tool"), info: inner.appending(path: "Info.plist"))
+        try FileManager.default.createSymbolicLink(atPath: wrapper.appending(path: "WrappedBundle").path, withDestinationPath: "Wrapper/Inner.app")
+        XCTAssertEqual(files(wrapper), [inner.appending(path: "Tool").path, inner.appending(path: "Info.plist").path])
+
+        XCTAssertEqual(files(URL(fileURLWithPath: "/bin/ls")), ["/bin/ls"])
+        XCTAssertEqual(files(folder.appending(path: "missing")), [])
+    }
+
+    private func plist(identifier: String) throws -> Data {
+        let info = ["CFBundleExecutable": "Tool", "CFBundleIdentifier": identifier, "CFBundlePackageType": "APPL"]
+        return try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
     }
 
     func testACertificateNotIssuedByAppleClaimsNothing() throws {

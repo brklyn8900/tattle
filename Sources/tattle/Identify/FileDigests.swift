@@ -5,7 +5,6 @@ import Foundation
 /// change time and the inode are the system's.
 struct FileVersion: Equatable, Sendable {
     let isRegularFile: Bool
-    let isDirectory: Bool
     private let values: [Int]
 
     /// Of the file a link leads to. Nil when the path cannot be read.
@@ -17,9 +16,14 @@ struct FileVersion: Equatable, Sendable {
 
     init(_ info: stat) {
         isRegularFile = info.st_mode & S_IFMT == S_IFREG
-        isDirectory = info.st_mode & S_IFMT == S_IFDIR
         values = [Int(info.st_dev), Int(truncatingIfNeeded: info.st_ino), Int(info.st_size), info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec,
                   info.st_ctimespec.tv_sec, info.st_ctimespec.tv_nsec]
+    }
+
+    /// Whether the file changed between two readings of the clock, by its change time.
+    func changed(from start: timespec, to end: timespec) -> Bool {
+        let changed = (values[5], values[6])
+        return changed >= (start.tv_sec, start.tv_nsec) && changed <= (end.tv_sec, end.tv_nsec)
     }
 }
 

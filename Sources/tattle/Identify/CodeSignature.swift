@@ -149,6 +149,13 @@ struct CodeSignature: Equatable, Sendable {
         return CodeSignature(signer: .launchItem(applesProgram: isNamed ? name : nil), codeHash: signature?.codeHash)
     }
 
+    /// A signature as read, with the files the reading rests on (`files(readWith:)`), so that
+    /// what keeps it can tell when to read it again.
+    struct Reading: Sendable {
+        var signature: CodeSignature
+        var files: [String] = []
+    }
+
     /// Reads and validates the signature at `path`. Resources are not validated: that
     /// takes seconds on a large app and the question here is who signed it.
     ///
@@ -156,24 +163,43 @@ struct CodeSignature: Equatable, Sendable {
     /// under more than one subject ("Software Signing", "macOS Software Signing"). Every
     /// other kind is read from the leaf certificate's subject, which is whatever its maker
     /// wrote, so it counts only when the chain shows Apple issued it (`anchor apple generic`).
-    static func read(path: String) -> CodeSignature {
+    static func read(path: String) -> CodeSignature { reading(path: path).signature }
+
+    static func reading(path: String) -> Reading {
         var staticCode: SecStaticCode?
         let url = URL(fileURLWithPath: path) as CFURL
         guard SecStaticCodeCreateWithPath(url, [], &staticCode) == errSecSuccess, let code = staticCode else {
-            return CodeSignature(signer: .unsigned)
+            return Reading(signature: CodeSignature(signer: .unsigned))
         }
         var error: Unmanaged<CFError>?
         let validity = SecStaticCodeCheckValidityWithErrors(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), nil, &error)
         // Taken whatever the verdict: the error is this caller's to release.
         _ = error?.takeRetainedValue()
+        // Asked of unsigned and invalid code too, which it still names the main executable of.
+        var infoRef: CFDictionary?
+        let copied = SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef)
+        let info = copied == errSecSuccess ? infoRef as? [String: Any] : nil
+        let executable = (info?[kSecCodeInfoMainExecutable as String] as? URL)?.path
+        return Reading(signature: signature(of: code, validity: validity, info: info), files: executable.map(files(readWith:)) ?? [])
+    }
+
+    /// The files a reading of the code with this main executable rests on. Code in a bundle
+    /// is read with the bundle's Info.plist and the seal over its resources, whether the path
+    /// read is the bundle or the executable, and writing over one of them leaves the bundle
+    /// folder's own dates as they were. They are beside the executable, or beside its `MacOS`
+    /// folder in a bundle with `Contents`.
+    static func files(readWith executable: String) -> [String] {
+        let folder = (executable as NSString).deletingLastPathComponent
+        let bundle = folder.hasSuffix("/Contents/MacOS") ? (folder as NSString).deletingLastPathComponent : folder
+        let beside = ["\(bundle)/Info.plist", "\(bundle)/_CodeSignature/CodeResources"]
+        guard FileManager.default.fileExists(atPath: beside[0]) else { return [executable] }
+        return [executable] + beside.filter { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    private static func signature(of code: SecStaticCode, validity: OSStatus, info: [String: Any]?) -> CodeSignature {
         if validity == errSecCSUnsigned { return CodeSignature(signer: .unsigned) }
         if validity != errSecSuccess { return CodeSignature(signer: .invalid) }
-
-        var infoRef: CFDictionary?
-        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef) == errSecSuccess,
-              let info = infoRef as? [String: Any] else {
-            return CodeSignature(signer: .invalid)
-        }
+        guard let info else { return CodeSignature(signer: .invalid) }
         let identifier = info[kSecCodeInfoIdentifier as String] as? String
         let team = info[kSecCodeInfoTeamIdentifier as String] as? String
         let flags = info[kSecCodeInfoFlags as String] as? UInt32 ?? 0
