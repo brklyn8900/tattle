@@ -303,6 +303,8 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/arch", ["/x/agent"]),
             ("/usr/bin/arch", ["-c", "-d", "-arm64", "/x/agent"]),
             ("/usr/bin/arch", ["-e", "A=1", "/x/agent", "-arm64"]),
+            // -h prints the usage and runs nothing.
+            ("/usr/bin/arch", ["-arm64", "-h", "/x/agent"]),
             // xargs adds words from its standard input to the command it runs.
             ("/usr/bin/xargs", ["-n", "1", "/x/agent"]),
             ("/usr/bin/xargs", ["/usr/bin/open", "-a", "/System/Applications/Utilities/Terminal.app"]),

@@ -189,12 +189,13 @@ enum LaunchedCode: Equatable, Sendable {
         if identity.name == "xargs" { return .undetermined }
         if identity.name == "open" { return opened(arguments, identify, search: search, depth: depth) }
         if identity.name == "find", let code = found(arguments, identify, search: search, depth: depth) { return code }
-        // arch runs its operand only when the command line names an architecture. Without one,
+        // arch runs its operand only when the command line names an architecture and does not
+        // ask for its usage (-h). Without one,
         // and whenever it runs under another file name, the architectures and the file that
         // runs come from ARCHPREFERENCE or an archSettings plist, which may name another file
         // than the operand, or none.
         if identity.name == "arch",
-           URL(fileURLWithPath: program).lastPathComponent != "arch" || !namesArchitecture(arguments) {
+           URL(fileURLWithPath: program).lastPathComponent != "arch" || !archRunsItsOperand(arguments) {
             return .undetermined
         }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
@@ -216,18 +217,21 @@ enum LaunchedCode: Equatable, Sendable {
         }
     }
 
-    /// Whether arch's options name an architecture (`-arm64`, `-arch arm64`, `-64`), from its
-    /// manual page.
-    private static func namesArchitecture(_ arguments: [String]) -> Bool {
+    /// Whether arch's options name an architecture (`-arm64`, `-arch arm64`, `-64`) and not
+    /// `-h`, which prints the usage and runs nothing, from its manual page.
+    private static func archRunsItsOperand(_ arguments: [String]) -> Bool {
+        var named = false
         var index = 0
         while index < arguments.count, arguments[index].hasPrefix("-") {
             switch arguments[index] {
-            case "-arch", "-32", "-64", "-i386", "-x86_64", "-x86_64h", "-arm64", "-arm64e": return true
+            case "-h": return false
+            case "-arch": named = true; index += 2
+            case "-32", "-64", "-i386", "-x86_64", "-x86_64h", "-arm64", "-arm64e": named = true; index += 1
             case "-d", "-e": index += 2
             default: index += 1
             }
         }
-        return false
+        return named
     }
 
     /// What `find` starts: the program its one `-exec`, `-execdir`, `-ok` or `-okdir` runs,
