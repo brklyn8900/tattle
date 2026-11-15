@@ -80,14 +80,14 @@ struct BrokerAgent {
     }
 
     var pid: Int32? {
-        LaunchctlState.parseServices(Self.run(["print", Self.domain]).output)[label]?.pid
+        LaunchctlState.parseServices(Self.run(["print", Self.domain]).output)?[label]?.pid
     }
 
     /// Boots out agents left by runs that are gone, once per run: their label carries their pid.
     private static func sweepOnce() {
         guard !swept else { return }
         swept = true
-        for label in LaunchctlState.parseServices(run(["print", domain]).output).keys where label.hasPrefix(labelPrefix) {
+        for label in (LaunchctlState.parseServices(run(["print", domain]).output) ?? [:]).keys where label.hasPrefix(labelPrefix) {
             guard let pid = Int32(label.dropFirst(labelPrefix.count).split(separator: ".").first ?? ""), pid != getpid(),
                   kill(pid, 0) != 0, errno == ESRCH else { continue }
             launchctl(["bootout", "\(domain)/\(label)"])

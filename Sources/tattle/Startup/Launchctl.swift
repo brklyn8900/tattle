@@ -41,10 +41,8 @@ struct LaunchctlState: Equatable, Sendable {
             let message = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return Domain(unread: "launchctl print \(name) failed with status \(result.status)" + (message.isEmpty ? "" : ": \(message)"))
         }
-        guard result.stdout.split(separator: "\n").contains(where: { $0.hasSuffix("services = {") }) else {
-            return Domain(unread: "launchctl print \(name) listed no jobs")
-        }
-        return Domain(services: parseServices(result.stdout), overrides: parseOverrides(result.stdout))
+        guard let services = parseServices(result.stdout) else { return Domain(unread: "launchctl print \(name) listed no jobs") }
+        return Domain(services: services, overrides: parseOverrides(result.stdout))
     }
 
     subscript(_ domain: LaunchDomain) -> Domain {
@@ -55,14 +53,16 @@ struct LaunchctlState: Equatable, Sendable {
         }
     }
 
-    /// The `services = { pid status label }` block of `launchctl print <domain>`. The label is
-    /// everything after the tab that follows the status, spaces and tabs included.
-    static func parseServices(_ output: String) -> [String: Service] {
-        var services: [String: Service] = [:]
-        var inBlock = false
+    /// The `services = { pid status label }` block of `launchctl print <domain>`, nil when the
+    /// output has none (`disabled services` is another block). The label is everything after
+    /// the tab that follows the status, spaces and tabs included.
+    static func parseServices(_ output: String) -> [String: Service]? {
+        var services: [String: Service]?
         for line in output.split(separator: "\n") {
-            if line.hasSuffix("services = {") { inBlock = true; continue }
-            guard inBlock else { continue }
+            if services == nil {
+                if line.trimmingCharacters(in: .whitespaces) == "services = {" { services = [:] }
+                continue
+            }
             if line.trimmingCharacters(in: .whitespaces) == "}" { break }
             let fields = line.split(maxSplits: 2, whereSeparator: { $0 == " " || $0 == "\t" })
             guard fields.count == 3 else { continue }
@@ -70,7 +70,7 @@ struct LaunchctlState: Equatable, Sendable {
             let rest = line[status.endIndex...].drop { $0 == " " }
             guard rest.first == "\t", rest.count > 1 else { continue }
             let pid = Int32(fields[0]).flatMap { $0 > 0 ? $0 : nil }
-            services[String(rest.dropFirst())] = Service(pid: pid, lastExitStatus: Int32(status))
+            services?[String(rest.dropFirst())] = Service(pid: pid, lastExitStatus: Int32(status))
         }
         return services
     }

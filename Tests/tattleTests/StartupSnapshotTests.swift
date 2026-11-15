@@ -238,6 +238,9 @@ final class StartupSnapshotTests: XCTestCase {
         let empty = LaunchctlState.domain("gui/501", printed: (status: 0, stdout: "gui/501 = {\n\tservices = {\n\t}\n}\n", stderr: ""))
         XCTAssertNil(empty.unread, "a domain with no jobs is read")
         XCTAssertEqual(empty.services, [:])
+        let onlyDisabled = "gui/501 = {\n\tdisabled services = {\n\t\t\"a\" => disabled\n\t}\n}\n"
+        XCTAssertEqual(LaunchctlState.domain("gui/501", printed: (status: 0, stdout: onlyDisabled, stderr: "")).unread,
+                       "launchctl print gui/501 listed no jobs", "the disabled list is not the list of jobs")
     }
 
     /// An agent limited to the Background session loads in `user/<uid>`, not `gui/<uid>`.

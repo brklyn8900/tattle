@@ -457,7 +457,7 @@ final class CodeSignatureTests: XCTestCase {
 }
 
 final class LaunchctlStateTests: XCTestCase {
-    func testParseServices() {
+    func testParseServices() throws {
         let output = """
             gui/501 = {
             \ttype = gui
@@ -474,7 +474,7 @@ final class LaunchctlStateTests: XCTestCase {
             \t}
             }
             """
-        let services = LaunchctlState.parseServices(output)
+        let services = try XCTUnwrap(LaunchctlState.parseServices(output))
         XCTAssertEqual(services.count, 6)
         XCTAssertEqual(services["local.my agent"], .init(pid: 711, lastExitStatus: nil), "a label holds what follows the tab")
         XCTAssertEqual(services["local.tab\tagent"], .init(pid: 712, lastExitStatus: nil))
@@ -508,7 +508,7 @@ final class LaunchctlStateTests: XCTestCase {
             \t}
             }
             """
-        XCTAssertEqual(Array(LaunchctlState.parseServices(output).keys), ["com.apple.syncdefaultsd"])
+        XCTAssertEqual(LaunchctlState.parseServices(output).map { Array($0.keys) }, ["com.apple.syncdefaultsd"])
         XCTAssertEqual(LaunchctlState.parseOverrides(output), ["com.apple.Siri.agent": true])
     }
 
