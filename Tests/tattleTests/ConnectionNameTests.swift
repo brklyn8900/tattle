@@ -273,15 +273,16 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .hidden, "the same key was replaced")
     }
 
+    /// What a name is comes from the shipped rules, in memory: the file, which another
+    /// process can damage, has no say in it.
     @MainActor
-    func testALookupThatFailedIsAskedAgain() throws {
+    func testAFileThatCannotBeReadDoesNotChangeAKind() throws {
         let database = try AppDatabase.inMemory()
         let rules = try RuleStore(database: database)
         let observer = try observer(rules: rules, database: database)
         try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin)])
         try database.writer.write { try $0.execute(sql: "ALTER TABLE rule RENAME TO away") }
-        XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .destination)
-        try database.writer.write { try $0.execute(sql: "ALTER TABLE away RENAME TO rule") }
+        XCTAssertThrowsError(try rules.candidates(kind: .host, key: "relay.example"))
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay)
     }
 

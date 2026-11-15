@@ -66,8 +66,23 @@ struct RuleStore: Sendable {
     /// Every rule matching `key`, best first.
     func candidates(kind: Rule.Kind, key: String, now: Date = Date()) throws -> [Rule] {
         let key = Rule.normalize(key, for: kind)
-        let arguments: StatementArguments = ["kind": kind.rawValue, "key": key]
-        let rules = try shipped.read { db in
+        let answers = try database.writer.read { db in
+            try Rule.fetchAll(
+                db,
+                sql: "SELECT * FROM rule WHERE kind = :kind AND match = 'exact' AND pattern = :key AND source = 'llm'",
+                arguments: ["kind": kind.rawValue, "key": key])
+        }
+        return Self.bestFirst(try shipped(kind: kind, key: key) + answers.filter { !$0.isExpired(at: now) })
+    }
+
+    /// The shipped rules matching `key`, best first. Reads nothing from the file, so nothing
+    /// written there, readable or not, changes the answer.
+    func shippedCandidates(kind: Rule.Kind, key: String) throws -> [Rule] {
+        Self.bestFirst(try shipped(kind: kind, key: Rule.normalize(key, for: kind)))
+    }
+
+    private func shipped(kind: Rule.Kind, key: String) throws -> [Rule] {
+        try shipped.read { db in
             try Rule.fetchAll(
                 db,
                 sql: """
@@ -76,22 +91,17 @@ struct RuleStore: Sendable {
                       AND ((match = 'exact' AND pattern = :key)
                         OR (match = 'glob' AND :key GLOB pattern))
                     """,
-                arguments: arguments)
+                arguments: ["kind": kind.rawValue, "key": key])
         }
-        let answers = try database.writer.read { db in
-            try Rule.fetchAll(
-                db,
-                sql: "SELECT * FROM rule WHERE kind = :kind AND match = 'exact' AND pattern = :key AND source = 'llm'",
-                arguments: arguments)
+    }
+
+    private static func bestFirst(_ rules: [Rule]) -> [Rule] {
+        rules.sorted { a, b in
+            if a.rank != b.rank { return a.rank < b.rank }
+            if a.match != b.match { return a.match == .exact }
+            if a.pattern.count != b.pattern.count { return a.pattern.count > b.pattern.count }
+            return a.created > b.created
         }
-        return (rules + answers)
-            .filter { !$0.isExpired(at: now) }
-            .sorted { a, b in
-                if a.rank != b.rank { return a.rank < b.rank }
-                if a.match != b.match { return a.match == .exact }
-                if a.pattern.count != b.pattern.count { return a.pattern.count > b.pattern.count }
-                return a.created > b.created
-            }
     }
 
     /// Replaces the shipped rules of `source` with `rules`, in memory.

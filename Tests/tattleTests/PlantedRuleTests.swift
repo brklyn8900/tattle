@@ -27,14 +27,14 @@ final class PlantedRuleTests: XCTestCase {
     /// Dated a day ahead, as a planter would, so the row is the newest of its rank.
     private func plant(
         kind: String = "process", match: String = "exact", pattern: String, owner: String? = nil,
-        purpose: String = "A harmless helper.", category: String? = nil, source: String,
-        identity: String = "", confirmed: Bool = false
+        purpose: String = "A harmless helper.", category: String? = nil, risk: String = "low",
+        source: String, identity: String = "", confirmed: Bool = false
     ) throws {
         try database.writer.write { db in
             try db.execute(sql: """
                 INSERT INTO rule (kind, match, pattern, owner, purpose, category, risk, source, identity, confirmed, created)
-                VALUES (?, ?, ?, ?, ?, ?, 'low', ?, ?, CASE WHEN ? THEN datetime('now') END, datetime('now', '+1 day'))
-                """, arguments: [kind, match, pattern, owner, purpose, category, source, identity, confirmed])
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN datetime('now') END, datetime('now', '+1 day'))
+                """, arguments: [kind, match, pattern, owner, purpose, category, risk, source, identity, confirmed])
         }
     }
 
@@ -105,6 +105,19 @@ final class PlantedRuleTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "cover.example", source: .sni), .destination)
         let found = try await explainer.lookup(ExplainRequest(kind: .host, key: "c2.example"))
         XCTAssertNil(found, said(found))
+    }
+
+    /// A row the app cannot read fails the file's lookup for its name. What a name is comes
+    /// from the shipped rules alone, so the row cannot make a relay read as a destination.
+    func testAPlantedRowThatCannotBeReadDoesNotUnmakeARelay() throws {
+        SeedLoader(rules: store).load(from: repoSeeds)
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: store,
+                                       settings: try AppSettings(store: SettingsStore(database: database)))
+        try plant(kind: "host", pattern: "mask.icloud.com", risk: "no such level", source: "llm")
+        try plant(kind: "host", pattern: "cloudflare-ech.com", risk: "no such level", source: "llm")
+        XCTAssertThrowsError(try store.candidates(kind: .host, key: "mask.icloud.com"), "the row is one the app cannot read")
+        XCTAssertEqual(observer.kind(of: "mask.icloud.com", source: .sni), .relay)
+        XCTAssertEqual(observer.kind(of: "cloudflare-ech.com", source: .sni), .hidden)
     }
 
     /// Loading the seed files, at this launch or the next, does not make a planted row a rule.

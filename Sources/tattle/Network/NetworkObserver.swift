@@ -167,11 +167,11 @@ final class NetworkObserver {
             kindsRevision = rules.revision
         }
         if let kind = kinds[name] { return kind }
-        // Only the shipped rules say what a name is. A model's answer is free text, and a
-        // confirmed one outranks the seed in a plain lookup.
+        // Only the shipped rules say what a name is, so the file is not read: a model's
+        // answer is free text, and a row another process wrote there could fail the lookup.
         let candidates: [Rule]
         do {
-            candidates = try rules.candidates(kind: .host, key: name)
+            candidates = try rules.shippedCandidates(kind: .host, key: name)
         } catch {
             // Not remembered: a lookup that failed says nothing about the name.
             Log.app.error("rule lookup for a connection's name failed: \(error, privacy: .public)")
