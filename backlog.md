@@ -102,6 +102,13 @@
   the socket it accepted reads outbound, and its peer can count as a first contact
   (`ConnectionTracker.swift`). This Mac's SYN-ACK would prove inbound for it: the capture
   filter already passes one, and `FlowNamer` drops it.
+- When new flows open faster than the main actor handles them (about 3,000 a second on the
+  test Mac, release build), the 4,096-event mailbox fills and what arrives past it is dropped:
+  a connection opened meanwhile can read as it does without packet access, with no name and no
+  reason, and the log says how many events went. An outcome still waiting for its connection
+  can go the same way once 3,072 newer ones have arrived
+  (`FlowEventMailbox.swift`, `ConnectionName.swift`). Each outcome costs the main actor a
+  write transaction of its own; one a batch would raise what it handles.
 - An agent limited to `LoginWindow` reads `not loaded` and offers `Load` in a domain it does
   not belong to: any session type other than exactly `Aqua` or `Background` falls through to
   `gui` and `user` (`LaunchdItem.domains`).

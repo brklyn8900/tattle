@@ -273,6 +273,55 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay, "a name is still looked up once the memo has started again")
     }
 
+    private func opening(_ number: Int) -> FlowEvent {
+        FlowEvent(key: FlowKey(proto: .tcp, localPort: UInt16(1024 + number % 60000), remote: IPAddress(bytes: [11, 0, UInt8(number >> 8 & 0xff), UInt8(number & 0xff)]), remotePort: 443),
+                  kind: .opened)
+    }
+
+    func testTheMailboxHoldsAtMostItsCapacityAndCountsTheRest() {
+        let mailbox = FlowEventMailbox()
+        let events = (0..<(FlowEventMailbox.capacity + 500)).map(opening)
+        XCTAssertTrue(mailbox.add(Array(events.prefix(100))), "nothing drains it yet: the caller starts a drain")
+        XCTAssertFalse(mailbox.add(Array(events.dropFirst(100))), "one drain at a time")
+        var taken: [FlowEvent] = [], dropped = 0
+        while let next = mailbox.take(64) {
+            XCTAssertLessThanOrEqual(next.events.count, 64)
+            taken += next.events
+            dropped += next.dropped
+        }
+        XCTAssertEqual(taken, Array(events.prefix(FlowEventMailbox.capacity)), "the oldest, in order")
+        XCTAssertEqual(dropped, 500)
+        XCTAssertTrue(mailbox.add([opening(0)]), "the drain ended, so the next events start one")
+    }
+
+    /// Each capture read queued a task of its own on the main actor, which handled all of a
+    /// read's events in one turn: events arriving faster than they were handled queued without
+    /// limit and held the main thread for as long as they took.
+    @MainActor
+    func testEventsReachTheMainActorABatchATurnAndNoMoreThanTheMailboxHolds() async throws {
+        let database = try AppDatabase.inMemory()
+        var deliver: (@Sendable ([FlowEvent]) -> Void)?
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: try RuleStore(database: database),
+                                       settings: try AppSettings(store: SettingsStore(database: database)),
+                                       socketTable: { [] }, processRecords: { nil },
+                                       sniffer: { onEvents, onStatus in
+                                           deliver = onEvents
+                                           return Sniffer(open: { _ in throw CaptureError.open(errno: EACCES) }, onEvents: onEvents, onStatus: onStatus)
+                                       })
+        observer.start()
+        defer { observer.stop() }
+        let deliverEvents = try XCTUnwrap(deliver)
+        deliverEvents((0..<100).map(opening))
+        deliverEvents((100..<(FlowEventMailbox.capacity + 300)).map(opening))
+
+        await Task.yield()
+        XCTAssertEqual(observer.held.openings, NetworkObserver.eventBatch, "one batch was handled before this test's turn came")
+        let deadline = Date().addingTimeInterval(10)
+        while observer.held.openings < FlowEventMailbox.capacity, Date() < deadline { await Task.yield() }
+        XCTAssertEqual(observer.held.openings, FlowEventMailbox.capacity, "all the mailbox held")
+        XCTAssertEqual(observer.eventsDropped, 300, "and none of what it had no room for")
+    }
+
     @MainActor
     private func observer(rules: RuleStore, database: AppDatabase) throws -> NetworkObserver {
         NetworkObserver(store: ConnectionStore(database: database), rules: rules,

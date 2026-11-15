@@ -30,6 +30,10 @@ final class NetworkObserver {
     /// rule is written, or when there are `kindCapacity` of them.
     private var kinds: [String: ConnectionName.Kind] = [:]
     private var kindsRevision = 0
+    /// Flow events the mailbox dropped, in all and since the log last said so.
+    private(set) var eventsDropped = 0
+    private var unreportedDrops = 0
+    private var lastDropReport = Date.distantPast
     private var lastTouch = Date.distantPast
     private var lastPrune = Date.distantPast
     private var task: Task<Void, Never>?
@@ -47,6 +51,10 @@ final class NetworkObserver {
     /// The most names whose kind is remembered. Whoever sends a handshake picks its name, so
     /// names arrive without limit; past this many the memo starts again.
     static let kindCapacity = 4096
+
+    /// The most flow events handled in one turn of the main actor, so that whatever else
+    /// waits for it, the panel included, waits for no more than these.
+    static let eventBatch = 64
 
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
@@ -82,8 +90,11 @@ final class NetworkObserver {
                 try? await Task.sleep(for: interval)
             }
         }
+        let mailbox = FlowEventMailbox()
         let sniffer = makeSniffer(
-            { [weak self] events in Task { @MainActor in self?.handle(events) } },
+            { [weak self] events in
+                if mailbox.add(events) { Task { @MainActor in await self?.drain(mailbox) } }
+            },
             { [weak self] status in Task { @MainActor in self?.captureStatus = status } })
         sniffer.start()
         self.sniffer = sniffer
@@ -142,6 +153,22 @@ final class NetworkObserver {
     var held: (outcomes: Int, openings: Int, kinds: Int) { (names.count, names.openingCount, kinds.count) }
 
     // MARK: Sniffer events
+
+    /// Handles what the mailbox holds, a batch a turn, until it is empty.
+    private func drain(_ mailbox: FlowEventMailbox) async {
+        while let next = mailbox.take(Self.eventBatch) {
+            eventsDropped += next.dropped
+            unreportedDrops += next.dropped
+            // Once a second at most: a flood drops events at every batch.
+            if unreportedDrops > 0, Date().timeIntervalSince(lastDropReport) >= 1 {
+                Log.sniffer.notice("dropped \(self.unreportedDrops) flow events that arrived faster than they were handled; their connections go without a name")
+                unreportedDrops = 0
+                lastDropReport = Date()
+            }
+            handle(next.events)
+            await Task.yield()
+        }
+    }
 
     private func handle(_ events: [FlowEvent]) {
         let now = Date()

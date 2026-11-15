@@ -9,7 +9,7 @@ import XCTest
 /// and a ClientHello with a server name of its own to an address of its own, so every flow
 /// reports an opening and a name no other has; the socket table is empty, as it is for flows
 /// that are forged or gone before a reading. Once a second it prints the flows delivered, the
-/// outcomes, openings and kinds the observer holds, the process's memory footprint, how long
+/// flow events dropped on the way to the main actor (two a flow), the outcomes, openings and kinds the observer holds, the process's memory footprint, how long
 /// a block queued on the main thread waited to run and how late a timer on its run loop
 /// fired; after the flood, how long the main thread took to catch up. It asserts nothing: the numbers depend on the machine and its
 /// load. Runs only when `TATTLE_FLOOD_RATE` gives the flows per second; `TATTLE_FLOOD_SECONDS`
@@ -150,8 +150,8 @@ final class CaptureFloodSimulationTests: XCTestCase {
         func line(_ phase: String) -> (last: Double, waiting: Int) {
             let held = observer.held
             let wait = lag.reading()
-            print(String(format: "FLOOD %@ %@ t=%.0fs delivered=%d outcomes=%d openings=%d kinds=%d footprint=%.0fMB lag=%.0fms waiting=%d timer=%.0fms",
-                         label, phase, Date().timeIntervalSince(began), flood.delivered, held.outcomes, held.openings, held.kinds,
+            print(String(format: "FLOOD %@ %@ t=%.0fs delivered=%d dropped=%d outcomes=%d openings=%d kinds=%d footprint=%.0fMB lag=%.0fms waiting=%d timer=%.0fms",
+                         label, phase, Date().timeIntervalSince(began), flood.delivered, observer.eventsDropped, held.outcomes, held.openings, held.kinds,
                          Self.footprint(), wait.last * 1000, wait.waiting, wait.late * 1000))
             return (wait.last, wait.waiting)
         }
