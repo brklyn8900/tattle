@@ -8,6 +8,8 @@ protocol ExplainProvider: Sendable {
 enum ProviderError: Error, Equatable {
     case notConfigured
     case timedOut
+    /// The command wrote more than `ShellProvider.outputLimit` to stdout and stderr together.
+    case tooMuchOutput
     case failed(status: Int32, stderr: String)
     case cannotDisclaim
 }
@@ -21,6 +23,10 @@ enum ProviderError: Error, Equatable {
 struct ShellProvider: ExplainProvider {
     var command: String
     var timeout: TimeInterval = 120
+    /// The most of the command's stdout and stderr together that is kept. A command past it
+    /// is ended, as at the timeout: the timeout bounds the time, and a pipe fills at
+    /// gigabytes a second.
+    var outputLimit = 4 << 20
     /// The user's shell. Tests name another.
     var shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
@@ -52,11 +58,11 @@ struct ShellProvider: ExplainProvider {
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { throw ProviderError.notConfigured }
         let expanded = command.replacingOccurrences(of: "{schema}", with: Self.shellQuote(OutputContract.schema))
-        let (shell, timeout) = (shell, timeout)
+        let (shell, timeout, outputLimit) = (shell, timeout, outputLimit)
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 continuation.resume(with: Result {
-                    try Self.run(shell: shell, command: expanded, input: prompt, timeout: timeout)
+                    try Self.run(shell: shell, command: expanded, input: prompt, timeout: timeout, outputLimit: outputLimit)
                 })
             }
         }
@@ -68,7 +74,7 @@ struct ShellProvider: ExplainProvider {
         ["csh", "tcsh"].contains(URL(fileURLWithPath: shell).lastPathComponent) ? ["-c", command] : ["-l", "-c", command]
     }
 
-    private static func run(shell: String, command: String, input: String, timeout: TimeInterval) throws -> String {
+    private static func run(shell: String, command: String, input: String, timeout: TimeInterval, outputLimit: Int) throws -> String {
         let workDir = FileManager.default.temporaryDirectory
             .appending(path: "tattle-explain-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
@@ -81,9 +87,10 @@ struct ShellProvider: ExplainProvider {
         let pid = try spawn(shell, shellArguments(shell: shell, command: command), in: workDir.path, stdin: stdin, stdout: stdout, stderr: stderr)
         let result = exchange(with: pid, on: queue, input: Data(input.utf8), stdin: stdin.fileHandleForWriting,
                               stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading,
-                              until: .now() + timeout)
+                              until: .now() + timeout, limit: outputLimit)
         let status = reap(pid)
 
+        guard !result.overflowed else { throw ProviderError.tooMuchOutput }
         guard result.exited else { throw ProviderError.timedOut }
         guard status == 0 else {
             var message = String(decoding: result.errors, as: UTF8.self)
@@ -96,15 +103,15 @@ struct ShellProvider: ExplainProvider {
         return String(decoding: result.output, as: UTF8.self)
     }
 
-    /// Writes `input` to the command and reads its stdout and stderr until it exits or the
-    /// deadline passes. Then it kills the command's process group, which ends whatever the
-    /// command left running. A process that left the group, as a daemonizing helper does,
+    /// Writes `input` to the command and reads its stdout and stderr until it exits, the
+    /// deadline passes or the two together pass `limit`. Then it kills the command's process
+    /// group, which ends whatever the command left running. A process that left the group, as a daemonizing helper does,
     /// can hold a pipe open long after the command is gone, so nothing here waits on a pipe:
     /// the descriptors are non-blocking, and one kqueue watches them and the exit with the
     /// deadline as its timeout.
     private static func exchange(with pid: pid_t, on queue: Int32, input: Data, stdin: FileHandle,
                                  stdout: FileHandle, stderr: FileHandle,
-                                 until deadline: DispatchTime) -> (output: Data, errors: Data, exited: Bool) {
+                                 until deadline: DispatchTime, limit: Int) -> (output: Data, errors: Data, exited: Bool, overflowed: Bool) {
         for handle in [stdin, stdout, stderr] {
             _ = fcntl(handle.fileDescriptor, F_SETFL, fcntl(handle.fileDescriptor, F_GETFL) | O_NONBLOCK)
         }
@@ -120,8 +127,8 @@ struct ShellProvider: ExplainProvider {
         var events = Array(repeating: kevent(), count: changes.count)
         var unsent = input, writing: FileHandle? = stdin
         var output = Data(), errors = Data()
-        var exited = false
-        while !exited {
+        var exited = false, overflowed = false
+        while !exited && !overflowed {
             let now = DispatchTime.now()
             guard now < deadline else { break }
             let left = deadline.uptimeNanoseconds - now.uptimeNanoseconds
@@ -139,9 +146,14 @@ struct ShellProvider: ExplainProvider {
                         writing = nil
                     }
                 default:
-                    let open = event.ident == UInt(stdout.fileDescriptor)
-                        ? receive(from: stdout, into: &output) : receive(from: stderr, into: &errors)
-                    if !open { changes.append(watch(Int32(event.ident), EVFILT_READ, EV_DELETE)) }
+                    let room = limit - output.count - errors.count
+                    let state = event.ident == UInt(stdout.fileDescriptor)
+                        ? receive(from: stdout, into: &output, room: room) : receive(from: stderr, into: &errors, room: room)
+                    switch state {
+                    case .open: break
+                    case .closed: changes.append(watch(Int32(event.ident), EVFILT_READ, EV_DELETE))
+                    case .full: overflowed = true
+                    }
                 }
             }
         }
@@ -149,9 +161,9 @@ struct ShellProvider: ExplainProvider {
         _ = killpg(pid, SIGKILL)
         try? writing?.close()
         // What the command wrote before it exited is already in the pipes.
-        _ = receive(from: stdout, into: &output)
-        _ = receive(from: stderr, into: &errors)
-        return (output, errors, exited)
+        if !overflowed, receive(from: stdout, into: &output, room: limit - output.count - errors.count) == .full { overflowed = true }
+        if !overflowed, receive(from: stderr, into: &errors, room: limit - output.count - errors.count) == .full { overflowed = true }
+        return (output, errors, exited, overflowed)
     }
 
     /// Writes as much of `unsent` as the pipe takes now. False once all of it is written or
@@ -168,15 +180,23 @@ struct ShellProvider: ExplainProvider {
         return false
     }
 
-    /// Reads what the pipe holds now. False once every writer has closed its end.
-    private static func receive(from handle: FileHandle, into data: inout Data) -> Bool {
+    private enum PipeState { case open, closed, full }
+
+    /// Reads what the pipe holds now, keeping at most `room` bytes: `.full` when it held more,
+    /// `.closed` once every writer has closed its end.
+    private static func receive(from handle: FileHandle, into data: inout Data, room: Int) -> PipeState {
         var buffer = [UInt8](repeating: 0, count: 65536)
+        var room = room
         while true {
             let count = read(handle.fileDescriptor, &buffer, buffer.count)
-            if count > 0 {
+            if count > room {
+                data.append(contentsOf: buffer[..<max(room, 0)])
+                return .full
+            } else if count > 0 {
                 data.append(contentsOf: buffer[..<count])
+                room -= count
             } else if count == 0 || errno != EINTR {
-                return count == -1 && errno == EAGAIN
+                return count == -1 && errno == EAGAIN ? .open : .closed
             }
         }
     }

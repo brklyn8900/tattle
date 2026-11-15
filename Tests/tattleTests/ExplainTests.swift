@@ -1303,6 +1303,33 @@ final class ShellProviderTests: XCTestCase {
         XCTAssertNotEqual(kill(child, 0), 0, "the child is gone")
     }
 
+    /// The timeout bounds the time, not the volume: a hostile provider writing without end
+    /// is stopped at the limit, well before the timeout, on either stream.
+    func testACommandThatWritesWithoutEndIsStoppedAtTheLimit() async throws {
+        for command in ["yes", "yes >&2", "yes | cat"] {
+            let start = Date()
+            do {
+                _ = try await ShellProvider(command: command, timeout: 30, outputLimit: 1 << 20).explain("")
+                XCTFail("expected the limit: \(command)")
+            } catch let error as ProviderError {
+                XCTAssertEqual(error, .tooMuchOutput, command)
+            }
+            XCTAssertLessThan(Date().timeIntervalSince(start), 5, "stopped at the limit, not the timeout: \(command)")
+        }
+    }
+
+    /// The limit counts stdout and stderr together, and output up to it is an answer.
+    func testTheOutputLimitCountsBothStreams() async throws {
+        let output = try await ShellProvider(command: "head -c 1024 /dev/zero", outputLimit: 1024).explain("")
+        XCTAssertEqual(output.utf8.count, 1024)
+        do {
+            _ = try await ShellProvider(command: "head -c 600 /dev/zero; head -c 600 /dev/zero >&2", outputLimit: 1024).explain("")
+            XCTFail("expected the limit")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .tooMuchOutput)
+        }
+    }
+
     /// A command that answered and exited 0 but left a child holding stdin, stdout or stderr
     /// waited for the timeout, 120 s in the app, and its answer was thrown away as a timeout.
     func testACommandsLeftoverChildrenEndWhenItExits() async throws {
