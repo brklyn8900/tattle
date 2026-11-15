@@ -229,14 +229,16 @@ and (d) are done)
 are the triage's)
 
 - A4: A signer comes from the file at the process's path. Closed for a process whose file
-  names a signer, outside the folders only macOS installs into: macOS checks the running code
-  against the file (`SecCodeCheckValidity`), and where that fails the process shows no signer
-  and has no identity. A running program that renames a signed binary over its own path no
-  longer reads as that file's signer, a publisher's or Apple's outside macOS, and an app
-  updated in place reads the same until it is started again (`RunningCode.swift`,
-  `SignatureCache.signature(of:at:)`). On the test Mac (Intel, 690 to 700 processes, 36 or 37
-  of them checked, a release build of the tests) the checks took 0.24 to 0.26 s of a first
-  full read of 8.7 to 9.8 s, and a refresh took 0.22 to 0.25 s with them and without. Open:
+  names a signer, outside the folders only macOS installs into: macOS checks the running
+  code against the file (`SecCodeCheckValidity`), and where that fails the process shows no
+  signer and has no identity, and its Processes row says `changed on disk since it started`.
+  A running program that renames a signed binary over its own path no longer reads as that
+  file's signer, a publisher's or Apple's outside macOS, and an app updated in place reads
+  the same until it is started again (`RunningCode.swift`,
+  `SignatureCache.signature(of:at:)`). On the test Mac (Intel, 690 to 700 processes, 36 or
+  37 of them checked, a release build of the tests) the checks took 0.24 to 0.26 s of a
+  first full read of 8.7 to 9.8 s, and a refresh took 0.22 to 0.25 s with them and without.
+  Open:
   - The check passes a copy of one of Apple's tools made to load other code, which those
     with a team identifier do through `DYLD_` variables (the Command Line Tools' `lldb` did
     from a shell, not tried under launchd).
@@ -264,16 +266,13 @@ are the triage's)
     alone, and one read while the bundle was changing is kept as before.
   - An interpreter whose file fails the check still reads `<interpreter> script`, with the
     script's identity, as any file of an interpreter's name does; only the interpreter's
-    signer goes. The strict reading, no identity at all, is one flag on `ProcessEntry`.
+    signer goes, and its row does not say the file changed. The strict reading, no identity
+    at all, is one flag on `ProcessEntry`.
   - Processes reads each process's signature twice a refresh, to name it and then to build
     its row, so the two can differ within one snapshot when the file changes between them.
     Carrying the first on the entry removes it.
-  - Open choice, what a row says when the check fails. It shows nothing, as for a signer
-    that is undetermined. The wordings: `changed on disk since it started`, beside the
-    existing `executable no longer on disk`; or `does not match its file on disk`, which
-    also fits code the kernel no longer holds valid. Either needs the failure told apart
-    from a signature that was not read. With it: whether a connection's detail keeps "App
-    signed by" when its process has no signer, where it is now the only signer shown.
+  - Open choice: whether a connection's detail keeps "App signed by" when its process has no
+    signer, where it is now the only signer shown.
 - The static signature check reads one architecture slice: a universal file whose native slice
   is Apple's or a publisher's beside a foreign one reads as that signer, and `arch -x86_64`
   runs the other slice under Rosetta. `kSecCSCheckAllArchitectures` on the static check would
