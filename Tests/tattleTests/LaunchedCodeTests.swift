@@ -298,6 +298,11 @@ final class LaunchedCodeTests: XCTestCase {
             ("/usr/bin/open", ["--new=1", "/System/Applications/Calculator.app"]),
             ("/usr/bin/env", ["-S", "/bin/sh -c payload", "/bin/ls"]),
             ("/usr/bin/nohup", []),
+            // Without an architecture, arch runs what ARCHPREFERENCE or an archSettings plist
+            // names, if anything.
+            ("/usr/bin/arch", ["/x/agent"]),
+            ("/usr/bin/arch", ["-c", "-d", "-arm64", "/x/agent"]),
+            ("/usr/bin/arch", ["-e", "A=1", "/x/agent", "-arm64"]),
             // xargs adds words from its standard input to the command it runs.
             ("/usr/bin/xargs", ["-n", "1", "/x/agent"]),
             ("/usr/bin/xargs", ["/usr/bin/open", "-a", "/System/Applications/Utilities/Terminal.app"]),
@@ -306,6 +311,8 @@ final class LaunchedCodeTests: XCTestCase {
         for (program, arguments) in commands {
             XCTAssertNil(signer(program, arguments), "\(program) \(arguments)")
         }
+        XCTAssertNil(signer("/x/agent", ["-arm64", "/bin/ls"], identifiers: ["/x/agent": "com.apple.arch"]),
+                     "arch under another name runs what its settings name")
     }
 
     func testAWrapperChainIsFollowedOnlySoDeep() {

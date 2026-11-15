@@ -189,6 +189,14 @@ enum LaunchedCode: Equatable, Sendable {
         if identity.name == "xargs" { return .undetermined }
         if identity.name == "open" { return opened(arguments, identify, search: search, depth: depth) }
         if identity.name == "find", let code = found(arguments, identify, search: search, depth: depth) { return code }
+        // arch runs its operand only when the command line names an architecture. Without one,
+        // and whenever it runs under another file name, the architectures and the file that
+        // runs come from ARCHPREFERENCE or an archSettings plist, which may name another file
+        // than the operand, or none.
+        if identity.name == "arch",
+           URL(fileURLWithPath: program).lastPathComponent != "arch" || !namesArchitecture(arguments) {
+            return .undetermined
+        }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
             return running(executable: program, arguments: arguments, identity: identity)
         }
@@ -206,6 +214,20 @@ enum LaunchedCode: Equatable, Sendable {
             return started(command, Array(arguments[(index + 1)...]), identify, search: search, depth: depth + 1)
         case .code, .named, .file, .standardInput, .nothing: return .undetermined
         }
+    }
+
+    /// Whether arch's options name an architecture (`-arm64`, `-arch arm64`, `-64`), from its
+    /// manual page.
+    private static func namesArchitecture(_ arguments: [String]) -> Bool {
+        var index = 0
+        while index < arguments.count, arguments[index].hasPrefix("-") {
+            switch arguments[index] {
+            case "-arch", "-32", "-64", "-i386", "-x86_64", "-x86_64h", "-arm64", "-arm64e": return true
+            case "-d", "-e": index += 2
+            default: index += 1
+            }
+        }
+        return false
     }
 
     /// What `find` starts: the program its one `-exec`, `-execdir`, `-ok` or `-okdir` runs,
