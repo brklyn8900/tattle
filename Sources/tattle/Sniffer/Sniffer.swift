@@ -145,6 +145,19 @@ final class Sniffer: @unchecked Sendable {
         return .sourceAddresses(host.addresses(interface).map(\.bytes).sorted { $0.lexicographicallyPrecedes($1) })
     }
 
+    /// This Mac's addresses, as the namer tells its own packets by them, for a capture on
+    /// `interface`.
+    private func addresses(on interface: String) -> Set<IPAddress> {
+        Self.addresses(host.addresses(nil), onLink: host.addresses(interface))
+    }
+
+    /// Every interface's addresses, but a link-local one only when it is the capture
+    /// interface's. Those are unique on one link only: loopback's fe80::1 is also the
+    /// address many routers answer DNS from, and their replies are not this Mac's packets.
+    static func addresses(_ all: Set<IPAddress>, onLink own: Set<IPAddress>) -> Set<IPAddress> {
+        all.filter { !$0.isLinkLocal || own.contains($0) }
+    }
+
     private func installFilter(on capture: any CaptureSource, direction: CaptureFilter.Direction, interface: String) {
         guard let filter = CaptureFilter.program(linkType: capture.dataLinkType, direction: direction) else {
             let why = CaptureFilter.linkHeaderLength(capture.dataLinkType) == nil
@@ -162,7 +175,7 @@ final class Sniffer: @unchecked Sendable {
     /// Reads until the interface changes, the device fails, or stop is called.
     private func captureLoop(_ capture: any CaptureSource, interface: String, direction installed: CaptureFilter.Direction, shouldStop: () -> Bool) {
         var installed = installed
-        var namer = FlowNamer(localAddresses: host.addresses(nil), resolvers: host.resolvers(), hardwareAddress: installed.hardwareAddress)
+        var namer = FlowNamer(localAddresses: addresses(on: interface), resolvers: host.resolvers(), hardwareAddress: installed.hardwareAddress)
         // Every way out drops the namer, and with it the flows whose handshake was not read.
         defer {
             let events = namer.endCapture()
@@ -180,7 +193,7 @@ final class Sniffer: @unchecked Sendable {
                     // refresh now rather than at the next timer, or every flow until then
                     // goes unnamed.
                     if namer.endpointsUnknown(packet), Date().timeIntervalSince(lastAddressRefresh) >= Self.staleRefreshEvery {
-                        namer.updateLocalAddresses(host.addresses(nil))
+                        namer.updateLocalAddresses(addresses(on: interface))
                         namer.updateResolvers(host.resolvers())
                         lastAddressRefresh = Date()
                         Log.sniffer.debug("refreshed local addresses on an unknown packet")
@@ -198,7 +211,7 @@ final class Sniffer: @unchecked Sendable {
             }
             if !events.isEmpty { onEvents(events) }
             if now.timeIntervalSince(lastAddressRefresh) >= Self.addressRefreshEvery {
-                namer.updateLocalAddresses(host.addresses(nil))
+                namer.updateLocalAddresses(addresses(on: interface))
                 namer.updateResolvers(host.resolvers())
                 lastAddressRefresh = now
             }

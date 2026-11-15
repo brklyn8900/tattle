@@ -30,6 +30,11 @@ struct IPAddress: Hashable {
         return String(cBuffer: buf)
     }
 
+    /// An address that is unique on its own link only: 169.254/16, fe80::/10.
+    var isLinkLocal: Bool {
+        isV4 ? bytes[0] == 169 && bytes[1] == 254 : bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
+    }
+
     // Destinations that never need a public name: private, loopback, link-local, multicast.
     var isLocalScope: Bool {
         if isV4 {
