@@ -21,8 +21,8 @@ final class LaunchedCodeTests: XCTestCase {
 
     /// The signer Startup shows for a command line, with files read as `reading` reads them.
     private func signer(_ program: String, _ arguments: [String], apple: Set<String> = [],
-                        identifiers: [String: String] = [:], environmentPath: String? = nil) -> CodeSignature.Signer? {
-        CodeSignature.read(program: program, arguments: arguments, environmentPath: environmentPath) {
+                        identifiers: [String: String] = [:], environmentPath: String? = nil, asRoot: Bool = false) -> CodeSignature.Signer? {
+        CodeSignature.read(program: program, arguments: arguments, environmentPath: environmentPath, asRoot: asRoot) {
             self.reading($0, apple: apple, identifiers: identifiers)
         }?.signer
     }
@@ -198,6 +198,31 @@ final class LaunchedCodeTests: XCTestCase {
         XCTAssertNil(signer("/usr/bin/nohup", ["ls"], environmentPath: ":/bin"), "an empty PATH entry is the working directory")
         XCTAssertNil(signer("/usr/bin/env", ["-P", folder.path, "ls"]))
         XCTAssertNil(signer("/usr/bin/nohup", ["no-such-program-anywhere"]))
+    }
+
+    func testADaemonsProgramIsFoundAsRootFindsIt() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let closed = folder.appending(path: "closed")
+        try FileManager.default.createDirectory(at: closed, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: closed.path)
+            try? FileManager.default.removeItem(at: folder)
+        }
+        // Executable by others only: root runs it, this user does not.
+        let ls = folder.appending(path: "ls")
+        try Data("#!/bin/sh\n".utf8).write(to: ls)
+        try FileManager.default.setAttributes([.posixPermissions: 0o601], ofItemAtPath: ls.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: closed.path)
+
+        let open = "\(folder.path):/bin"
+        XCTAssertEqual(signer("/usr/bin/nohup", ["ls"], environmentPath: open), .developerID(name: "/bin/ls"), "an agent skips what it cannot run")
+        XCTAssertEqual(signer("/usr/bin/nohup", ["ls"], environmentPath: open, asRoot: true), .developerID(name: ls.path))
+        XCTAssertEqual(signer("/usr/bin/env", ["PATH=\(open)", "ls"], asRoot: true), .developerID(name: ls.path))
+        let shut = "\(closed.path):/bin"
+        XCTAssertEqual(signer("/usr/bin/nohup", ["ls"], environmentPath: shut), .developerID(name: "/bin/ls"))
+        XCTAssertNil(signer("/usr/bin/nohup", ["ls"], environmentPath: shut, asRoot: true), "root looks in a folder this user cannot")
+        XCTAssertEqual(signer("/usr/bin/nohup", ["ls"], environmentPath: "\(folder.path)/none:/bin", asRoot: true),
+                       .developerID(name: "/bin/ls"), "a folder that is not there holds nothing")
     }
 
     func testMoreOfApplesProgramsRunTheCodeTheyAreGiven() {

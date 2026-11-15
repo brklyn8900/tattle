@@ -111,21 +111,23 @@ struct CodeSignature: Equatable, Sendable {
     /// runs a signed binary as its script, so a signed file in the script's place is an
     /// argument read there by mistake.
     static func read(
-        program: String, arguments: [String], environmentPath: String? = nil, changesRoot: Bool = false,
+        program: String, arguments: [String], environmentPath: String? = nil, asRoot: Bool = false, changesRoot: Bool = false,
         reading: (String) -> CodeSignature? = { read(path: $0) }
     ) -> CodeSignature? {
-        started(program: program, arguments: arguments, environmentPath: environmentPath, changesRoot: changesRoot, reading: reading).signature
+        started(program: program, arguments: arguments, environmentPath: environmentPath, asRoot: asRoot, changesRoot: changesRoot,
+                reading: reading).signature
     }
 
     /// How the launch item reads (`read`), and what says which version of its code this is.
     static func started(
-        program: String, arguments: [String], environmentPath: String? = nil, changesRoot: Bool = false,
+        program: String, arguments: [String], environmentPath: String? = nil, asRoot: Bool = false, changesRoot: Bool = false,
         reading: (String) -> CodeSignature? = { read(path: $0) }
     ) -> (signature: CodeSignature?, version: LaunchedVersion) {
         let identify = {
             LaunchedCode.Identity(path: $0, signature: reading($0), realPath: URL(fileURLWithPath: $0).resolvingSymlinksInPath().path)
         }
-        let code = LaunchedCode.started(program: program, arguments: arguments, environmentPath: environmentPath, identify: identify)
+        let code = LaunchedCode.started(
+            program: program, arguments: arguments, environmentPath: environmentPath, asRoot: asRoot, identify: identify)
         switch code {
         case .program(let path):
             let signature = launchItem(running: path, signature: reading(path), changesRoot: changesRoot)

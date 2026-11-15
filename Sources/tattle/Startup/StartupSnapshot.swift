@@ -205,7 +205,7 @@ struct StartupSnapshot: Equatable, Sendable {
             let registered = records.first { $0.jobLabel == job.label } ?? records.first
             let started = job.program.map {
                 CodeSignature.started(program: $0, arguments: job.arguments, environmentPath: job.environmentPath,
-                                      changesRoot: job.rootDirectory != nil, reading: signature)
+                                      asRoot: job.scope == .daemon, changesRoot: job.rootDirectory != nil, reading: signature)
             }
             items.append(StartupItem(
                 id: job.label,
