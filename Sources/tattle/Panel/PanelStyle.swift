@@ -322,12 +322,12 @@ struct SignedLine: View {
 }
 
 extension CodeSignature {
-    /// Whether the signature names who made the code: Apple, the App Store, or a certificate
-    /// Apple issued.
+    /// Whether the signature names who made the code that runs: Apple, the App Store, or a
+    /// certificate Apple issued. Apple's on a file outside macOS does not (`appleElsewhere`).
     var namesSigner: Bool {
         switch signer {
         case .apple, .appStore, .developerID, .development, .other: true
-        case .adHoc, .unsigned, .script, .unnamed, .launchItem, .invalid, .notIssuedByApple: false
+        case .appleElsewhere, .adHoc, .unsigned, .script, .unnamed, .launchItem, .invalid, .notIssuedByApple: false
         }
     }
 

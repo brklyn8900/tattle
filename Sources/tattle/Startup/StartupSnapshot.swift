@@ -324,7 +324,7 @@ struct StartupSnapshot: Equatable, Sendable {
         let signed = signature(path)
         let realPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         if LaunchedCode.Identity(path: path, signature: signed, realPath: realPath).isDeveloperTool { return CodeSignature(signer: .unnamed) }
-        return item.isLaunchItem ? CodeSignature.launchItem(running: path, signature: signed) : signed
+        return item.isLaunchItem ? CodeSignature.launchItem(running: path, signature: signed) : signed?.located(at: realPath)
     }
 
     /// The app bundle for an app, or the helper's path inside its container.

@@ -41,7 +41,7 @@ struct CodeIdentity: Hashable, Sendable {
         guard let signature else { return nil }
         switch signature.signer {
         case .script, .unnamed, .launchItem: return nil
-        case .apple:
+        case .apple, .appleElsewhere:
             guard let path else { return nil }
             return CodeIdentity(text: "apple:\(signature.identifier ?? ""):" + (ApplesProgram.isInstalled(at: path) ? "" : path))
         default:

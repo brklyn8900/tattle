@@ -134,12 +134,6 @@ and (d) are done)
   `find`, `xargs`) in place of the three tables and the checks by name, each kind with only
   the fields it uses: `Takes.code` now means inline code for an interpreter and a command
   not followed for a wrapper.
-- In Processes, a copy of one of Apple's other tools outside its usual place keeps Apple's
-  signature and reads as Apple's program, whatever it is told to load: only Apple's Swift
-  tools, clang and ld are known as developer tools by signing identifier wherever they are.
-  Apple's tools with a team identifier also honor `DYLD_` variables, as macOS's own programs
-  do not: the Command Line Tools' `lldb` did from a shell, not tried under launchd
-  (`LaunchedCode.swift`).
 - Processes reads as Apple's the code an Apple process runs inside itself: `jsc -e`, a vim
   script, a pipe into bash under cron (`LaunchedCode.swift`, `ProcessTable.swift`).
 - A launch item through `/usr/bin/sudo` reads as `unsigned`: sudo cannot be read by the user
@@ -153,9 +147,6 @@ and (d) are done)
   file at that path outside the root, which is not the file that runs, so the row can name
   a publisher whose code does not run. chroot needs root, so this is a daemon's
   (`CodeSignature.swift`).
-- Apple-signed processes under `/Library/Developer/PrivateFrameworks` (CoreSimulatorService,
-  CoreDeviceService, SimLaunchHost) read as Apple's: that folder is not one of the developer
-  folders (`LaunchedCode.swift`).
 - A detail's "Interpreter signed by" and "Interpreter team" name clang, git and Xcode Service
   as interpreters, which they are not (`ProcessSnapshot.swift`).
 - `ProcessEntry`'s `interpreter` and `runsUnnamedCode` are one state in two fields, which
@@ -177,9 +168,12 @@ and (d) are done)
 **From the review triage of 2026-11-07** (its "consider" list, verified at `a297ef7`; IDs
 are the triage's)
 
-- A4: A signer comes from the file at the process's path now, so a running program that
-  renames an Apple binary over its own path reads as Apple. Only `SecCodeCheckValidity` on
-  the running code catches it; its cost per process is unmeasured (`CodeSignature.swift`).
+- A4: A signer comes from the file at the process's path, so a running program that renames
+  a signed binary over its own path reads as that file's signer: a publisher's, or Apple's
+  outside macOS. Only `SecCodeCheckValidity` on the running code catches it; its cost per
+  process is unmeasured, and it passes a copy of one of Apple's tools made to load other
+  code, which those with a team identifier do through `DYLD_` variables (the Command Line
+  Tools' `lldb` did from a shell, not tried under launchd) (`CodeSignature.swift`).
 - E7g: A personal Apple Development team identifier is sent to the model, twice for a
   development signer (the "Signed by" summary and the Team facts).
 - K6: A DNS-only name is unmarked in the Network detail headline, against ADR-0001

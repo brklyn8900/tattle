@@ -65,7 +65,7 @@ struct ConnectionOwner: Equatable, Sendable {
         return ConnectionOwner(
             processName: entry.name, path: entry.path, interpreter: entry.interpreter, app: app,
             signature: entry.codeSignature(executable: executable),
-            interpreterSignature: entry.interpreter == nil ? nil : executable,
+            interpreterSignature: entry.interpreterSignature(executable: executable),
             appSignature: app?.signature(reading: signature),
             identity: entry.identity(executable: executable))
     }

@@ -36,6 +36,104 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(snapshot.group(id: "pid:502")?.isApplesProgram, false, "the script's own row")
     }
 
+    /// Apple's signature on a file says it is part of macOS only where only macOS installs
+    /// programs. A copy keeps the signature anywhere, and so does a file a running program moves
+    /// over its own, which goes on running what it ran.
+    func testApplesSignatureOnAFileElsewhereIsNotPartOfMacOS() throws {
+        let child = ProcessEntry(pid: 510, parentPid: 500, uid: 501, name: "sleep", path: "/bin/sleep", started: started)
+        let snapshot = ProcessSnapshot.build(entries: machine + [child], previous: nil, signature: appleSigned, responsible: { _ in nil }, takenAt: started)
+        let copy = try XCTUnwrap(snapshot.item(pid: 500))
+        XCTAssertFalse(copy.isPartOfMacOS)
+        XCTAssertEqual(copy.signerText, "Apple, outside macOS", "the row")
+        XCTAssertEqual(copy.facts.first { $0.name == "Signed by" }?.value, "Apple, outside macOS", "the detail and the prompt")
+        XCTAssertEqual(copy.signature?.namesSigner, false, "no green shield")
+
+        let system = try XCTUnwrap(snapshot.group(id: ProcessGroup.systemID))
+        XCTAssertEqual(system.members.map(\.pid).sorted(), [0, 1, 90, 501])
+        let row = try XCTUnwrap(snapshot.group(id: "pid:500"))
+        XCTAssertEqual(row.kind, .process)
+        XCTAssertEqual(row.members.map(\.pid).sorted(), [500, 510], "what it starts sits under it, not in macOS")
+        XCTAssertEqual(row.signature?.summary, "Apple, outside macOS")
+
+        let installed = try XCTUnwrap(snapshot.item(pid: 90))
+        XCTAssertTrue(installed.isPartOfMacOS)
+        XCTAssertEqual(installed.signerText, "Apple")
+        XCTAssertEqual(installed.signature?.namesSigner, true)
+    }
+
+    /// Built by hand with Apple's signature, as no reading gives it.
+    func testAProcessIsPartOfMacOSOnlyWhereMacOSInstallsPrograms() {
+        func item(_ path: String?) -> ProcessItem {
+            ProcessItem(pid: 500, parentPid: 1, uid: 501, name: "x", path: path, started: started, signature: CodeSignature(signer: .apple))
+        }
+        XCTAssertTrue(item("/usr/libexec/x").isPartOfMacOS)
+        XCTAssertFalse(item("/private/tmp/x").isPartOfMacOS)
+        XCTAssertFalse(item("/usr/local/bin/x").isPartOfMacOS)
+        XCTAssertFalse(item(nil).isPartOfMacOS)
+    }
+
+    /// A copy of one of Apple's apps, and a copy of Apple's interpreter running a script.
+    func testAnAppAndAnInterpreterElsewhereAreNotReadAsApples() throws {
+        let app = "/Users/x/Calculator.app"
+        let entries = machine + [
+            ProcessEntry(pid: 600, parentPid: 1, uid: 501, name: "Calculator", path: "\(app)/Contents/MacOS/Calculator", started: started),
+            ProcessEntry(pid: 601, parentPid: 1, uid: 501, name: "job.sh", path: "/private/tmp/sh", interpreter: "sh", started: started),
+        ]
+        let signed = CodeSignature(signer: .apple, identifier: "com.apple.calculator")
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: { _ in signed }, responsible: { _ in nil }, takenAt: started)
+        let group = try XCTUnwrap(snapshot.group(id: app))
+        XCTAssertEqual(group.signature?.summary, "Apple, outside macOS")
+        XCTAssertEqual(group.identity?.text, "apple:com.apple.calculator:\(app)", "known as that copy, as before")
+        XCTAssertEqual(snapshot.group(id: "/System/Applications/Mail.app")?.signature?.summary, "Apple")
+
+        let script = try XCTUnwrap(snapshot.item(pid: 601))
+        XCTAssertEqual(script.facts.first { $0.name == "Interpreter signed by" }?.value, "Apple, outside macOS")
+        XCTAssertEqual(snapshot.item(pid: 502)?.facts.first { $0.name == "Interpreter signed by" }?.value, "Apple")
+    }
+
+    func testAConnectionsOwnerElsewhereIsNotReadAsApples() throws {
+        let app = "/Users/x/Calculator.app"
+        let list = machine + [ProcessEntry(pid: 600, parentPid: 1, uid: 501, name: "Calculator", path: "\(app)/Contents/MacOS/Calculator", started: started)]
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        func live(_ pid: Int32) -> LiveConnection {
+            let owner = ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: appleSigned)
+            return LiveConnection(connection: connection(pid, at: 0), owner: owner, isNew: false)
+        }
+        let copy = live(500)
+        XCTAssertEqual(copy.owner.signature?.summary, "Apple, outside macOS")
+        XCTAssertEqual(copy.facts(now: started).first { $0.name == "Signed by" }?.value, "Apple, outside macOS", "the detail")
+        XCTAssertEqual(NetworkSnapshot(connections: [copy], takenAt: started).groups.first?.signature?.summary, "Apple, outside macOS", "the row")
+        XCTAssertEqual(ConnectionRecord(copy).signer, "Apple, outside macOS", "history")
+        XCTAssertNil(NetworkSnapshot(connections: [copy, live(90)], takenAt: started).groups.first?.signature, "not the daemon's signer")
+
+        let calculator = live(600)
+        XCTAssertEqual(calculator.owner.appSignature?.summary, "Apple, outside macOS")
+        XCTAssertEqual(NetworkSnapshot(connections: [calculator], takenAt: started).groups.first?.signature?.summary, "Apple, outside macOS")
+        XCTAssertEqual(ConnectionRecord(calculator).appSigner, "Apple, outside macOS")
+        XCTAssertEqual(live(90).owner.signature?.summary, "Apple")
+        XCTAssertEqual(live(70).owner.appSignature?.summary, "Apple")
+    }
+
+    /// A helper has no plist to say what it runs, so it reads by its own file.
+    func testARegisteredItemElsewhereIsNotReadAsApples() {
+        func item(_ identifier: String, _ kind: LoginItem.Kind, _ path: String) -> LoginItem {
+            LoginItem(identifier: identifier, name: identifier, kind: kind, developerName: nil, teamIdentifier: nil, bundleIdentifier: nil,
+                      executablePath: path, url: nil, container: nil, enabled: true, allowed: true, hidden: false, notified: false, legacy: false)
+        }
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [], appleCount: 0, unreadable: []),
+            loginItems: [
+                item("installed", .loginItemHelper, "/System/Applications/Passwords.app/Contents/MacOS/x"),
+                item("copy", .loginItemHelper, "/Users/x/Passwords.app/Contents/MacOS/x"),
+                item("app", .app, "/Users/x/Calculator.app"),
+            ],
+            state: LaunchctlState(), signature: appleSigned)
+        func summary(_ id: String) -> String? { snapshot.items.first { $0.id == id }?.signature?.summary }
+        XCTAssertEqual(summary("installed"), "Apple")
+        XCTAssertEqual(summary("copy"), "Apple, outside macOS")
+        XCTAssertEqual(summary("app"), "Apple, outside macOS")
+    }
+
     /// One row holds every process by the name; the real daemon's connection is the newest,
     /// so its signature heads the row.
     func testNetworkGroupsCountOnlyWhenEveryConnectionIsApplesProgram() throws {
@@ -65,6 +163,7 @@ final class ApplesProgramTests: XCTestCase {
                                            processes: { processes[$0] }, signature: appleSigned)
         XCTAssertEqual(snapshot.items.map(\.explainKey), ["mDNSResponder:udp/5353", "mDNSResponder:udp/5353"])
         XCTAssertEqual(snapshot.items.map(\.isApplesProgram), [true, false])
+        XCTAssertEqual(snapshot.items.map(\.signature?.summary), ["Apple", "Apple, outside macOS"], "the row and the detail")
     }
 
     func testIdentitiesAcrossTheTabs() throws {

@@ -34,7 +34,10 @@ The process list and parent pids from the `KERN_PROC_ALL` `sysctl`; paths from
 for the processes that call will not describe; the working directory from `proc_pidinfo`.
 
 Code signature via `SecCodeCopySigningInformation`: Apple, a Team ID with the organization
-name read from the leaf certificate, or unsigned. Helpers are attributed to their app by
+name read from the leaf certificate, or unsigned. Apple's signature reads as Apple's only on
+a file where only macOS installs programs (the system volume's folders and `/Library/Apple`);
+on a file anywhere else it reads as Apple's outside macOS, and its process is not part of
+the macOS row. Helpers are attributed to their app by
 walking the parent chain and by path containment (`Slack Helper (GPU)` lives inside
 `Slack.app`). A service launchd started for an app has neither, so it is filed under the
 "responsible process" macOS tracks for TCC, which only a private call reads

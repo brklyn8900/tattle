@@ -6,6 +6,12 @@ struct CodeSignature: Equatable, Sendable {
     enum Signer: Equatable, Sendable {
         /// Apple's own code, as macOS is: signed by Apple itself (`anchor apple`).
         case apple
+        /// Apple's signature on a file that is not where only macOS installs programs
+        /// (`located`). It says who made the file and not that the file is part of macOS: a
+        /// copy of one of Apple's binaries keeps it anywhere, a running program can move such
+        /// a file over its own, and a copy of one of Apple's tools can be made to load other
+        /// code.
+        case appleElsewhere
         case appStore
         /// Developer ID: the name on the certificate is the publisher.
         case developerID(name: String)
@@ -46,6 +52,7 @@ struct CodeSignature: Equatable, Sendable {
     var summary: String {
         switch signer {
         case .apple: "Apple"
+        case .appleElsewhere: "Apple, outside macOS"
         case .appStore: "App Store"
         case .developerID(let name), .other(let name): name
         case .development: teamIdentifier.map { "Apple Development (\($0))" } ?? "Apple Development"
@@ -68,9 +75,19 @@ struct CodeSignature: Equatable, Sendable {
     /// Apple's or the same team's, which a signature proves. Code with no team has no signer
     /// to share, so only the very same code counts.
     func owns(_ other: CodeSignature?) -> Bool {
-        if signer == .apple { return isSameSigner(as: other) }
+        if signer == .apple || signer == .appleElsewhere { return isSameSigner(as: other) }
         if let teamIdentifier { return teamIdentifier == other?.teamIdentifier }
         return codeHash != nil && codeHash == other?.codeHash
+    }
+
+    /// This signature, read from the file at `path`, as a row shows it: Apple's stays Apple's
+    /// only where only macOS installs programs (`ApplesProgram.isInstalled`). `path` has its
+    /// links resolved.
+    func located(at path: String?) -> CodeSignature {
+        guard signer == .apple, path.map(ApplesProgram.isInstalled(at:)) != true else { return self }
+        var elsewhere = self
+        elsewhere.signer = .appleElsewhere
+        return elsewhere
     }
 
     /// How a launch item reads, from the code its command line runs (`LaunchedCode.started`):

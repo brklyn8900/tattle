@@ -24,7 +24,7 @@ struct AppBundle: Hashable, Sendable {
     /// told; any other there keeps its signer.
     func signature(reading signature: (String) -> CodeSignature?) -> CodeSignature? {
         let signed = signature(path)
-        return LaunchedCode.Identity(path: path, signature: signed).isDeveloperTool ? CodeSignature(signer: .unnamed) : signed
+        return LaunchedCode.Identity(path: path, signature: signed).isDeveloperTool ? CodeSignature(signer: .unnamed) : signed?.located(at: path)
     }
 
     /// Whether the executable at `path` is a file in this bundle that the bundle's signer did
@@ -82,9 +82,10 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
-    /// Part of macOS: signed by Apple as its own code, or the kernel. A script is not,
-    /// whoever signed its interpreter.
-    var isPartOfMacOS: Bool { pid == 0 || signature?.signer == .apple }
+    /// Part of macOS: the kernel, or Apple's own code run from where only macOS installs
+    /// programs. A script is not, whoever signed its interpreter, and neither is a file with
+    /// Apple's signature anywhere else (`CodeSignature.Signer.appleElsewhere`).
+    var isPartOfMacOS: Bool { pid == 0 || (signature?.signer == .apple && path.map(ApplesProgram.isInstalled(at:)) == true) }
     var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 
     /// What the row says after the name: "node script", "node, unnamed code", the signer, or
@@ -342,7 +343,7 @@ struct ProcessSnapshot: Equatable, Sendable {
                 workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
                 signature: entry.codeSignature(executable: executableSignature),
-                interpreterSignature: entry.interpreter == nil ? nil : executableSignature,
+                interpreterSignature: entry.interpreterSignature(executable: executableSignature),
                 app: app(of: entry.pid, in: { byPid[$0] }, runningApp: runningApp, responsible: responsible, memo: &apps),
                 identity: entry.identity(executable: executableSignature)))
         }
@@ -414,8 +415,8 @@ struct ProcessSnapshot: Equatable, Sendable {
     }
 
     /// Where a process rolls up. An app that is not system UI gets its own row; otherwise
-    /// the topmost non-Apple ancestor is the row, so a server's workers sit under the
-    /// server; otherwise it is part of macOS.
+    /// the topmost ancestor that is not part of macOS is the row, so a server's workers sit
+    /// under the server; otherwise it is part of macOS.
     private struct GroupKey {
         var id: String
         var kind: ProcessGroup.Kind

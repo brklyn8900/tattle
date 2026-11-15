@@ -141,7 +141,7 @@ struct PortsSnapshot: Equatable, Sendable {
                 id: key, proto: entry.proto, port: entry.localPort, binding: binding, families: family,
                 pid: entry.pid, uid: process?.uid ?? entry.uid, process: process,
                 signature: process?.codeSignature(executable: executable),
-                interpreterSignature: process?.interpreter == nil ? nil : executable,
+                interpreterSignature: process?.interpreterSignature(executable: executable),
                 identity: process?.identity(executable: executable),
                 serviceName: services.name(port: entry.localPort, proto: entry.proto))
             order.append(key)

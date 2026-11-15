@@ -29,7 +29,8 @@ Preconditions:
 - **A script listening.** On the test Mac: `<dir>/server.py` binding `127.0.0.1:18180`, run with
   `/usr/bin/python3`. `$V tab Ports`; the row reads `18180, server.py, TCP · localhost only ·
   script, not signed`. Its detail has `Process server.py (pid N)`, `Runs with Python
-  (<path>)`, `Signed by script, not signed`, `Interpreter signed by Apple`, and no `Path`.
+  (<path>)`, `Signed by script, not signed`, `Interpreter signed by Apple, outside macOS`
+  (the Command Line Tools' Python), and no `Path`.
 - **Its answer is kept.** Press `Explain`, `$V ax wait "fake answer"`. `$V db "select kind,
   match, pattern, source, identity from rule where purpose='fake answer for the verify
   run'"`: `port | exact | server.py:tcp/18180 | llm | script:<dir>/server.py:sha256:<digest>`.

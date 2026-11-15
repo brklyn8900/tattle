@@ -588,12 +588,12 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(owner.processName, "job.sh")
         XCTAssertEqual(owner.interpreter, "updater")
         XCTAssertEqual(owner.signature?.summary, "script, not signed")
-        XCTAssertEqual(owner.interpreterSignature?.summary, "Apple")
+        XCTAssertEqual(owner.interpreterSignature?.summary, "Apple, outside macOS")
         XCTAssertFalse(owner.isApplesProgram)
         let facts = facts(owner)
         XCTAssertEqual(facts["Signed by"], "script, not signed")
         XCTAssertEqual(facts["Runs with"], "updater (\(copy))")
-        XCTAssertEqual(facts["Interpreter signed by"], "Apple")
+        XCTAssertEqual(facts["Interpreter signed by"], "Apple, outside macOS")
     }
 
     func testInlineCodeUnderApplesInterpreterIsNotApples() {
@@ -627,7 +627,7 @@ final class NetworkSnapshotTests: XCTestCase {
         let tool = owner(701, list, signatures: signatures)
         XCTAssertEqual(tool.displayName, "iTerm", "not Xcode")
         XCTAssertEqual(tool.signature?.summary, "unnamed code")
-        XCTAssertEqual(tool.interpreterSignature?.summary, "Apple")
+        XCTAssertEqual(tool.interpreterSignature?.summary, "Apple, outside macOS")
         XCTAssertEqual(owner(702, list, signatures: signatures).displayName, "iTerm", "an ancestor among the developer tools is read by its signature too")
     }
 

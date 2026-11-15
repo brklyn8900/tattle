@@ -109,12 +109,12 @@ Preconditions:
     -sdk <sdk> <dir>/job.swift -interpret &`, where `<tools>` is
     `/Library/Developer/CommandLineTools` and `job.swift` connects to `$IP:18082` and sleeps;
     allow 30 s to compile. Detail: `Process job.swift`, `Runs with updater
-    (<dir>/bin/updater)`, `Signed by script, not signed`, `Interpreter signed by Apple`,
-    `Interpreter team 59GAB85EFG`, and the terminal's `App signed by`.
+    (<dir>/bin/updater)`, `Signed by script, not signed`, `Interpreter signed by Apple,
+    outside macOS`, `Interpreter team 59GAB85EFG`, and the terminal's `App signed by`.
   - One of Apple's developer tools: with an Apple-signed Xcode, `<Xcode>/Contents/Developer/
     usr/bin/git ls-remote http://$IP:18083/x &`, which waits for a reply that does not come.
     Detail: `Process git-remote-http`, `App Ghostty` (not Xcode), `Signed by unnamed code`,
-    `Interpreter signed by Apple`.
+    `Interpreter signed by Apple, outside macOS`.
 
   Press `Ghostty,` (its subtitle is the app's signer), then `--prefix "$IP:<port>,"`. `$V db
   "select processName, appName, signer, appSigner from connection where remotePort in

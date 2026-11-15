@@ -89,7 +89,12 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
     /// Who signed the code the process runs, given its executable's signature: no one for a
     /// script or unnamed code.
     func codeSignature(executable: CodeSignature?) -> CodeSignature? {
-        interpreter == nil ? executable : CodeSignature(signer: runsUnnamedCode ? .unnamed : .script)
+        interpreter == nil ? executable?.located(at: path) : CodeSignature(signer: runsUnnamedCode ? .unnamed : .script)
+    }
+
+    /// The executable's signature when it is an interpreter running a script or unnamed code.
+    func interpreterSignature(executable: CodeSignature?) -> CodeSignature? {
+        interpreter == nil ? nil : executable?.located(at: path)
     }
 
     /// What tells the code this process runs from another's of its name (`CodeIdentity`),

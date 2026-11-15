@@ -53,7 +53,7 @@ Preconditions:
   in iter(int, 1)]`. With the Command Line Tools it runs as the `Python.app` inside their
   Python framework, which is not an app: its row reads `Python, 1 process · Python, unnamed
   code`, not a member of `macOS`. The detail has `Runs with Python (<path>)`, `Signed by
-  unnamed code`, `Interpreter signed by Apple`, and no `Part of`. With Xcode as the
+  unnamed code`, `Interpreter signed by Apple, outside macOS`, and no `Part of`. With Xcode as the
   developer folder (`xcode-select -p`) it runs as the `Python.app` inside Xcode, whose row
   must not hold it: the row and the detail read the same. The test Mac had only the Command Line
   Tools then, so this case ran on the development Mac, with a probe the run loads and removes. A
@@ -65,7 +65,7 @@ Preconditions:
   `while true { sleep(5) }`); give it 30 s to compile. It runs as `swift-frontend -frontend
   -interpret <dir>/loop.swift ...`: its row reads `loop.swift, 1 process · swift-frontend
   script`, not a member of `macOS`. The detail has `Runs with swift-frontend (<path>)`,
-  `Signed by script, not signed`, `Interpreter signed by Apple`. The toolchain's
+  `Signed by script, not signed`, `Interpreter signed by Apple, outside macOS`. The toolchain's
   `swift-frontend` with `-frontend -sdk <sdk> <dir>/loop.swift -interpret`, `-interpret`
   after the script, reads the same.
 - **A compile job.** As above, with `/usr/bin/swiftc -sdk <sdk> -c <dir>/input.swift -o
@@ -75,7 +75,7 @@ Preconditions:
   `macOS`, as any of Apple's developer tools does unless it runs a script. Through Xcode's
   toolchain's `swiftc` (the development Mac) the detail has `Runs with swift-frontend (<Xcode's
   toolchain>/usr/bin/swift-frontend)`, `Signed by unnamed code`, `Interpreter signed by
-  Apple`, `Parent launchd (pid 1)`, and no `Part of`.
+  Apple, outside macOS`, `Parent launchd (pid 1)`, and no `Part of`.
 - **A copy of a developer tool.** As above, with a copy of the Command Line Tools'
   `clang` in `<dir>/bin`, `-c <dir>/input.c -o <dir>/input.o`, where `input.c` is a
   `mkfifo`. The copy keeps its signing identifier, `com.apple.clang`, which reads as one of
@@ -84,12 +84,12 @@ Preconditions:
 - **An app among the developer tools.** With Xcode (the development Mac), its `Xcode Service.app`,
   under `Contents/Developer/Library/Xcode/Agents/`, while it runs: its row reads `Xcode
   Service, 1 process · unnamed code`, not its bundle's signer. The detail has `Signed by
-  unnamed code`, `Interpreter signed by Apple`, `Interpreter team 59GAB85EFG`.
+  unnamed code`, `Interpreter signed by Apple, outside macOS`, `Interpreter team 59GAB85EFG`.
 - **A developer tool reading its standard input.** Over ssh, so no app is an ancestor, with
   `/usr/bin/time /usr/bin/python3 < <dir>/in.fifo` and something holding the fifo open:
   with Xcode as the developer folder its row reads `Python, 1 process · Python, unnamed
   code`, not a member of `Xcode`. The detail has `Signed by unnamed code`, `Interpreter
-  signed by Apple`, `Parent time (pid N)`. A shell at a terminal is still not one: a person
+  signed by Apple, outside macOS`, `Parent time (pid N)`. A shell at a terminal is still not one: a person
   may be typing.
 - **An Apple-signed Xcode.** On the test Mac, whose Xcode is signed by Apple (the development Mac's is the App
   Store's and reads that): `open -ga Xcode`. Its row reads `Xcode, N processes · unnamed
