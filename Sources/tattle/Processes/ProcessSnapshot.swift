@@ -29,9 +29,10 @@ struct AppBundle: Hashable, Sendable {
 
     /// Whether the executable at `path` is a file in this bundle that the bundle's signer did
     /// not sign. The bundle's signature is read without its resources, so it says nothing of a
-    /// file put there: an answer given for the app is not about that file.
+    /// file put there: an answer given for the app is not about that file, and neither is the
+    /// app's signer. A bundle read as unnamed code names no signer for a file to take.
     func holdsForeign(_ path: String?, signed executable: CodeSignature?, bundle: CodeSignature?) -> Bool {
-        guard let path, path.hasPrefix(self.path + "/") else { return false }
+        guard let path, path.hasPrefix(self.path + "/"), bundle?.signer != .unnamed else { return false }
         return bundle?.owns(executable) != true
     }
 
@@ -182,6 +183,8 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     var name: String
     /// Members by memory, largest first.
     var members: [ProcessItem]
+    /// Who signed the row's program: the app, or the top process. None while a file in the
+    /// app's bundle that its signer did not sign is running; each member keeps its own.
     var signature: CodeSignature?
     /// What tells the row's program from another's of its name: the app, or the top process.
     /// None while a file in the app's bundle that its signer did not sign is running.
@@ -378,6 +381,7 @@ struct ProcessSnapshot: Equatable, Sendable {
                 bundle.holdsForeign($0.path, signed: $0.interpreterSignature ?? $0.signature, bundle: groups[index].signature)
             }) {
                 groups[index].identity = nil
+                groups[index].signature = nil
             }
             let executable = mainExecutable(bundle)
             let members = groups[index].members

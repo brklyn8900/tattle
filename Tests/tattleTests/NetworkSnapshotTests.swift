@@ -160,6 +160,51 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertNil(group(list)?.identity, "the Processes tab's row too")
     }
 
+    /// The app's signature says nothing of a file put in its bundle, so a row holding one names
+    /// no signer, as a row whose connections differ names none. The file's own row keeps its own.
+    func testARowHoldingAFileItsAppsSignerDidNotSignNamesNoSigner() throws {
+        let copied = "/Users/x/Copy/Slack.app"
+        let calculator = "/Users/x/Copy/Calculator.app"
+        let slack = CodeSignature(signer: .developerID(name: "Slack Technologies"), identifier: "com.tinyspeck.slackmacgap", teamIdentifier: "BQR82RBBHL")
+        let apple = CodeSignature(signer: .apple, identifier: "com.apple.calculator")
+        let signatures: [String: CodeSignature] = [
+            copied: slack, "\(copied)/Contents/MacOS/Slack": slack, "\(copied)/Contents/Frameworks/Helper": slack,
+            "\(copied)/Contents/MacOS/dropper": CodeSignature(signer: .unsigned), "/usr/bin/curl": CodeSignature(signer: .apple, identifier: "com.apple.curl"),
+            calculator: apple, "\(calculator)/Contents/MacOS/Calculator": apple, "\(calculator)/Contents/MacOS/evil": CodeSignature(signer: .adHoc, codeHash: "ee"),
+        ]
+        let list = [entry(800, 1, "\(copied)/Contents/MacOS/Slack"), entry(801, 800, "\(copied)/Contents/Frameworks/Helper"),
+                    entry(802, 800, "/usr/bin/curl"), entry(803, 1, "\(copied)/Contents/MacOS/dropper"),
+                    entry(810, 1, "\(calculator)/Contents/MacOS/Calculator"), entry(811, 1, "\(calculator)/Contents/MacOS/evil")]
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        func live(_ pid: Int32) -> LiveConnection {
+            LiveConnection(connection: connection(pid, "1.1.1.1"),
+                           owner: ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] }),
+                           isNew: false)
+        }
+        func row(_ pids: Int32...) -> ConnectionGroup? { NetworkSnapshot(connections: pids.map(live), takenAt: t0).groups.first }
+        XCTAssertEqual(row(800, 801)?.signature?.summary, "Slack Technologies", "the app and its own helper")
+        XCTAssertEqual(row(800, 802)?.signature?.summary, "Slack Technologies", "what it launches")
+        XCTAssertNil(row(803)?.signature, "the file alone")
+        XCTAssertNil(row(800, 803)?.signature)
+        XCTAssertNil(row(803, 800)?.signature)
+        XCTAssertEqual(row(803)?.facts(gone: false).contains { $0.name == "Signed by" || $0.name == "Team" }, false, "nor is the model told one")
+        XCTAssertEqual(live(803).facts(now: t0).first { $0.name == "Signed by" }?.value, "unsigned", "its own row")
+        XCTAssertEqual(row(810)?.signature?.summary, "Apple, outside macOS")
+        XCTAssertNil(row(811)?.signature, "in a copy of one of Apple's apps")
+
+        func snapshot(_ entries: [ProcessEntry]) -> ProcessSnapshot {
+            ProcessSnapshot.build(entries: entries, previous: nil, signature: { signatures[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, takenAt: t0)
+        }
+        XCTAssertEqual(snapshot(Array(list.prefix(3))).group(id: copied)?.signature?.summary, "Slack Technologies")
+        let held = try XCTUnwrap(snapshot(list).group(id: copied))
+        XCTAssertNil(held.signature, "the Processes tab's row too")
+        XCTAssertFalse(held.facts.contains { $0.name == "Signed by" || $0.name == "Team" })
+        XCTAssertEqual(snapshot(list).item(pid: 803)?.signerText, "unsigned", "its own row")
+        XCTAssertEqual(snapshot(list).item(pid: 800)?.signerText, "Slack Technologies")
+        XCTAssertNil(snapshot(list).group(id: calculator)?.signature)
+        XCTAssertEqual(snapshot(Array(list.dropLast())).group(id: calculator)?.signature?.summary, "Apple, outside macOS")
+    }
+
     /// Code with no team has no signer to share: ad hoc, only the bundle's own code is its own.
     func testAnAdHocBundleOwnsOnlyItsOwnCode() throws {
         let bundle = "/Users/x/Tool.app"

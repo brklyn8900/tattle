@@ -22,11 +22,18 @@ struct ConnectionOwner: Equatable, Sendable {
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
-    var groupSignature: CodeSignature? { app == nil ? signature : appSignature }
+    /// None for a file in the app's bundle that its signer did not sign.
+    var groupSignature: CodeSignature? {
+        guard let app else { return signature }
+        return isForeign(to: app) ? nil : appSignature
+    }
     /// None for a file in the app's bundle that its signer did not sign.
     var groupIdentity: CodeIdentity? {
         guard let app else { return identity }
-        return app.holdsForeign(path, signed: interpreterSignature ?? signature, bundle: appSignature) ? nil : CodeIdentity.of(appSignature, path: app.path)
+        return isForeign(to: app) ? nil : CodeIdentity.of(appSignature, path: app.path)
+    }
+    private func isForeign(to app: AppBundle) -> Bool {
+        app.holdsForeign(path, signed: interpreterSignature ?? signature, bundle: appSignature)
     }
     var isApplesProgram: Bool { ApplesProgram.isNamed(displayName, path: path, signature: signature) }
 
@@ -232,7 +239,8 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
 
     /// Who signed the row's program, when its connections all say the same: a process that
     /// took the name shares the row, so the newest connection's alone could name Apple over
-    /// the impostor's connections.
+    /// the impostor's connections. None with a connection from a file in the app's bundle that
+    /// its signer did not sign.
     var signature: CodeSignature? {
         guard let newest = connections.first?.owner.groupSignature,
               connections.allSatisfy({ newest.isSameSigner(as: $0.owner.groupSignature) }) else { return nil }

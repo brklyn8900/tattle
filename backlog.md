@@ -14,8 +14,6 @@
   inside the bundle does not change that date, so the app's row can keep a stale reading.
 - One naming step shared by Network and Processes: Network lists processes without their
   signatures, then names each owner again.
-- An app's group row shows the app's signer when one of its connections comes from a foreign
-  executable. The connection's own row reads right.
 - Confirmed program answers from before identities stay as dead rows: they have no identity,
   so they are never shown, and a confirmed rule never expires.
 - An answer that was not kept stays when neither side has an identity: with none on the row,
