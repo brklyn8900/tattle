@@ -189,6 +189,45 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertTrue(differs.isSettled, "a file that is not the running code is an answer, and is kept")
     }
 
+    /// A file read while it was being replaced may read as neither the old nor the new: what
+    /// keeps a process's reading is told, whether or not the process was checked against it.
+    func testAFileThatChangedWhileItWasReadIsNotASettledReading() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("one".utf8).write(to: file)
+        final class Read: @unchecked Sendable {
+            var signature = CodeSignature(signer: .invalid)
+            var changesFile = true
+        }
+        let read = Read()
+        let ended = Read()
+        let cache = SignatureCache(
+            files: { _ in [] },
+            read: { path in
+                if read.changesFile { try? Data("another".utf8).write(to: URL(fileURLWithPath: path), options: .atomic) }
+                return CodeSignature.Reading(signature: read.signature)
+            },
+            running: { _ in ended.changesFile ? RunningCode.State(path: file.path, hash: Data([1]), status: 0x2000_0001) : nil },
+            matchesFile: { _ in true })
+
+        var reading = cache.reading(of: 7, at: file.path)
+        XCTAssertEqual(reading.signature?.signer, .invalid, "shown, as a file's reading is")
+        XCTAssertFalse(reading.isSettled, "a signature no one is checked against")
+
+        read.signature = CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER"), teamIdentifier: "EXAMPLE123")
+        reading = cache.reading(of: 7, at: file.path)
+        XCTAssertNil(reading.signature, "a signer is not shown from a reading that was not settled")
+        XCTAssertFalse(reading.isSettled)
+
+        ended.changesFile = false
+        reading = cache.reading(of: 7, at: file.path)
+        XCTAssertEqual(reading.signature, read.signature, "a process that has ended reads as its file")
+        XCTAssertFalse(reading.isSettled)
+
+        read.changesFile = false
+        XCTAssertTrue(cache.reading(of: 7, at: file.path).isSettled)
+    }
+
     func testAProcessThatHasEndedReadsAsItsFile() throws {
         let machine = try Machine()
         machine.matches = false

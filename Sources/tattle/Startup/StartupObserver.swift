@@ -82,9 +82,9 @@ final class SignatureCache: @unchecked Sendable {
     func signature(at path: String) -> CodeSignature? { reading(at: path).entry.signature }
 
     /// A process's signature as read. Not settled when the file or the process changed while
-    /// they were read, so that nothing says whether the file is the code the process runs:
-    /// there is no signature then, and the next reading may have one, so this one is not to
-    /// be kept.
+    /// they were read: the signature may not be the file's as it now is, and where nothing
+    /// could say whether the file is the code the process runs there is none. The next
+    /// reading may differ, so this one is not to be kept.
     struct ProcessReading: Sendable {
         var signature: CodeSignature?
         var isSettled = true
@@ -100,9 +100,12 @@ final class SignatureCache: @unchecked Sendable {
 
     func reading(of pid: Int32, at path: String) -> ProcessReading {
         let (entry, isSettled) = reading(at: path)
-        guard entry.signature.namesSigner, !ApplesProgram.isInstalled(at: path) else { return ProcessReading(signature: entry.signature) }
+        guard entry.signature.namesSigner, !ApplesProgram.isInstalled(at: path) else {
+            return ProcessReading(signature: entry.signature, isSettled: isSettled)
+        }
         guard let runs = runs(pid, entry, isSettled: isSettled, at: path) else { return ProcessReading(isSettled: false) }
-        return ProcessReading(signature: runs ? entry.signature : nil)
+        // A process that has ended reads as its file whether or not the file's reading settled.
+        return ProcessReading(signature: runs ? entry.signature : nil, isSettled: isSettled)
     }
 
     /// The signature at `path`, with the files it rests on and their versions from before it
