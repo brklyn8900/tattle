@@ -240,11 +240,36 @@ are the triage's)
   - The check passes a copy of one of Apple's tools made to load other code, which those
     with a team identifier do through `DYLD_` variables (the Command Line Tools' `lldb` did
     from a shell, not tried under launchd).
-  - Nothing is measured on Apple silicon: the cost, or what the check says of a process
-    running under Rosetta.
+  - On Apple silicon only a scratch script has run: the check's two calls over 1,289
+    processes, 251 of them checked, none failing, 0.30 s. The suite has not run there, and
+    no process under Rosetta was looked at.
+  - The check is of the slice the process loaded, and the signature is read from the slice
+    of Tattle's own architecture. A universal file with a publisher's slice beside another's
+    passes when the other runs (`arch -x86_64`, Rosetta) and reads as the publisher. Reading
+    the signer from the running code's own static code (`SecCodeCopyStaticCode`) where the
+    kernel's hash is not the file's would tie the two. Reasoned, not run.
   - A process whose file names no signer (ad hoc, unsigned) is not checked, so one that
     renames another such file over its own path has that file's identity, and an answer kept
     for the file is shown for it. Reasoned from `CodeIdentity.of`, not run.
+  - A process that has ended by the time it is read reads as its file. A program that
+    renames a signed file over its path, connects and exits is recorded in Network and its
+    history under that file's signer.
+  - Network keeps an owner while its pid has a connection open, so one read before the file
+    changed stays (the two `ConnectionOwner.unresolved` entries above). A connection whose
+    owner was read while its file or process was changing keeps no signer, in its row and
+    its history; the next connection's owner is read again.
+  - An interpreter whose file fails the check still reads `<interpreter> script`, with the
+    script's identity, as any file of an interpreter's name does; only the interpreter's
+    signer goes. The strict reading, no identity at all, is one flag on `ProcessEntry`.
+  - Processes reads each process's signature twice a refresh, to name it and then to build
+    its row, so the two can differ within one snapshot when the file changes between them.
+    Carrying the first on the entry removes it.
+  - Open choice, what a row says when the check fails. It shows nothing, as for a signer
+    that is undetermined. The wordings: `changed on disk since it started`, beside the
+    existing `executable no longer on disk`; or `does not match its file on disk`, which
+    also fits code the kernel no longer holds valid. Either needs the failure told apart
+    from a signature that was not read. With it: whether a connection's detail keeps "App
+    signed by" when its process has no signer, where it is now the only signer shown.
 - The static signature check reads one architecture slice: a universal file whose native slice
   is Apple's or a publisher's beside a foreign one reads as that signer, and `arch -x86_64`
   runs the other slice under Rosetta. `kSecCSCheckAllArchitectures` on the static check would
