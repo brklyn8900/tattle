@@ -330,8 +330,9 @@ Preconditions:
   --filter CaptureFloodSimulationTests`. Each second it prints what the observer holds, the
   process's footprint, how long a block queued on the main thread waited (`lag`) and how late
   a 100 ms timer on its run loop fired (`timer`); the lines stop while the main thread is
-  held. 2026-11-15, `af1beeb` (nothing capped) against `262317b` (the kinds, the pending names
-  and the events on their way to the main actor capped), one run each:
+  held. 2026-11-15, `0955989` (nothing capped) against `4220caf` (the kinds, the pending names
+  and the events on their way to the main actor capped), one run each, taken before the
+  branch was rebased onto `74689a8`, when a name's kind was still read from the database:
   - 1,000 flows a second for 330 s: outcomes and openings held 300,000 each against 4,089,
     kinds 330,000 against 4,075, footprint 124 against 11 MB, `lag` up to 734 against 32 ms.
     No event dropped.
