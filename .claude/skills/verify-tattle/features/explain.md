@@ -210,10 +210,9 @@ Preconditions:
 
 ## Gotchas
 
-- A database from before `why` and `care` has no columns for them. The copy still shows the
-  rules it holds, but cannot write: the updated shipped rules never load (the pages keep the old
-  text, with no `why` or `care`, and the log says the seed was skipped on every launch), and
-  `Explain` and `Confirm` fail with `no column named why`. Doctor still reads `ok`, since it
+- A database from before `why` and `care` has no columns for them. The shipped rules load
+  all the same, since they are read from the app and not from the database, but the copy
+  cannot write: `Explain` and `Confirm` fail with `no column named why`. Doctor still reads `ok`, since it
   checks migration names only. Launch with `--fresh`. The provider is read at launch, so to give the fresh
   database one, write `provider.command` during the run, `cleanup`, put the run's
   `fresh-data` in place of the data folder, and launch again.
