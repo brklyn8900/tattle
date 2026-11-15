@@ -126,6 +126,12 @@
   then reads the address again at once. On a tunnel the filter does the same after a check
   that finds the interface without one of its addresses for the moment: it is rebuilt from
   that reading, while the namer keeps the address (`Sniffer.swift`).
+- After the interface moves to another network, the address it held on the old one stays this
+  Mac's to the namer for up to a minute: a check of the interface adds addresses and removes
+  none, and once the new address is known no packet prompts the reading that replaces the set.
+  A frame on the new network from a host that holds the old address is dropped meanwhile as
+  another host's under this Mac's address, a reply from that network's resolver included
+  (`Sniffer.swift`, `FlowNamer.swift`).
 - An agent limited to `LoginWindow` reads `not loaded` and offers `Load` in a domain it does
   not belong to: any session type other than exactly `Aqua` or `Background` falls through to
   `gui` and `user` (`LaunchdItem.domains`).
