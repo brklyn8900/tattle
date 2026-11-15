@@ -27,7 +27,7 @@ final class NetworkObserver {
     private var known = Set<String>()
     private var names = PendingNames()
     /// What a name is, by the knowledge base, looked up once per name and dropped when a
-    /// rule is written.
+    /// rule is written, or when there are `kindCapacity` of them.
     private var kinds: [String: ConnectionName.Kind] = [:]
     private var kindsRevision = 0
     private var lastTouch = Date.distantPast
@@ -43,6 +43,10 @@ final class NetworkObserver {
     /// Builds the sniffer from where its events and its status go; a test gives one a capture
     /// of its own.
     typealias SnifferFactory = (_ onEvents: @escaping @Sendable ([FlowEvent]) -> Void, _ onStatus: @escaping @Sendable (Sniffer.Status) -> Void) -> Sniffer
+
+    /// The most names whose kind is remembered. Whoever sends a handshake picks its name, so
+    /// names arrive without limit; past this many the memo starts again.
+    static let kindCapacity = 4096
 
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
@@ -187,6 +191,7 @@ final class NetworkObserver {
         }
         let category = candidates.first?.category
         let kind = ConnectionName.kind(forCategory: category)
+        if kinds.count >= Self.kindCapacity { kinds = [:] }
         kinds[name] = kind
         return kind
     }

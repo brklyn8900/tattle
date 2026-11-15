@@ -234,6 +234,21 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay, "a DNS lookup does not poison the memo")
     }
 
+    /// Every handshake can carry a name no other has, and the sender picks it: the memo of
+    /// kinds grew by one for each, for as long as no rule was written.
+    @MainActor
+    func testTheKindsRememberedAreCapped() throws {
+        let database = try AppDatabase.inMemory()
+        let rules = try RuleStore(database: database)
+        try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin)])
+        let observer = try observer(rules: rules, database: database)
+        for number in 0..<(NetworkObserver.kindCapacity + 100) {
+            XCTAssertEqual(observer.kind(of: "h\(number).example", source: .sni), .destination)
+        }
+        XCTAssertLessThanOrEqual(observer.held.kinds, NetworkObserver.kindCapacity)
+        XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay, "a name is still looked up once the memo has started again")
+    }
+
     @MainActor
     private func observer(rules: RuleStore, database: AppDatabase) throws -> NetworkObserver {
         NetworkObserver(store: ConnectionStore(database: database), rules: rules,
