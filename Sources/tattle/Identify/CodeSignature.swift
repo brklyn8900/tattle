@@ -66,6 +66,15 @@ struct CodeSignature: Equatable, Sendable {
         }
     }
 
+    /// Whether the signature names someone as the signer: Apple, the App Store, or the holder
+    /// of a certificate Apple issued. The others say only that no one is named.
+    var namesSigner: Bool {
+        switch signer {
+        case .apple, .appleElsewhere, .appStore, .developerID, .development, .other: true
+        case .adHoc, .unsigned, .script, .unnamed, .launchItem, .invalid, .notIssuedByApple: false
+        }
+    }
+
     /// The same signer, whichever of its programs each signature is on.
     func isSameSigner(as other: CodeSignature?) -> Bool {
         signer == other?.signer && teamIdentifier == other?.teamIdentifier

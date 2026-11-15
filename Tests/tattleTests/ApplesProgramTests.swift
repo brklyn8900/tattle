@@ -46,7 +46,7 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertFalse(copy.isPartOfMacOS)
         XCTAssertEqual(copy.signerText, "Apple, outside macOS", "the row")
         XCTAssertEqual(copy.facts.first { $0.name == "Signed by" }?.value, "Apple, outside macOS", "the detail and the prompt")
-        XCTAssertEqual(copy.signature?.namesSigner, false, "no green shield")
+        XCTAssertEqual(copy.signature?.isVouchedFor, false, "no green shield")
 
         let system = try XCTUnwrap(snapshot.group(id: ProcessGroup.systemID))
         XCTAssertEqual(system.members.map(\.pid).sorted(), [0, 1, 90, 501])
@@ -58,7 +58,7 @@ final class ApplesProgramTests: XCTestCase {
         let installed = try XCTUnwrap(snapshot.item(pid: 90))
         XCTAssertTrue(installed.isPartOfMacOS)
         XCTAssertEqual(installed.signerText, "Apple")
-        XCTAssertEqual(installed.signature?.namesSigner, true)
+        XCTAssertEqual(installed.signature?.isVouchedFor, true)
     }
 
     /// Built by hand with Apple's signature, as no reading gives it.

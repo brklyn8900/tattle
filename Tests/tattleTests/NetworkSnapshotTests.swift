@@ -160,8 +160,9 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertNil(group(list)?.identity, "the Processes tab's row too")
     }
 
-    /// The app's signature says nothing of a file put in its bundle, so a row holding one names
-    /// no signer, as a row whose connections differ names none. The file's own row keeps its own.
+    /// The app's signature says nothing of a file put in its bundle, so a row holding one does
+    /// not name the app's signer, as a row whose connections differ names none. The file's own
+    /// row keeps its own.
     func testARowHoldingAFileItsAppsSignerDidNotSignNamesNoSigner() throws {
         let copied = "/Users/x/Copy/Slack.app"
         let calculator = "/Users/x/Copy/Calculator.app"
@@ -203,6 +204,45 @@ final class NetworkSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot(list).item(pid: 800)?.signerText, "Slack Technologies")
         XCTAssertNil(snapshot(list).group(id: calculator)?.signature)
         XCTAssertEqual(snapshot(Array(list.dropLast())).group(id: calculator)?.signature?.summary, "Apple, outside macOS")
+    }
+
+    /// Code with no team has no signer to share, so an app without one counts every file in
+    /// its bundle as not its signer's, its own executable too. Its row's reading names no one
+    /// for such a file to take, and stays.
+    func testARowWhoseReadingNamesNoSignerKeepsIt() throws {
+        let tool = "/Users/x/Tool.app", plain = "/Users/x/Plain.app", broken = "/Users/x/Broken.app"
+        let own = CodeSignature(signer: .adHoc, identifier: "tool", codeHash: "aa")
+        let signatures: [String: CodeSignature] = [
+            tool: own, "\(tool)/Contents/MacOS/Tool": own,
+            "\(tool)/Contents/MacOS/helper": CodeSignature(signer: .adHoc, identifier: "helper", codeHash: "bb"),
+            "\(tool)/Contents/MacOS/dropper": CodeSignature(signer: .unsigned),
+            plain: CodeSignature(signer: .unsigned), "\(plain)/Contents/MacOS/Plain": CodeSignature(signer: .unsigned),
+            broken: CodeSignature(signer: .invalid), "\(broken)/Contents/MacOS/Broken": CodeSignature(signer: .invalid),
+        ]
+        let list = [entry(820, 1, "\(tool)/Contents/MacOS/Tool"), entry(821, 820, "\(tool)/Contents/MacOS/helper"),
+                    entry(822, 1, "\(tool)/Contents/MacOS/dropper"),
+                    entry(830, 1, "\(plain)/Contents/MacOS/Plain"), entry(840, 1, "\(broken)/Contents/MacOS/Broken")]
+        let byPid = Dictionary(list.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        func row(_ pids: Int32...) -> ConnectionGroup? {
+            NetworkSnapshot(connections: pids.map { pid in
+                LiveConnection(connection: connection(pid, "1.1.1.1"),
+                               owner: ConnectionOwner.resolve(pid: pid, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: { signatures[$0] }),
+                               isNew: false)
+            }, takenAt: t0).groups.first
+        }
+        XCTAssertEqual(row(820)?.signature?.summary, "ad hoc signed")
+        XCTAssertEqual(row(820, 821)?.signature?.summary, "ad hoc signed", "with its own helper")
+        XCTAssertEqual(row(822)?.signature?.summary, "ad hoc signed", "with a file put in it")
+        XCTAssertNil(row(822)?.identity, "which still takes away the row's identity")
+        XCTAssertEqual(row(830)?.signature?.summary, "unsigned")
+        XCTAssertEqual(row(840)?.signature?.summary, "invalid signature")
+
+        let snapshot = ProcessSnapshot.build(entries: list, previous: nil, signature: { signatures[$0] }, runningApp: { _ in nil }, responsible: { _ in nil }, takenAt: t0)
+        XCTAssertEqual(snapshot.group(id: tool)?.signature?.summary, "ad hoc signed", "the Processes tab's row too")
+        XCTAssertNil(snapshot.group(id: tool)?.identity)
+        XCTAssertEqual(snapshot.group(id: plain)?.signature?.summary, "unsigned")
+        XCTAssertEqual(snapshot.group(id: plain)?.facts.first { $0.name == "Signed by" }?.value, "unsigned")
+        XCTAssertEqual(snapshot.group(id: broken)?.signature?.summary, "invalid signature")
     }
 
     /// Code with no team has no signer to share: ad hoc, only the bundle's own code is its own.

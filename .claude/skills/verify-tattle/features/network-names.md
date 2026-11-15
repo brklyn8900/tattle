@@ -32,8 +32,9 @@ there is no name. History keeps the outcome: `name` and `nameSource` (`sni`, `qu
   process that replaces itself with another program is read again for its next connections,
   even when that program then deletes its file.
 - `net-foreign`: a file in an app's bundle that the app's signer did not sign keeps the row
-  from naming a signer and from holding any answer given for the app; what the app only
-  launches does not.
+  from naming that signer and from holding any answer given for the app; what the app only
+  launches does not. A row whose reading names no signer (`ad hoc signed`, `unsigned`) keeps
+  it.
 - `net-direction`: a connection states a direction on the first of these that holds. Outbound:
   this Mac's SYN or QUIC Initial was seen leaving, which needs packet access and a destination
   the sniffer follows; the detail is headed `<app> to <name>`, with `Destination` and `First
@@ -128,7 +129,7 @@ Preconditions:
   `Signed by`. Each connection's detail has its own: `Apple` and `unsigned`.
 - **A file put in a bundle.** Build `Tool.app` with your own `Contents/MacOS/Tool`, `codesign
   -s - Tool.app`, then copy another program to `Contents/MacOS/dropper` and start it from a
-  launch agent. Row `Tool, 1 on this network, 1`, with no signer; `Explain` shows the answer with
+  launch agent. Row `Tool, 1 on this network · ad hoc signed`; `Explain` shows the answer with
   no `Confirm` and stores nothing. With `Tool` itself running instead, and the dropper's
   connection gone, `Explain` offers `Confirm` and stores `ad-hoc:<hash>:<path of Tool.app>`.
 - **A process that replaces itself.** A launch agent running `/bin/bash exec.sh $IP`, which

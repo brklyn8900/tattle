@@ -16,24 +16,25 @@ struct ConnectionOwner: Equatable, Sendable {
     /// Who signed the app the connection is filed under. The app only started the process, or
     /// holds it in its bundle, so this says nothing about the process's own code.
     var appSignature: CodeSignature?
+    /// The executable is a file in the app's bundle that the app's signer did not sign
+    /// (`AppBundle.holdsForeign`).
+    var isForeignToApp = false
     /// What tells the process's code from another's of its name (`ProcessEntry.identity`).
     var identity: CodeIdentity?
 
     /// The app when there is one, else the process: what the row is filed under.
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
-    /// None for a file in the app's bundle that its signer did not sign.
+    /// Not a signer the app's signature names, for a file in the app's bundle that the signer
+    /// did not sign. A reading that names no one stays.
     var groupSignature: CodeSignature? {
-        guard let app else { return signature }
-        return isForeign(to: app) ? nil : appSignature
+        guard app != nil else { return signature }
+        return isForeignToApp && appSignature?.namesSigner == true ? nil : appSignature
     }
     /// None for a file in the app's bundle that its signer did not sign.
     var groupIdentity: CodeIdentity? {
         guard let app else { return identity }
-        return isForeign(to: app) ? nil : CodeIdentity.of(appSignature, path: app.path)
-    }
-    private func isForeign(to app: AppBundle) -> Bool {
-        app.holdsForeign(path, signed: interpreterSignature ?? signature, bundle: appSignature)
+        return isForeignToApp ? nil : CodeIdentity.of(appSignature, path: app.path)
     }
     var isApplesProgram: Bool { ApplesProgram.isNamed(displayName, path: path, signature: signature) }
 
@@ -69,11 +70,13 @@ struct ConnectionOwner: Equatable, Sendable {
         var memo: [Int32: AppBundle?] = [:]
         let app = ProcessSnapshot.app(of: pid, in: named, runningApp: runningApp, responsible: responsible, memo: &memo)
         let executable = entry.path.flatMap(signature)
+        let own = entry.codeSignature(executable: executable)
+        let interpreter = entry.interpreterSignature(executable: executable)
+        let appSignature = app?.signature(reading: signature)
         return ConnectionOwner(
             processName: entry.name, path: entry.path, interpreter: entry.interpreter, app: app,
-            signature: entry.codeSignature(executable: executable),
-            interpreterSignature: entry.interpreterSignature(executable: executable),
-            appSignature: app?.signature(reading: signature),
+            signature: own, interpreterSignature: interpreter, appSignature: appSignature,
+            isForeignToApp: app?.holdsForeign(entry.path, signed: interpreter ?? own, bundle: appSignature) ?? false,
             identity: entry.identity(executable: executable))
     }
 }
@@ -239,8 +242,8 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
 
     /// Who signed the row's program, when its connections all say the same: a process that
     /// took the name shares the row, so the newest connection's alone could name Apple over
-    /// the impostor's connections. None with a connection from a file in the app's bundle that
-    /// its signer did not sign.
+    /// the impostor's connections. Not the app's signer with a connection from a file in the
+    /// app's bundle that the signer did not sign (`ConnectionOwner.groupSignature`).
     var signature: CodeSignature? {
         guard let newest = connections.first?.owner.groupSignature,
               connections.allSatisfy({ newest.isSameSigner(as: $0.owner.groupSignature) }) else { return nil }

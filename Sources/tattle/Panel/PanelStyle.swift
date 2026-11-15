@@ -312,9 +312,9 @@ struct SignedLine: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: signature.namesSigner ? "checkmark.shield" : "shield.slash")
+            Image(systemName: signature.isVouchedFor ? "checkmark.shield" : "shield.slash")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(signature.namesSigner ? PanelColor.ok : PanelColor.sub)
+                .foregroundStyle(signature.isVouchedFor ? PanelColor.ok : PanelColor.sub)
                 .accessibilityHidden(true)
             Text(signature.signedLine).font(PanelFont.button).foregroundStyle(PanelColor.sub).lineLimit(1)
         }
@@ -322,14 +322,10 @@ struct SignedLine: View {
 }
 
 extension CodeSignature {
-    /// Whether the signature names who made the code that runs: Apple, the App Store, or a
-    /// certificate Apple issued. Apple's on a file outside macOS does not (`appleElsewhere`).
-    var namesSigner: Bool {
-        switch signer {
-        case .apple, .appStore, .developerID, .development, .other: true
-        case .appleElsewhere, .adHoc, .unsigned, .script, .unnamed, .launchItem, .invalid, .notIssuedByApple: false
-        }
-    }
+    /// Whether the signature names who made the code that runs, which is what the green shield
+    /// says. Apple's on a file outside macOS names Apple and does not say that
+    /// (`appleElsewhere`).
+    var isVouchedFor: Bool { namesSigner && signer != .appleElsewhere }
 
     /// The line under a name on a detail page.
     var signedLine: String {
