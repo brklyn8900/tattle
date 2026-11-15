@@ -341,6 +341,10 @@ Preconditions:
     against 26 ms, the main thread caught up 68 s after the last flow against 1 s. With the
     caps 422,668 of the 600,000 events were dropped: about 3,000 flows a second were handled.
   - 100 a second for 30 s: 3,000 of each held, 8 and 7 MB, no `lag`, on both.
+  - After the rebase, at `0c7d42f`, with a name's kind read from memory, one run each: 10,000
+    a second for 30 s held 4,063 outcomes and openings and 3,848 kinds, 11 MB, `lag` up to
+    38 ms, `timer` 24 ms, 484,016 of the 600,000 events dropped, so about 1,900 flows a second
+    handled; 1,000 a second for 30 s dropped none, with `lag` up to 19 ms.
 - A process's own name for itself proven 2026-11-09 at `984d28a`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A home folder (`~`, `~user`) or a relative
