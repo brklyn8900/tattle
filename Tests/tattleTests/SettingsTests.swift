@@ -54,6 +54,17 @@ final class AppSettingsTests: XCTestCase {
         }
     }
 
+    /// Whatever sets it, the value kept and stored stays in the range.
+    func testRetentionIsClampedWhenSet() throws {
+        let database = try AppDatabase.inMemory()
+        let settings = try AppSettings(store: SettingsStore(database: database))
+        for (set, kept) in [(0, 1), (-5, 1), (366, 365), (Int.min, 1), (Int.max, 365), (1, 1), (7, 7), (365, 365)] {
+            settings.retentionDays = set
+            XCTAssertEqual(settings.retentionDays, kept, "\(set)")
+            XCTAssertEqual(try SettingsStore(database: database).string("history.retentionDays"), String(kept), "\(set) as stored")
+        }
+    }
+
     func testACommandTheUserEditedStaysTheirs() throws {
         let database = try AppDatabase.inMemory()
         let edited = #"claude -p --model haiku --tools "" --output-format json --json-schema {schema}"#
