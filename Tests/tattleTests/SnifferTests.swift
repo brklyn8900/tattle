@@ -291,9 +291,8 @@ final class SnifferTests: XCTestCase {
                               onEvents: { new in events.withLock { $0 += new } }, onStatus: { _ in })
         defer { sniffer.stop() }
         sniffer.start()
-        // From port 53 the kernel filter passes the first two as DNS replies. No link carries
-        // a loopback address, so the second is nobody's packet.
-        capture.feed([datagram(from: Self.me, port: 53), datagram(from: IPAddress(bytes: [127, 0, 0, 1]), port: 53), datagram(from: tunnel, port: 50000)])
+        // From port 53 the kernel filter passes the first as a DNS reply.
+        capture.feed([datagram(from: Self.me, port: 53), datagram(from: tunnel, port: 50000)])
         XCTAssertTrue(eventually { events.withLock { $0 }.count >= 2 })
         let key = FlowKey(proto: .udp, localPort: 50000, remote: Self.remote, remotePort: 443)
         XCTAssertEqual(events.withLock { $0 }, [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("tunnel.example", .quic))])

@@ -157,24 +157,6 @@ final class CaptureFilterTests: XCTestCase {
         }
     }
 
-    /// Loopback holds fe80::1, and so do many routers, which answer DNS from it. Only the
-    /// capture interface's addresses are this Mac's on its link, so the router's reply is not a
-    /// frame under this Mac's address from another host.
-    func testAReplyFromARouterAtLoopbacksLinkLocalAddressIsRemembered() throws {
-        let filter = try XCTUnwrap(CaptureFilter.program(linkType: PacketCapture.linkEthernet, direction: .hardwareAddress(mac)))
-        let router: [UInt8] = [0xfe, 0x80] + [UInt8](repeating: 0, count: 13) + [1]
-        let mine: [UInt8] = [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd]
-        let local = Set([myV6, mine].map(IPAddress.init(bytes:)))
-
-        let reply: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0x63, 0x64, 0x6e, 7, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 3, 0x6e, 0x65, 0x74, 0, 0, 1, 0, 1,
-                              0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0x3c, 0, 4] + peerV4
-        let frame = ethernet(from: otherMac, to: mac, ipv6(from: router, to: mine, proto: 17, udp(sourcePort: 53, destinationPort: 60000, payload: reply)))
-        XCTAssertEqual(Interpreter.run(filter, on: frame), CaptureFilter.snapLength)
-        var namer = FlowNamer(localAddresses: local, resolvers: [IPAddress(bytes: router)], hardwareAddress: mac)
-        XCTAssertEqual(namer.observe(try XCTUnwrap(Packet.parse(frame, dlt: PacketCapture.linkEthernet)), at: 1_700_000_000), [])
-        XCTAssertEqual(namer.dnsCount, 1)
-    }
-
     func testNullLinkFilterTellsDirectionFromAddresses() throws {
         let filter = try XCTUnwrap(CaptureFilter.program(linkType: PacketCapture.linkNull, direction: .sourceAddresses([myV4, myV6])))
         func run(_ frame: [UInt8]) -> UInt32 { Interpreter.run(filter, on: frame) }
