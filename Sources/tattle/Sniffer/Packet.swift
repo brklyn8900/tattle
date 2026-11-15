@@ -157,16 +157,15 @@ struct Packet {
     }
 }
 
-// Every address this machine holds, or one interface's, so a packet's direction can be
-// told from its source.
-func localAddresses(of interface: String? = nil) -> Set<IPAddress> {
+// One interface's addresses: the ones a packet captured on it can carry as this machine's.
+func localAddresses(of interface: String) -> Set<IPAddress> {
     var result = Set<IPAddress>()
     var list: UnsafeMutablePointer<ifaddrs>?
     guard getifaddrs(&list) == 0 else { return result }
     defer { freeifaddrs(list) }
     var cursor = list
     while let entry = cursor {
-        if let sa = entry.pointee.ifa_addr, interface == nil || String(cString: entry.pointee.ifa_name) == interface {
+        if let sa = entry.pointee.ifa_addr, String(cString: entry.pointee.ifa_name) == interface {
             switch Int32(sa.pointee.sa_family) {
             case AF_INET:
                 var addr = UnsafeRawPointer(sa).assumingMemoryBound(to: sockaddr_in.self).pointee.sin_addr

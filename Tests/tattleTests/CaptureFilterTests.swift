@@ -185,7 +185,6 @@ final class CaptureFilterTests: XCTestCase {
         let loopback = localAddresses(of: "lo0")
         XCTAssertTrue(loopback.contains(IPAddress(bytes: [127, 0, 0, 1])))
         XCTAssertTrue(loopback.allSatisfy { $0.bytes.count == 4 ? $0.bytes[0] == 127 : $0.isLocalScope })
-        XCTAssertTrue(localAddresses(of: "lo0").isSubset(of: localAddresses()))
     }
 
     /// An IPv6-only network has a default route but no IPv4 one; capture must still start.
