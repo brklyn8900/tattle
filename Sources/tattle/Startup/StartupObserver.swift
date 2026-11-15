@@ -88,6 +88,9 @@ final class SignatureCache: @unchecked Sendable {
     struct ProcessReading: Sendable {
         var signature: CodeSignature?
         var isSettled = true
+        /// The file was checked and is not the code the process runs, which is why the reading
+        /// has no signature: not that none was read or that the reading did not settle.
+        var differsFromFile = false
     }
 
     /// The signature of the process `pid`, whose executable the kernel names as `path`: the
@@ -105,7 +108,7 @@ final class SignatureCache: @unchecked Sendable {
         }
         guard let runs = runs(pid, entry, isSettled: isSettled, at: path) else { return ProcessReading(isSettled: false) }
         // A process that has ended reads as its file whether or not the file's reading settled.
-        return ProcessReading(signature: runs ? entry.signature : nil, isSettled: isSettled)
+        return ProcessReading(signature: runs ? entry.signature : nil, isSettled: isSettled, differsFromFile: !runs)
     }
 
     /// The signature at `path`, with the files it rests on and their versions from before it

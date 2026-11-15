@@ -113,8 +113,7 @@ private struct GroupRow: View {
 
     private var subtitle: String {
         var parts = [group.members.count == 1 ? "1 process" : "\(group.members.count) processes"]
-        if group.kind == .process, let leader = group.leader, let text = leader.signerText { parts.append(text) }
-        else if let signature = group.signature { parts.append(signature.summary) }
+        if let text = group.signerText { parts.append(text) }
         return parts.joined(separator: " \u{00B7} ")
     }
 }

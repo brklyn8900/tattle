@@ -81,6 +81,9 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var app: AppBundle?
     /// What tells this process's code from another's of its name (`ProcessEntry.identity`).
     var identity: CodeIdentity?
+    /// The file at its path is not the code it runs (`SignatureCache.ProcessReading`), which
+    /// is why it has no signer: an update in place, or another file renamed over its own.
+    var differsFromFile = false
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
@@ -90,13 +93,17 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var isPartOfMacOS: Bool { pid == 0 || signature?.signer == .apple }
     var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 
-    /// What the row says after the name: "node script", "node, unnamed code", the signer, or
-    /// that the executable has been deleted since the process started (an upgraded tool).
+    /// What the row says after the name: "node script", "node, unnamed code", the signer,
+    /// that the executable has been deleted since the process started (an upgraded tool), or
+    /// that the file at its path is not the code it runs.
     var signerText: String? {
         if let interpreter { return signature?.signer == .unnamed ? "\(interpreter), unnamed code" : "\(interpreter) script" }
         if path == nil, pid > 0 { return "executable no longer on disk" }
+        if differsFromFile { return Self.changedOnDiskText }
         return signature?.summary
     }
+
+    static let changedOnDiskText = "changed on disk since it started"
 
     /// The working directory with the home folder as "~", when it says something: the
     /// root and the home folder themselves do not.
@@ -192,6 +199,9 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// What tells the row's program from another's of its name: the app, or the top process.
     /// None while such a file in the app's bundle is running.
     var identity: CodeIdentity?
+    /// The app's signer is withheld because a file in its bundle is not the code its process
+    /// runs, as an app updated in place is until it is started again.
+    var differsFromFile = false
     /// The member `leader` names.
     var leaderPid: Int32?
 
@@ -205,6 +215,14 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     }
 
     var memoryBytes: UInt64 { members.reduce(0) { $0 + $1.memoryBytes } }
+
+    /// What the row says after its count: the top process's text, the signer, or that a file
+    /// in the app's bundle changed on disk since its process started.
+    var signerText: String? {
+        if kind == .process, let text = leader?.signerText { return text }
+        if let signature { return signature.summary }
+        return differsFromFile ? ProcessItem.changedOnDiskText : nil
+    }
 
     /// Nil until any member has a reading.
     var cpu: Double? {
@@ -325,7 +343,7 @@ struct ProcessSnapshot: Equatable, Sendable {
     /// `previous`, when `continuesPrevious` says nothing separates the two readings.
     static func build(
         entries: [ProcessEntry], previous: ProcessSnapshot?, continuesPrevious: Bool = true,
-        signature: (String) -> CodeSignature?, executable: (Int32, String) -> CodeSignature?,
+        signature: (String) -> CodeSignature?, executable: (Int32, String) -> SignatureCache.ProcessReading,
         runningApp: (Int32) -> String? = { _ in nil },
         mainExecutable: (AppBundle) -> String? = { Bundle(path: $0.path)?.executablePath },
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
@@ -339,7 +357,8 @@ struct ProcessSnapshot: Equatable, Sendable {
         items.reserveCapacity(entries.count)
         var apps: [Int32: AppBundle?] = [:]
         for entry in entries {
-            let executableSignature = entry.executableSignature(executable)
+            let reading = entry.path.map { executable(entry.pid, $0) }
+            let executableSignature = reading?.signature
             var cpu: Double?
             if let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
                let now = entry.usage?.cpuSeconds, let then = before.usage?.cpuSeconds {
@@ -353,7 +372,8 @@ struct ProcessSnapshot: Equatable, Sendable {
                 signature: entry.codeSignature(executable: executableSignature),
                 interpreterSignature: entry.interpreterSignature(executable: executableSignature),
                 app: app(of: entry.pid, in: { byPid[$0] }, runningApp: runningApp, responsible: responsible, memo: &apps),
-                identity: entry.identity(executable: executableSignature)))
+                identity: entry.identity(executable: executableSignature),
+                differsFromFile: reading?.differsFromFile ?? false))
         }
 
         let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -382,11 +402,15 @@ struct ProcessSnapshot: Equatable, Sendable {
         for index in groups.indices {
             groups[index].members.sort { ($0.memoryBytes, $1.pid) > ($1.memoryBytes, $0.pid) }
             guard case .app(let bundle) = groups[index].kind else { continue }
-            if groups[index].members.contains(where: {
+            let foreign = groups[index].members.filter {
                 bundle.holdsForeign($0.path, signed: $0.interpreterSignature ?? $0.signature, bundle: groups[index].signature)
-            }) {
+            }
+            if !foreign.isEmpty {
                 groups[index].identity = nil
-                if groups[index].signature?.namesSigner == true { groups[index].signature = nil }
+                if groups[index].signature?.namesSigner == true {
+                    groups[index].signature = nil
+                    groups[index].differsFromFile = foreign.contains(where: \.differsFromFile)
+                }
             }
             let executable = mainExecutable(bundle)
             let members = groups[index].members

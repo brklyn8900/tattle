@@ -29,7 +29,7 @@ final class ProcessesObserver {
                 let entries = try ProcessTable.read(signature: signatures.signature(of:at:))
                 return .success(ProcessSnapshot.build(
                     entries: entries, previous: previous, continuesPrevious: continuesPrevious,
-                    signature: signatures.signature(at:), executable: signatures.signature(of:at:),
+                    signature: signatures.signature(at:), executable: signatures.reading(of:at:),
                     runningApp: Self.runningAppBundle(pid:)))
             } catch {
                 return .failure(error)

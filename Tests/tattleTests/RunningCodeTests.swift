@@ -197,6 +197,28 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertTrue(differs.isSettled, "a file that is not the running code is an answer, and is kept")
     }
 
+    /// A process with no signer because its file is not the code it runs is told from one whose
+    /// file was not checked, or whose check said nothing.
+    func testAReadingSaysWhenItsFileIsNotTheRunningCode() throws {
+        let machine = try Machine()
+        func differs(_ pid: Int32) -> Bool { machine.cache.reading(of: pid, at: machine.file.path).differsFromFile }
+        XCTAssertFalse(differs(7), "the file is the code it runs")
+        machine.matches = false
+        try machine.install("two")
+        XCTAssertTrue(differs(7))
+        XCTAssertTrue(differs(7), "and from the verdict kept")
+        machine.duringCheck = { try? machine.install("three") }
+        XCTAssertFalse(differs(8), "a check that spanned a change")
+        machine.duringCheck = nil
+        machine.ended = [9]
+        XCTAssertFalse(differs(9), "a process that has ended reads as its file")
+        machine.code?.status = 1
+        XCTAssertTrue(differs(10), "unsigned code under a file that names a signer")
+        machine.signature = CodeSignature(signer: .adHoc)
+        try machine.install("four")
+        XCTAssertFalse(differs(10), "a file that names no signer is not checked")
+    }
+
     /// A file read while it was being replaced may read as neither the old nor the new: what
     /// keeps a process's reading is told, whether or not the process was checked against it.
     func testAFileThatChangedWhileItWasReadIsNotASettledReading() throws {
@@ -318,19 +340,23 @@ final class RunningCodeTests: XCTestCase {
         [100, 300, 400].contains(pid) ? nil : signatures[path]
     }
 
+    private func reading(_ pid: Int32, _ path: String) -> SignatureCache.ProcessReading {
+        [100, 300, 400].contains(pid) ? SignatureCache.ProcessReading(differsFromFile: true) : SignatureCache.ProcessReading(signature: signatures[path])
+    }
+
     private func value(_ name: String, in facts: [Fact]) -> String? { facts.first { $0.name == name }?.value }
 
     func testProcessesShowNoSignerForAProcessItsFileDoesNotVouchFor() throws {
         let entries = processes.values.map { $0.named(signature: $0.executableSignature(executable)) }.sorted { $0.pid < $1.pid }
         let snapshot = ProcessSnapshot.build(
-            entries: entries, previous: nil, signature: { self.signatures[$0] }, executable: executable,
+            entries: entries, previous: nil, signature: { self.signatures[$0] }, executable: reading,
             mainExecutable: { _ in "\(self.app)/Contents/MacOS/Slack" }, responsible: { _ in nil })
 
         for pid: Int32 in [100, 300] {
             let item = try XCTUnwrap(snapshot.item(pid: pid))
             XCTAssertNil(item.signature, "pid \(pid)")
             XCTAssertNil(item.identity, "pid \(pid)")
-            XCTAssertNil(item.signerText, "pid \(pid)")
+            XCTAssertEqual(item.signerText, "changed on disk since it started", "pid \(pid)")
             XCTAssertNil(value("Signed by", in: item.facts), "pid \(pid)")
             XCTAssertNil(value("Team", in: item.facts), "pid \(pid)")
         }
@@ -342,14 +368,41 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertNil(row.signature, "the app's row does not name the signer while its own process runs other code")
         XCTAssertNil(row.identity)
         XCTAssertNil(value("Signed by", in: row.facts))
+        XCTAssertEqual(row.signerText, "changed on disk since it started", "an app updated in place")
         let alone = try XCTUnwrap(snapshot.group(id: "pid:300"))
         XCTAssertNil(alone.signature)
         XCTAssertNil(alone.identity)
+        XCTAssertEqual(alone.signerText, "changed on disk since it started")
 
         let script = try XCTUnwrap(snapshot.item(pid: 400))
         XCTAssertEqual(script.signature?.signer, .script, "what the command line says, as for any file of an interpreter's name")
         XCTAssertNil(script.interpreterSignature, "and no signer for the interpreter")
         XCTAssertNil(value("Interpreter signed by", in: script.facts))
+        XCTAssertEqual(script.signerText, "python3 script", "the row says what runs, the script")
+    }
+
+    /// No signer for another reason reads as it did: a signature not read, a reading that did
+    /// not settle, and an app's row while a file in its bundle is one its signer did not sign.
+    func testProcessesSayNothingOfAFileThatWasNotFoundToDiffer() throws {
+        let other = CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER"), identifier: "other", teamIdentifier: "EXAMPLE123")
+        for unread in [SignatureCache.ProcessReading(), SignatureCache.ProcessReading(isSettled: false)] {
+            let snapshot = ProcessSnapshot.build(
+                entries: processes.values.sorted { $0.pid < $1.pid }, previous: nil, signature: { self.signatures[$0] },
+                executable: { pid, path in
+                    switch pid {
+                    case 101: SignatureCache.ProcessReading(signature: other)
+                    case 300: unread
+                    default: SignatureCache.ProcessReading(signature: self.signatures[path])
+                    }
+                },
+                mainExecutable: { _ in "\(self.app)/Contents/MacOS/Slack" }, responsible: { _ in nil })
+            XCTAssertNil(snapshot.item(pid: 300)?.signerText, "\(unread)")
+            XCTAssertNil(snapshot.group(id: "pid:300")?.signerText, "\(unread)")
+            XCTAssertEqual(snapshot.item(pid: 101)?.signerText, "EXAMPLE DEVELOPER")
+            let row = try XCTUnwrap(snapshot.group(id: app))
+            XCTAssertNil(row.signature, "a file in the bundle its signer did not sign")
+            XCTAssertNil(row.signerText)
+        }
     }
 
     func testNetworkShowsNoSignerForAProcessItsFileDoesNotVouchFor() {

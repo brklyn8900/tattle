@@ -479,7 +479,7 @@ final class ProcessSnapshotTests: XCTestCase {
         let cache = SignatureCache()
         let snapshot = ProcessSnapshot.build(
             entries: try ProcessTable.read(signature: cache.signature(of:at:)), previous: nil,
-            signature: cache.signature(at:), executable: cache.signature(of:at:))
+            signature: cache.signature(at:), executable: cache.reading(of:at:))
         let elapsed = Date().timeIntervalSince(start)
         XCTAssertLessThan(elapsed, 10, "first build reads every signature: \(elapsed) s")
         XCTAssertEqual(snapshot.groups.reduce(0) { $0 + $1.members.count }, snapshot.items.count, "every process in exactly one row")

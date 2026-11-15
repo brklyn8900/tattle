@@ -13,7 +13,7 @@ extension ProcessSnapshot {
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
     ) -> ProcessSnapshot {
         build(entries: entries, previous: previous, continuesPrevious: continuesPrevious,
-              signature: signature, executable: { signature($1) }, runningApp: runningApp,
+              signature: signature, executable: { SignatureCache.ProcessReading(signature: signature($1)) }, runningApp: runningApp,
               mainExecutable: mainExecutable, responsible: responsible, takenAt: takenAt)
     }
 }
