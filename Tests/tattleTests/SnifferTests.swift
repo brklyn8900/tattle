@@ -1,8 +1,25 @@
+import CPacketCapture
 import os
 import XCTest
 @testable import tattle
 
 final class SnifferTests: XCTestCase {
+    /// A record of no length would leave the walk where it is, and the read loop would spin.
+    /// A real Ethernet record has a header length of 18, below the struct's 20, and still walks.
+    func testTheCaptureWalkEndsAtARecordThatWouldNotAdvance() {
+        var buffer = [UInt8](repeating: 0, count: 64)
+        var timestamp = 0.0, dataOffset = 0, next = 0
+        var caplen: UInt32 = 0
+        XCTAssertEqual(tattle_capture_next(buffer, buffer.count, 0, &timestamp, &dataOffset, &caplen, &next), 0)
+
+        withUnsafeBytes(of: UInt32(10).littleEndian) { buffer.replaceSubrange(8..<12, with: $0) }  // bh_caplen
+        withUnsafeBytes(of: UInt16(18).littleEndian) { buffer.replaceSubrange(16..<18, with: $0) }  // bh_hdrlen
+        XCTAssertEqual(tattle_capture_next(buffer, buffer.count, 0, &timestamp, &dataOffset, &caplen, &next), 1)
+        XCTAssertEqual(dataOffset, 18)
+        XCTAssertEqual(caplen, 10)
+        XCTAssertEqual(next, 28)
+    }
+
     /// ADR-0003: other software can have made the devices readable, and then Tattle opens one
     /// itself, with no broker or with one that gives it nothing.
     func testTheDeviceIsOpenedWhenThereIsNoBrokerOrItGivesNoCapture() throws {

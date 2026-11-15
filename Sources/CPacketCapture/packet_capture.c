@@ -68,6 +68,9 @@ int tattle_capture_next(const void *buf, size_t len, size_t offset, double *time
     if (offset + sizeof(struct bpf_hdr) > len) return 0;
     const struct bpf_hdr *h = (const struct bpf_hdr *)((const char *)buf + offset);
     if (offset + h->bh_hdrlen + h->bh_caplen > len) return 0;
+    // A record that would not advance the walk, which only a kernel bug writes, ends it. Not
+    // bh_hdrlen < sizeof(struct bpf_hdr): on Ethernet bh_hdrlen is 18 and the struct is 20.
+    if (h->bh_hdrlen + h->bh_caplen == 0) return 0;
     *timestamp = (double)h->bh_tstamp.tv_sec + (double)h->bh_tstamp.tv_usec / 1e6;
     *data_offset = offset + h->bh_hdrlen;
     *caplen = h->bh_caplen;

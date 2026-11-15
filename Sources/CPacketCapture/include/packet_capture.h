@@ -31,7 +31,8 @@ int tattle_capture_prepare(int fd, int timeout_ms, unsigned int *buflen, unsigne
 int tattle_capture_set_filter(int fd, const tattle_filter_insn *insns, unsigned int count);
 
 // Walks one captured packet in a buffer filled by read(2). Returns 1 and fills the outputs
-// when a complete packet starts at `offset`, 0 otherwise.
+// when a complete packet starts at `offset`, 0 otherwise, and 0 for a record of no length,
+// which would not advance the walk.
 int tattle_capture_next(const void *buf, size_t len, size_t offset, double *timestamp,
                         size_t *data_offset, unsigned int *caplen, size_t *next_offset);
 

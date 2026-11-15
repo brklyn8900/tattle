@@ -88,7 +88,8 @@ enum SocketTable {
             let length = Int(generic.xgn_len)
             // The list ends with a trailing tattle_xinpgen, which is shorter than any record.
             if length <= MemoryLayout<tattle_xinpgen>.size || offset + length > data.count { break }
-            switch Int32(generic.xgn_kind) {
+            // The kind is unsigned; one past Int32.max matches no case rather than trapping.
+            switch Int32(bitPattern: generic.xgn_kind) {
             case XSO_INPCB where length >= pcbRecordMinimum:
                 inpcb = load(tattle_xinpcb_n.self, from: base + offset, length: length)
                 socket = nil

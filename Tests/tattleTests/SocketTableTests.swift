@@ -2,6 +2,19 @@ import XCTest
 @testable import tattle
 
 final class SocketTableTests: XCTestCase {
+    /// The kind is unsigned: one of 2^31 or more is a kind the parser does not know, not a trap.
+    func testARecordKindPastInt32IsSkipped() {
+        var bytes = [UInt8](repeating: 0, count: 24 + 64)
+        func put(_ value: UInt32, at offset: Int) {
+            withUnsafeBytes(of: value.littleEndian) { bytes.replaceSubrange(offset..<offset + 4, with: $0) }
+        }
+        put(24, at: 0)  // tattle_xinpgen.xig_len
+        put(64, at: 24)  // tattle_xgen_n.xgn_len
+        put(0x8000_0000, at: 28)  // tattle_xgen_n.xgn_kind
+        let entries = bytes.withUnsafeBytes { SocketTable.parse($0, proto: .tcp) }
+        XCTAssertTrue(entries.isEmpty)
+    }
+
     func testTablesParseAndMatchLsof() throws {
         let entries = try SocketTable.read()
         XCTAssertFalse(entries.isEmpty)

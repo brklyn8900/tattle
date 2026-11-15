@@ -242,12 +242,6 @@ what stays)
   name: `/Library/LaunchAgents/username.plist` (`Redactor.swift`).
 - Coalesced QUIC Initials cost about 40 times an ordinary one. Only a local process can send
   them and the cost is bounded per datagram (`FlowNamer.swift`, `QUIC.swift`).
-- The capture-buffer walk spins forever on a zero-length record, which only a kernel bug
-  produces (`packet_capture.c`). Guard on the walk not advancing, `bh_hdrlen + bh_caplen == 0`.
-  Don't guard on `bh_hdrlen < sizeof(struct bpf_hdr)`: by XNU's source `bh_hdrlen` is 18 on
-  Ethernet and the struct is 20, so that would refuse every record.
-- `SocketTable.parse` traps on a record kind of 2^31 or more; only kernel output reaches it.
-  `Int32(bitPattern:)` when next in the file.
 - The menu bar throughput label, on by default, resizes the status item as its digits change
   and goes with 8 wakeups a second against 3 with it off (`TattleApp.swift`). Correlated
   between two copies, not isolated.
