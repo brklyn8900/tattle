@@ -283,6 +283,16 @@ final class LaunchedCodeTests: XCTestCase {
         }
     }
 
+    func testAWrapperChainIsFollowedOnlySoDeep() {
+        // The command line's first program counts.
+        let chain = { (count: Int) in Array(repeating: "/usr/bin/nohup", count: count) + ["/x/agent"] }
+        XCTAssertEqual(signer("/usr/bin/nohup", chain(30)), .developerID(name: "/x/agent"))
+        XCTAssertNil(signer("/usr/bin/nohup", chain(31)), "one past the limit")
+        XCTAssertNil(signer("/usr/bin/nohup", chain(100_000)), "a plist's chain of wrappers does not exhaust the stack")
+        let finds = (0..<31).flatMap { _ in ["/usr/bin/find", "/x", "-exec"] } + ["/x/agent"]
+        XCTAssertNil(signer("/usr/bin/nohup", finds), "find counts as a wrapper")
+    }
+
     func testAProgramIsSignedByItself() {
         XCTAssertEqual(signer("/bin/ls", ["-l", "/x/agent"]), .developerID(name: "/bin/ls"))
     }

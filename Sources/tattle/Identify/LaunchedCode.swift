@@ -112,8 +112,12 @@ enum LaunchedCode: Equatable, Sendable {
     /// the job's PATH, `environmentPath` when the plist sets it.
     static func started(program: String, arguments: [String], environmentPath: String? = nil, identify: (String) -> Identity) -> LaunchedCode {
         guard let program = located(program, on: standardPath) else { return .undetermined }
-        return started(program, arguments, identify, searchPath: environmentPath ?? standardPath)
+        return started(program, arguments, identify, searchPath: environmentPath ?? standardPath, depth: 0)
     }
+
+    /// How many programs a command line is followed through, the first included. Past it, what
+    /// runs is not read: a plist can hold any number of wrappers, and each is a call deeper.
+    private static let wrapperDepthLimit = 32
 
     /// launchd's `_PATH_STDPATH`, which is also the PATH a job runs with unless its plist
     /// sets one.
@@ -134,10 +138,14 @@ enum LaunchedCode: Equatable, Sendable {
         return nil
     }
 
-    /// `searchPath` is where a wrapper finds a program named without a path.
-    private static func started(_ program: String, _ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode {
+    /// `searchPath` is where a wrapper finds a program named without a path; `depth` counts the
+    /// programs before this one.
+    private static func started(
+        _ program: String, _ arguments: [String], _ identify: (String) -> Identity, searchPath: String, depth: Int
+    ) -> LaunchedCode {
+        guard depth < wrapperDepthLimit else { return .undetermined }
         let identity = identify(program)
-        let code = followed(program, arguments, identity, identify, searchPath: searchPath)
+        let code = followed(program, arguments, identity, identify, searchPath: searchPath, depth: depth)
         switch code {
         case .script, .inline, .unnamed, .standardInput: return code
         case .program, .undetermined:
@@ -150,15 +158,16 @@ enum LaunchedCode: Equatable, Sendable {
 
     /// What `program` starts, read by the name `identity` gives it.
     private static func followed(
-        _ program: String, _ arguments: [String], _ identity: Identity, _ identify: (String) -> Identity, searchPath: String
+        _ program: String, _ arguments: [String], _ identity: Identity, _ identify: (String) -> Identity, searchPath: String,
+        depth: Int
     ) -> LaunchedCode {
         if let grammar = grammar(of: identity.name, in: launchers) {
             return interpreted(by: URL(fileURLWithPath: program).lastPathComponent, arguments: arguments, grammar)
         }
         // xargs adds words from its standard input to the command it runs.
         if identity.name == "xargs" { return .undetermined }
-        if identity.name == "open" { return opened(arguments, identify, searchPath: searchPath) }
-        if identity.name == "find", let code = found(arguments, identify, searchPath: searchPath) { return code }
+        if identity.name == "open" { return opened(arguments, identify, searchPath: searchPath, depth: depth) }
+        if identity.name == "find", let code = found(arguments, identify, searchPath: searchPath, depth: depth) { return code }
         guard let grammar = grammar(of: identity.name, in: wrappers) else {
             return running(executable: program, arguments: arguments, identity: identity)
         }
@@ -173,7 +182,7 @@ enum LaunchedCode: Equatable, Sendable {
                 }
             }
             guard index < arguments.count, let command = located(arguments[index], on: searchPath) else { return .undetermined }
-            return started(command, Array(arguments[(index + 1)...]), identify, searchPath: searchPath)
+            return started(command, Array(arguments[(index + 1)...]), identify, searchPath: searchPath, depth: depth + 1)
         case .code, .named, .file, .standardInput, .nothing: return .undetermined
         }
     }
@@ -181,19 +190,19 @@ enum LaunchedCode: Equatable, Sendable {
     /// What `find` starts: the program its one `-exec`, `-execdir`, `-ok` or `-okdir` runs,
     /// with the words up to ";" or "+". Nil without one, when find runs only its own code;
     /// with more than one, what runs is not one program.
-    private static func found(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode? {
+    private static func found(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String, depth: Int) -> LaunchedCode? {
         let runs = arguments.indices.filter { ["-exec", "-execdir", "-ok", "-okdir"].contains(arguments[$0]) }
         guard let run = runs.first else { return nil }
         guard runs.count == 1, run + 1 < arguments.count, let command = located(arguments[run + 1], on: searchPath) else { return .undetermined }
         let words = arguments[(run + 2)...].prefix { $0 != ";" && $0 != "+" }
-        return started(command, Array(words), identify, searchPath: searchPath)
+        return started(command, Array(words), identify, searchPath: searchPath, depth: depth + 1)
     }
 
     /// What `open` starts: the app `-a` names, or the one app it is given. Its operands are
     /// files and URLs, not commands, and an app runs the documents it opens as it likes: with
     /// a document, what runs is not named. With `-e`, `-t`, `-f`, `-R` or `-h`, another app
     /// opens what it is given: TextEdit, the default text editor, Finder, a header's app.
-    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String) -> LaunchedCode {
+    private static func opened(_ arguments: [String], _ identify: (String) -> Identity, searchPath: String, depth: Int) -> LaunchedCode {
         var app: String?
         var operands: [String] = []
         var index = 0
@@ -250,7 +259,7 @@ enum LaunchedCode: Equatable, Sendable {
             opened = operands.count == 1 && URL(fileURLWithPath: operands[0]).pathExtension == "app" ? operands[0] : nil
         }
         guard let opened, opened.hasPrefix("/") else { return .undetermined }
-        return started(opened, [], identify, searchPath: searchPath)
+        return started(opened, [], identify, searchPath: searchPath, depth: depth + 1)
     }
 
     /// open's options from its usage (`open --help`): the letters that take a value, the long
