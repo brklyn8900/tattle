@@ -127,6 +127,36 @@ final class RuleStoreTests: XCTestCase {
         XCTAssertEqual(try store.candidates(kind: .host, key: "a.example").map(\.purpose), ["builtin", "second"])
     }
 
+    /// The file holds a model's answers for exact items, and memory the shipped sources'
+    /// rules. What a lookup would never read is refused, not stored unread.
+    func testTheStoreRefusesWhatALookupNeverReads() throws {
+        for source in Rule.Source.allCases where source != .llm {
+            XCTAssertThrowsError(try store.save(rule("a.example", source: source)), source.rawValue) {
+                XCTAssertEqual($0 as? RuleStoreError, .notAnAnswer)
+            }
+        }
+        XCTAssertThrowsError(try store.save(rule("*.example", match: .glob, source: .llm)), "a pattern") {
+            XCTAssertEqual($0 as? RuleStoreError, .notAnAnswer)
+        }
+        let rows = try store.database.writer.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM rule") }
+        XCTAssertEqual(rows, 0)
+        for source in [Rule.Source.llm, .user, .iap] {
+            XCTAssertThrowsError(try store.replaceShipped(source: source, with: [rule("a.example", source: source)]), source.rawValue) {
+                XCTAssertEqual($0 as? RuleStoreError, .notShipped(source))
+            }
+        }
+        XCTAssertEqual(try store.rules(), [])
+
+        // A row another process wrote under a shipped source is not there to confirm.
+        try store.database.writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO rule (id, kind, match, pattern, purpose, source, created)
+                VALUES (7, 'host', 'exact', 'a.example', 'p', 'builtin', datetime('now'))
+                """)
+        }
+        XCTAssertThrowsError(try store.confirm(id: 7)) { XCTAssertEqual($0 as? RuleStoreError, .notFound(7)) }
+    }
+
     func testConfirmUnknownIdThrows() {
         XCTAssertThrowsError(try store.confirm(id: 999)) { error in
             XCTAssertEqual(error as? RuleStoreError, .notFound(999))

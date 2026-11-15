@@ -24,13 +24,6 @@ struct SeedLoader: Sendable {
         }
     }
 
-    enum SeedError: Error {
-        /// Seed files may only carry shipped sources; a model's answers are made at runtime.
-        case notASeedSource(Rule.Source)
-    }
-
-    static let seedSources: Set<Rule.Source> = [.builtin, .appleList, .trackerRadar]
-
     /// Applies every `*.json` in `folder`. A missing folder or an unreadable file is
     /// logged and skipped: the app runs without any seed. Returns the sources applied.
     @discardableResult
@@ -56,9 +49,6 @@ struct SeedLoader: Sendable {
     func load(file url: URL) throws -> Rule.Source {
         let data = try Data(contentsOf: url)
         let file = try JSONDecoder().decode(File.self, from: data)
-        guard Self.seedSources.contains(file.source) else {
-            throw SeedError.notASeedSource(file.source)
-        }
         let now = Date()
         let rules = file.rules.map { entry in
             Rule(kind: entry.kind, match: entry.match ?? .exact, pattern: entry.pattern,

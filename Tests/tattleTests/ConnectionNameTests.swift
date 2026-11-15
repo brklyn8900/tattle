@@ -249,10 +249,8 @@ final class ConnectionNameTests: XCTestCase {
         let observer = try observer(rules: rules, database: database)
         try rules.save(Rule(kind: .host, pattern: "llm.example", purpose: "p", category: "relay", source: .llm))
         try rules.save(Rule(kind: .host, pattern: "confirmed.example", purpose: "p", category: "ech-cover", source: .llm, confirmed: t0))
-        try rules.replaceShipped(source: .iap, with: [Rule(kind: .host, pattern: "iap.example", purpose: "p", category: "relay", source: .iap)])
         XCTAssertEqual(observer.kind(of: "llm.example", source: .sni), .destination)
         XCTAssertEqual(observer.kind(of: "confirmed.example", source: .sni), .destination, "confirming ranks it higher, it is still a model's text")
-        XCTAssertEqual(observer.kind(of: "iap.example", source: .sni), .destination)
 
         // A model rule that outranks the seed (confirmed) must not mask the seed's category.
         try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "seeded.example", purpose: "p", category: "relay", source: .builtin)])

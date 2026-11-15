@@ -39,9 +39,6 @@ final class NetworkObserver {
     private var promptPollScheduled = false
     private let processRecords: @Sendable () -> ProcessRecords?
 
-    /// Rule sources whose category may decide a connection's kind.
-    private static let kindSources = SeedLoader.seedSources
-
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
 
@@ -177,7 +174,7 @@ final class NetworkObserver {
             Log.app.error("rule lookup for a connection's name failed: \(error, privacy: .public)")
             return .destination
         }
-        let category = candidates.first { Self.kindSources.contains($0.source) }?.category
+        let category = candidates.first?.category
         let kind = ConnectionName.kind(forCategory: category)
         kinds[name] = kind
         return kind
