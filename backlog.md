@@ -240,9 +240,11 @@ are the triage's)
   - The check passes a copy of one of Apple's tools made to load other code, which those
     with a team identifier do through `DYLD_` variables (the Command Line Tools' `lldb` did
     from a shell, not tried under launchd).
-  - On Apple silicon only a scratch script has run: the check's two calls over 1,289
-    processes, 251 of them checked, none failing, 0.30 s. The suite has not run there, and
-    no process under Rosetta was looked at.
+  - On Apple silicon only scratch scripts have run: the check's two calls over 1,289
+    processes, 251 of them checked, none failing, 0.30 s; and the kernel's status and hash,
+    which it gave for every one of 1,270 processes, other accounts' included. The suite has
+    not run there, and no process under Rosetta was looked at: first, whether the kernel
+    gives a hash for a signed one, without which it is checked at every reading.
   - The check is of the slice the process loaded, and the signature is read from the slice
     of Tattle's own architecture. A universal file with a publisher's slice beside another's
     passes when the other runs (`arch -x86_64`, Rosetta) and reads as the publisher. Reading
@@ -251,13 +253,15 @@ are the triage's)
   - A process whose file names no signer (ad hoc, unsigned) is not checked, so one that
     renames another such file over its own path has that file's identity, and an answer kept
     for the file is shown for it. Reasoned from `CodeIdentity.of`, not run.
-  - A process that has ended by the time it is read reads as its file. A program that
-    renames a signed file over its path, connects and exits is recorded in Network and its
-    history under that file's signer.
+  - A process that has ended or is on its way out by the time it is read reads as its
+    file. A program that renames a signed file over its path, connects and exits is recorded
+    in Network and its history under that file's signer.
   - Network keeps an owner while its pid has a connection open, so one read before the file
     changed stays (the two `ConnectionOwner.unresolved` entries above). A connection whose
-    owner was read while its file or process was changing keeps no signer, in its row and
-    its history; the next connection's owner is read again.
+    owner was read while its file or process was changing keeps that reading, with no signer
+    where the process was checked, in its row and its history; the owner is read again for
+    the pid's next connections, three times at most. The app's own signature is read by path
+    alone, and one read while the bundle was changing is kept as before.
   - An interpreter whose file fails the check still reads `<interpreter> script`, with the
     script's identity, as any file of an interpreter's name does; only the interpreter's
     signer goes. The strict reading, no identity at all, is one flag on `ProcessEntry`.
