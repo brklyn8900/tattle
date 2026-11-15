@@ -157,7 +157,9 @@ Resolution order for any item:
 
 1. **Facts** the engine already has, such as the signer and the app responsible. Shown
    regardless.
-2. **Knowledge base**: one SQLite table of rules. A rule has a `kind` (host, process, port,
+2. **Knowledge base**: rules. The shipped ones are read from the app at launch; a model's
+   answers are kept in the database, and nothing else is read from it
+   ([ADR-0005](adr/0005-shipped-rules-from-the-app.md)). A rule has a `kind` (host, process, port,
    launch item), a `match` that is either an exact item or a glob pattern
    (`p*-caldav.icloud.com`, `com.apple.*`), `owner`, `purpose` (what the item is), `why`
    (why such an item is probably on a Mac), `care` (the reason the owner should care or not),
@@ -167,7 +169,9 @@ Resolution order for any item:
    from any source, answers only for its identity (a port-wide rule, `*:udp/5353`, is about
    no one program); a shipped rule about one of Apple's programs answers only for Apple's program
    of that name. Sources in precedence order: `user`, `builtin`, `iap`, `apple-list`, `tracker-radar`,
-   `llm`; a confirmed rule ranks with `user` whatever its source.
+   `llm`; a confirmed rule ranks with `user` whatever its source. No screen makes a `user`
+   rule, and none is read from the database: a rule editor needs a storage decision of its
+   own (ADR-0005).
 3. **LLM**, on click only. The request carries the item and the facts from step 1 that say
    what it is, so the model explains known facts instead of guessing. Some facts stay out. A
    host's request leaves out the connection's direction and the process that made it,
@@ -180,8 +184,8 @@ Resolution order for any item:
    item by its key from this one: code with no identity or whose file cannot be read, and
    a host whose key went out as a placeholder. There is no automatic check; confirmation is the user's. The source stays
    `llm` so provenance is never lost. The schema lets the model propose a pattern, and
-   nothing uses it yet: a rule becomes a pattern only when the user promotes it at
-   confirmation, and no screen offers that. Unconfirmed LLM rules expire after 45 days.
+   nothing uses it: a kept answer is read only for the exact item (ADR-0005). Unconfirmed
+   LLM rules expire after 45 days.
 
 Every detail page answers three questions. **What is this** is the rule's `purpose`. **Why
 it is probably here** opens with a sentence the app builds from the facts (who opened the
@@ -195,8 +199,10 @@ model answer without `why` or `care` is kept; that part shows only the app's wor
 
 The seed knowledge base ships in the repo as data files, one per source
 ([design](design.md#knowledge-base)). Contributions are pull requests against those files.
-The user's local rules and LLM answers live in `~/Library/Application Support/Tattle/` and
-never touch the repo.
+LLM answers live in `~/Library/Application Support/Tattle/` and never touch the repo. Any
+process of the user's can write that file, so nothing in it reads as Tattle's rule or the
+user's own; a row written there can still read as a model's answer, confirmed or not
+(ADR-0005).
 
 ### LLM provider
 
@@ -279,7 +285,8 @@ Building from source is a first-class path. A Homebrew cask is possible; the use
 - **More for the Startup tab.** Cron and `periodic` entries, and the installing app, matched
   by bundle identifier prefix and signer.
 - **Patterns from answers.** The user promotes a model's proposed pattern to a glob rule at
-  confirmation.
+  confirmation. Needs a storage decision of its own: a pattern in the database would be any
+  process's to write (ADR-0005).
 - **Blocking**, if ever, as a decision of its own: `/etc/hosts` for names, the extension
   for apps.
 - **Resource history**, if wanted, as a decision of its own.
