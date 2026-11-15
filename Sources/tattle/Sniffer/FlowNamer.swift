@@ -162,6 +162,16 @@ struct FlowNamer: Sendable {
         if !addresses.isEmpty { local = addresses }
     }
 
+    /// Adds the addresses of a reading that this namer lacks; true when there was one. What
+    /// the reading lacks is kept, unlike `updateLocalAddresses`: taken on a timer, not on the
+    /// evidence of a packet, a reading can find the interface with only part of its
+    /// addresses, as while a lease is renewed.
+    mutating func gainLocalAddresses(_ addresses: Set<IPAddress>) -> Bool {
+        guard !addresses.isSubset(of: local) else { return false }
+        local.formUnion(addresses)
+        return true
+    }
+
     /// The resolvers change with the network, as the addresses do; an empty reading keeps
     /// the old set for the same reason.
     mutating func updateResolvers(_ addresses: Set<IPAddress>) {

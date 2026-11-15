@@ -199,47 +199,55 @@ final class SnifferTests: XCTestCase {
         return first + other + header + resolver.bytes + mine.bytes + datagram
     }
 
-    /// The interface's addresses are read again at each check of it. A reading with none, as
-    /// while Wi-Fi is between networks, keeps the last; an address the interface has gained
-    /// is this Mac's from then on, so a reply sent to it is read.
+    /// The interface's addresses are read at each check of it. An address it has gained is
+    /// this Mac's from then on, and the resolvers are read again with it, since a new address
+    /// comes with a new network. An address a reading lacks is kept: Wi-Fi between networks
+    /// has none for a moment, and one being renewed has only its link-local address.
     func testTheNamerFollowsTheInterfacesAddresses() {
-        let gained = IPAddress(bytes: [192, 168, 1, 6]), resolver = IPAddress(bytes: [192, 168, 1, 1])
+        let gained = IPAddress(bytes: [192, 168, 1, 6]), linkLocal = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd])
+        let resolver = IPAddress(bytes: [192, 168, 1, 1]), newResolver = IPAddress(bytes: [192, 168, 1, 2])
         let own = OSAllocatedUnfairLock<Set<IPAddress>>(initialState: [Self.me])
-        let emptyReadings = OSAllocatedUnfairLock(initialState: 0)
+        let resolvers = OSAllocatedUnfairLock<Set<IPAddress>>(initialState: [resolver])
+        // Readings of the interface that lacked the address this Mac's SYNs come from.
+        let readingsWithout = OSAllocatedUnfairLock(initialState: 0)
         let capture = Fed(linkType: PacketCapture.linkEthernet)
         let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
         let sniffer = Sniffer(open: { _ in capture },
                               host: Sniffer.Host(primaryInterface: { "en0" }, hardwareAddress: { _ in Self.first },
                                                  addresses: { _ in
                                                      let now = own.withLock { $0 }
-                                                     if now.isEmpty { emptyReadings.withLock { $0 += 1 } }
+                                                     if !now.contains(Self.me) { readingsWithout.withLock { $0 += 1 } }
                                                      return now
-                                                 }, resolvers: { [resolver] }, interfaceCheckEvery: 0.05),
+                                                 }, resolvers: { resolvers.withLock { $0 } }, interfaceCheckEvery: 0.05),
                               onEvents: { new in events.withLock { $0 += new } }, onStatus: { _ in })
         defer { sniffer.stop() }
         sniffer.start()
         capture.feed([Self.syn(from: Self.first, port: 50000)])
         XCTAssertTrue(eventually { events.withLock { $0 } == [Self.opened(50000)] }, "the capture is reading, with the interface's address")
 
-        own.withLock { $0 = [] }
-        XCTAssertTrue(eventually { emptyReadings.withLock { $0 } >= 2 }, "the interface was read with no address")
-        capture.feed([Self.syn(from: Self.first, port: 50001)])
-        XCTAssertTrue(eventually { events.withLock { $0 } == [Self.opened(50000), Self.opened(50001)] }, "the address read before still counts")
+        for (reading, port, state) in [(Set<IPAddress>(), UInt16(50001), "no address"), ([linkLocal], UInt16(50002), "only its link-local address")] {
+            let before = readingsWithout.withLock { $0 }
+            own.withLock { $0 = reading }
+            XCTAssertTrue(eventually { readingsWithout.withLock { $0 } >= before + 2 }, "the interface was read with \(state)")
+            capture.feed([Self.syn(from: Self.first, port: port)])
+            XCTAssertTrue(eventually { events.withLock { $0 }.contains(Self.opened(port)) }, "the address read before still counts with \(state)")
+        }
 
         // This Mac's SYNs keep coming from the address the namer knows, so only a check of the
-        // interface can teach it the one gained, which the reply is sent to.
+        // interface can teach it the address gained, which the new network's resolver replies to.
         own.withLock { $0 = [Self.me, gained] }
+        resolvers.withLock { $0 = [newResolver] }
         func named() -> Bool { events.withLock { $0 }.contains { $0.kind == .named("cdn.example.net", .dns) } }
         var port: UInt16 = 50100
         let deadline = Date().addingTimeInterval(10)
         while !named(), Date() < deadline {
             port += 1
-            capture.feed([Self.reply(from: resolver, to: gained)])
+            capture.feed([Self.reply(from: newResolver, to: gained)])
             // Opened long enough ago for the DNS fallback to be due at the next pass.
             capture.feed([Self.syn(from: Self.first, port: port)], secondsAgo: FlowNamer.dnsFallbackAfter + 1)
             usleep(50_000)
         }
-        XCTAssertTrue(named(), "a reply to the address gained was read")
+        XCTAssertTrue(named(), "the new resolver's reply to the address gained was read")
     }
 
     private static let namedByDNS: [FlowEvent] = {

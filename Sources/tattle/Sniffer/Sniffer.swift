@@ -219,9 +219,12 @@ final class Sniffer: @unchecked Sendable {
                     return
                 }
                 follow(capture, interface: interface, installed: &installed, namer: &namer)
-                // An address the interface has gained is this Mac's from here on; a packet
-                // from it tells sooner, a reply sent to it does not.
-                namer.updateLocalAddresses(host.addresses(interface))
+                // An address the interface has gained is this Mac's from here on, and comes
+                // with a network whose resolvers may be new. A packet sent from it tells both
+                // sooner; a reply sent to it does not.
+                if namer.gainLocalAddresses(host.addresses(interface)) {
+                    namer.updateResolvers(host.resolvers())
+                }
             }
         }
     }
