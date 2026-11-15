@@ -38,7 +38,7 @@ final class Sniffer: @unchecked Sendable {
 
     private static let retryAfter: TimeInterval = 30
     private static let addressRefreshEvery: TimeInterval = 60
-    /// How often a packet from an unknown address may trigger a refresh.
+    /// How often a packet from an unknown address, IP or hardware, may trigger a refresh.
     private static let staleRefreshEvery: TimeInterval = 1
     private static let readTimeout: Duration = .milliseconds(500)
     /// How often the time-driven work runs. In immediate mode every burst ends a read, so
@@ -183,6 +183,7 @@ final class Sniffer: @unchecked Sendable {
         }
         var lastInterfaceCheck = Date()
         var lastAddressRefresh = Date()
+        var lastHardwareCheck = Date.distantPast
         var lastExpire = Date.distantPast
         while !shouldStop() {
             var events: [FlowEvent] = []
@@ -197,6 +198,15 @@ final class Sniffer: @unchecked Sendable {
                         namer.updateResolvers(host.resolvers())
                         lastAddressRefresh = Date()
                         Log.sniffer.debug("refreshed local addresses on an unknown packet")
+                    }
+                    // A frame under this Mac's address from a hardware address that is not the
+                    // interface's as last read: another host's, or this Mac's own after the
+                    // address changed (Wi-Fi joining a network under another private address).
+                    // Reading it again now tells which, so the first frame sent from a new
+                    // address is already read as sent.
+                    if namer.hardwareSourceUnknown(packet), Date().timeIntervalSince(lastHardwareCheck) >= Self.staleRefreshEvery {
+                        lastHardwareCheck = Date()
+                        follow(capture, interface: interface, installed: &installed, namer: &namer)
                     }
                     events += namer.observe(packet, at: timestamp)
                 }
@@ -221,17 +231,21 @@ final class Sniffer: @unchecked Sendable {
                     Log.sniffer.info("default route moved to \(current, privacy: .public); reopening")
                     return
                 }
-                // A rotated private Wi-Fi address or a renumbered tunnel would make the
-                // filter class every outbound packet as inbound and drop it.
-                let direction = direction(for: capture, interface: interface)
-                if direction != installed {
-                    Log.sniffer.notice("\(interface, privacy: .public) changed its addresses; rebuilding the kernel filter")
-                    installFilter(on: capture, direction: direction, interface: interface)
-                    namer.updateHardwareAddress(direction.hardwareAddress)
-                    installed = direction
-                }
+                follow(capture, interface: interface, installed: &installed, namer: &namer)
             }
         }
+    }
+
+    /// Brings the kernel filter and the namer to the interface's addresses as they are now. A
+    /// rotated private Wi-Fi address or a renumbered tunnel would make the filter class every
+    /// outbound packet as inbound and drop it.
+    private func follow(_ capture: any CaptureSource, interface: String, installed: inout CaptureFilter.Direction, namer: inout FlowNamer) {
+        let direction = direction(for: capture, interface: interface)
+        guard direction != installed else { return }
+        Log.sniffer.notice("\(interface, privacy: .public) changed its addresses; rebuilding the kernel filter")
+        installFilter(on: capture, direction: direction, interface: interface)
+        namer.updateHardwareAddress(direction.hardwareAddress)
+        installed = direction
     }
 
     private func wait(_ seconds: TimeInterval, shouldStop: () -> Bool) {

@@ -196,46 +196,77 @@ final class SnifferTests: XCTestCase {
         XCTAssertEqual(events.withLock { $0 }, [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("cdn.example.net", .dns))])
     }
 
-    /// On Ethernet the namer is told the interface's hardware address, and again when it
-    /// changes, so a frame another host sent under this Mac's IP address opens no flow, with
-    /// or without a kernel filter in front.
-    func testOnEthernetOnlyFramesFromTheInterfaceOpenFlows() {
-        let me = IPAddress(bytes: [192, 168, 1, 5])
-        let remote = IPAddress(bytes: [203, 0, 113, 7])
-        func syn(from source: [UInt8], port: UInt16) -> [UInt8] {
-            [2, 0, 0, 0, 0, 9] + source + [0x08, 0x00, 0x45, 0, 0, 40, 0, 0, 0, 0, 64, 6, 0, 0] + me.bytes + remote.bytes
-                + [UInt8(port >> 8), UInt8(port & 0xff), 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
-        }
-        func opened(_ port: UInt16) -> FlowEvent { FlowEvent(key: FlowKey(proto: .tcp, localPort: port, remote: remote, remotePort: 443), kind: .opened) }
-        let first: [UInt8] = [0x2a, 0, 0, 0, 0, 1], rotated: [UInt8] = [0x2a, 0, 0, 0, 0, 2], other: [UInt8] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]
-        let mac = OSAllocatedUnfairLock(initialState: first)
-        let capture = Fed(linkType: PacketCapture.linkEthernet)
+    private static let me = IPAddress(bytes: [192, 168, 1, 5])
+    private static let remote = IPAddress(bytes: [203, 0, 113, 7])
+
+    /// An Ethernet frame from `source` carrying this Mac's SYN to `remote`.
+    private static func syn(from source: [UInt8], port: UInt16) -> [UInt8] {
+        [2, 0, 0, 0, 0, 9] + source + [0x08, 0x00, 0x45, 0, 0, 40, 0, 0, 0, 0, 64, 6, 0, 0] + me.bytes + remote.bytes
+            + [UInt8(port >> 8), UInt8(port & 0xff), 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
+    }
+
+    private static func opened(_ port: UInt16) -> FlowEvent {
+        FlowEvent(key: FlowKey(proto: .tcp, localPort: port, remote: remote, remotePort: 443), kind: .opened)
+    }
+
+    /// A sniffer on an Ethernet capture the test feeds, with no kernel filter in front, whose
+    /// interface is checked only as often as given. Returns the openings it reports.
+    private func ethernetSniffer(_ capture: Fed, mac: OSAllocatedUnfairLock<[UInt8]>, interfaceCheckEvery: TimeInterval) -> (Sniffer, OSAllocatedUnfairLock<[FlowEvent]>) {
         let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
         let sniffer = Sniffer(open: { _ in capture },
                               host: Sniffer.Host(primaryInterface: { "en0" }, hardwareAddress: { _ in mac.withLock { $0 } },
-                                                 addresses: { _ in [me] }, resolvers: { [] }, interfaceCheckEvery: 0.05),
+                                                 addresses: { _ in [Self.me] }, resolvers: { [] }, interfaceCheckEvery: interfaceCheckEvery),
                               onEvents: { new in events.withLock { $0 += new.filter { $0.kind == .opened } } }, onStatus: { _ in })
+        return (sniffer, events)
+    }
+
+    private static let first: [UInt8] = [0x2a, 0, 0, 0, 0, 1], rotated: [UInt8] = [0x2a, 0, 0, 0, 0, 2], other: [UInt8] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]
+
+    /// On Ethernet the namer is told the interface's hardware address, so a frame another host
+    /// sent under this Mac's IP address opens no flow, with or without a kernel filter in
+    /// front, before the address changes and after.
+    func testOnEthernetOnlyFramesFromTheInterfaceOpenFlows() {
+        let mac = OSAllocatedUnfairLock(initialState: Self.first)
+        let capture = Fed(linkType: PacketCapture.linkEthernet)
+        let (sniffer, events) = ethernetSniffer(capture, mac: mac, interfaceCheckEvery: 0.05)
         defer { sniffer.stop() }
         sniffer.start()
-        capture.feed([syn(from: other, port: 50001), syn(from: first, port: 50002)])
+        capture.feed([Self.syn(from: Self.other, port: 50001), Self.syn(from: Self.first, port: 50002)])
         XCTAssertTrue(eventually { !events.withLock { $0 }.isEmpty })
-        XCTAssertEqual(events.withLock { $0 }, [opened(50002)], "the other host's frame opened nothing")
+        XCTAssertEqual(events.withLock { $0 }, [Self.opened(50002)], "the other host's frame opened nothing")
 
-        // The run notices the new address at a check of the interface: frames from it are fed
-        // until one opens a flow.
-        mac.withLock { $0 = rotated }
+        // Frames from the new address are fed until the run has noticed it and one opens a flow.
+        mac.withLock { $0 = Self.rotated }
         var port: UInt16 = 50100
-        XCTAssertTrue(eventually(within: 10) {
+        let deadline = Date().addingTimeInterval(10)
+        while events.withLock({ $0 }).count < 2, Date() < deadline {
             port += 1
-            capture.feed([syn(from: rotated, port: port)])
+            capture.feed([Self.syn(from: Self.rotated, port: port)])
             usleep(50_000)
-            return events.withLock { $0 }.count >= 2
-        }, "the namer follows the interface's new address")
-        let before = events.withLock { $0 }.count
-        capture.feed([syn(from: first, port: 50003), syn(from: rotated, port: 50004)])
-        XCTAssertTrue(eventually { events.withLock { $0 }.contains(opened(50004)) })
-        XCTAssertEqual(events.withLock { Array($0.dropFirst(before)) }.filter { $0.key.localPort < 50100 }, [opened(50004)],
-                       "and a frame from the old one opens nothing")
+        }
+        // Frames are read in the order fed, so once the second of these has opened its flow the
+        // first has been read too.
+        capture.feed([Self.syn(from: Self.first, port: 50003), Self.syn(from: Self.rotated, port: 50004)])
+        XCTAssertTrue(eventually { events.withLock { $0 }.contains(Self.opened(50004)) }, "the namer follows the interface's new address")
+        XCTAssertFalse(events.withLock { $0 }.contains(Self.opened(50003)), "and a frame from the old one opens nothing")
+    }
+
+    /// The interface is checked every few seconds, and its hardware address can change in
+    /// between. With no kernel filter in front, the first frame sent from the new address has
+    /// the address read again and is read as sent.
+    func testTheFirstFrameFromANewHardwareAddressOpensItsFlow() {
+        let mac = OSAllocatedUnfairLock(initialState: Self.first)
+        let capture = Fed(linkType: PacketCapture.linkEthernet)
+        let (sniffer, events) = ethernetSniffer(capture, mac: mac, interfaceCheckEvery: 60)
+        defer { sniffer.stop() }
+        sniffer.start()
+        capture.feed([Self.syn(from: Self.first, port: 50002)])
+        XCTAssertTrue(eventually { events.withLock { $0 } == [Self.opened(50002)] })
+
+        mac.withLock { $0 = Self.rotated }
+        capture.feed([Self.syn(from: Self.rotated, port: 50004)])
+        XCTAssertTrue(eventually { events.withLock { $0 }.count >= 2 })
+        XCTAssertEqual(events.withLock { $0 }, [Self.opened(50002), Self.opened(50004)])
     }
 
     /// An opener that does not return until the test lets it, as a broker request that is slow

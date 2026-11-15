@@ -186,6 +186,12 @@ struct FlowNamer: Sendable {
         return p.linkSource.map { $0.elementsEqual(hardwareAddress) } ?? false
     }
 
+    /// The packet is under one of this Mac's addresses and from a hardware address this namer
+    /// does not hold: another host's, or the interface's own since it changed.
+    func hardwareSourceUnknown(_ p: Packet) -> Bool {
+        local.contains(p.src) && !isFromInterface(p)
+    }
+
     mutating func observe(_ p: Packet, at ts: Double) -> [FlowEvent] {
         // Under this Mac's address but from another host: neither sent nor a reply to it.
         let outbound = local.contains(p.src)
