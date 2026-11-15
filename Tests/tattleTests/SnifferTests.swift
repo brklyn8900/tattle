@@ -186,11 +186,21 @@ final class SnifferTests: XCTestCase {
         XCTAssertTrue(eventually { !events.withLock { $0 }.isEmpty })
         XCTAssertEqual(events.withLock { $0 }, [opened(50002)], "the other host's frame opened nothing")
 
+        // The run notices the new address at a check of the interface: frames from it are fed
+        // until one opens a flow.
         mac.withLock { $0 = rotated }
-        usleep(300_000)  // six checks of the interface
+        var port: UInt16 = 50100
+        XCTAssertTrue(eventually(within: 10) {
+            port += 1
+            capture.feed([syn(from: rotated, port: port)])
+            usleep(50_000)
+            return events.withLock { $0 }.count >= 2
+        }, "the namer follows the interface's new address")
+        let before = events.withLock { $0 }.count
         capture.feed([syn(from: first, port: 50003), syn(from: rotated, port: 50004)])
-        XCTAssertTrue(eventually { events.withLock { $0 }.count >= 2 })
-        XCTAssertEqual(events.withLock { $0 }, [opened(50002), opened(50004)], "the namer follows the interface's new address")
+        XCTAssertTrue(eventually { events.withLock { $0 }.contains(opened(50004)) })
+        XCTAssertEqual(events.withLock { Array($0.dropFirst(before)) }.filter { $0.key.localPort < 50100 }, [opened(50004)],
+                       "and a frame from the old one opens nothing")
     }
 
     /// An opener that does not return until the test lets it, as a broker request that is slow

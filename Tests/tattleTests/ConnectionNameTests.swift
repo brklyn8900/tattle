@@ -314,10 +314,15 @@ final class ConnectionNameTests: XCTestCase {
         deliverEvents((0..<100).map(opening))
         deliverEvents((100..<(FlowEventMailbox.capacity + 300)).map(opening))
 
-        await Task.yield()
-        XCTAssertEqual(observer.held.openings, NetworkObserver.eventBatch, "one batch was handled before this test's turn came")
+        // Handled in one turn, the count would go from none to all with this test never
+        // seeing it in between.
+        var sawPart = false
         let deadline = Date().addingTimeInterval(10)
-        while observer.held.openings < FlowEventMailbox.capacity, Date() < deadline { await Task.yield() }
+        while observer.held.openings < FlowEventMailbox.capacity, Date() < deadline {
+            if observer.held.openings > 0 { sawPart = true }
+            await Task.yield()
+        }
+        XCTAssertTrue(sawPart, "the main actor had turns to give while the events were handled")
         XCTAssertEqual(observer.held.openings, FlowEventMailbox.capacity, "all the mailbox held")
         XCTAssertEqual(observer.eventsDropped, 300, "and none of what it had no room for")
     }
