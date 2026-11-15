@@ -156,6 +156,73 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(cache.signature(at: file.path)?.codeHash, "2")
     }
 
+    /// A bundle's signature is read from files inside it, and writing over one of them leaves
+    /// the folder's own dates as they were.
+    func testABundlesSignatureIsReadAgainWhenAFileItRestsOnChanges() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let app = folder.appending(path: "Tool.app")
+        let contents = app.appending(path: "Contents")
+        let executable = contents.appending(path: "MacOS/Tool")
+        let seal = contents.appending(path: "_CodeSignature/CodeResources")
+        let info = contents.appending(path: "Info.plist")
+        for file in [executable, seal, info] {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("one".utf8).write(to: file)
+        }
+        final class Reads: @unchecked Sendable { var count = 0 }
+        let reads = Reads()
+        let cache = SignatureCache(read: { _ in
+            reads.count += 1
+            return CodeSignature(signer: .adHoc, codeHash: String(reads.count))
+        })
+        func hash() -> String? { cache.signature(at: app.path)?.codeHash }
+
+        XCTAssertEqual(hash(), "1")
+        XCTAssertEqual(hash(), "1", "the same version is read once")
+        let before = try XCTUnwrap(FileVersion(path: app.path))
+        try Data("another program".utf8).write(to: executable)
+        XCTAssertEqual(FileVersion(path: app.path), before, "the folder itself says nothing of it")
+        XCTAssertEqual(hash(), "2", "the executable written over in place")
+        try Data("a third".utf8).write(to: executable, options: .atomic)
+        XCTAssertEqual(hash(), "3", "the executable replaced by another file")
+        try Data("another".utf8).write(to: info)
+        XCTAssertEqual(hash(), "4", "the Info.plist, which names the executable")
+        try Data("another".utf8).write(to: seal)
+        XCTAssertEqual(hash(), "5", "the seal over the resources")
+        XCTAssertEqual(hash(), "5")
+
+        // Where the files a reading rests on are is not known for a folder laid out another way.
+        let other = folder.appending(path: "Other.app")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        _ = cache.signature(at: other.path)
+        _ = cache.signature(at: other.path)
+        XCTAssertEqual(reads.count, 7, "read every time")
+    }
+
+    /// The same, with a signed app and the real reading.
+    func testAnAppWhoseExecutableIsWrittenOverIsNotReadAsBefore() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let app = folder.appending(path: "Tool.app")
+        let executable = app.appending(path: "Contents/MacOS/Tool")
+        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: "/bin/ls", toPath: executable.path)
+        let info = ["CFBundleExecutable": "Tool", "CFBundleIdentifier": "com.example.tool", "CFBundlePackageType": "APPL"]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: app.appending(path: "Contents/Info.plist"))
+        try codesign(["--force", "--sign", "-", app.path])
+        let other = folder.appending(path: "other")
+        try FileManager.default.copyItem(atPath: "/bin/cat", toPath: other.path)
+        try codesign(["--force", "--sign", "-", other.path])
+
+        let cache = SignatureCache()
+        let first = try XCTUnwrap(cache.signature(at: app.path))
+        XCTAssertEqual(first.signer, .adHoc)
+        XCTAssertNotNil(first.codeHash)
+        try Data(contentsOf: other).write(to: executable)
+        XCTAssertNotEqual(cache.signature(at: app.path), first)
+    }
+
     func testACertificateNotIssuedByAppleClaimsNothing() throws {
         let fixtures = try XCTUnwrap(Bundle.module.url(forResource: "forged-signatures", withExtension: nil))
         for name in ["forged-software-signing", "forged-developer-id"] {
