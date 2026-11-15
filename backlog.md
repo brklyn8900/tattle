@@ -16,9 +16,10 @@
   so they are never shown, and a confirmed rule never expires.
 - The shipped rules are files in the bundle's `Contents/Resources/knowledge`, and the
   executable holds no hash of them, so a process that can write the bundle can change a rule
-  and leave the program as it was. Whether macOS refuses to start an app whose resource
-  changed after its first launch is unverified: measure that before pinning the hashes
-  (ADR-0005, `SeedLoader.swift`).
+  and leave the program as it was. A changed knowledge file breaks the code seal (`codesign`
+  and `spctl` reject the app), but macOS still launched the ad hoc app with no alert (the test
+  Mac, 2026-11-15). Pinning the files' hashes in the executable would close it (ADR-0005,
+  `SeedLoader.swift`).
 - The seed files are read, decoded and inserted at every launch, one statement per rule, in
   `AppState.init` on the main actor, before the menu bar item exists. Not measured; 29 rules
   today. Once the Tracker Radar and Apple hosts files carry thousands, load them off the main

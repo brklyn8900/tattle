@@ -39,6 +39,9 @@ connectors.
   with no `Confirm` and is not stored; it goes when the row comes to hold other code.
 - `ex-host`: a host's prompt carries the host and the connection, not who made it.
 - `ex-publisher`: the shipped `claude` rule shows for Anthropic's program only.
+- `ex-planted`: a row another process wrote into the database's rule table is no rule, unless
+  it is a model's answer for the exact item, and the shipped rules do not depend on the
+  database (ADR-0005).
 - `ex-redaction`: the prompt carries the item and facts as one JSON line; the key and the
   facts share one redaction, set by what the item is. The default instructions go out as
   written, and edited ones lose the login, the Mac's names and addresses.
@@ -142,6 +145,19 @@ Preconditions:
   `Explain` stores a second answer. Put `a` back: `Model answer, confirmed by you`. `$V db
   "select pattern, identity, confirmed is not null from rule where source = 'llm'"`: two
   rows, `script:<dir>/a/updater` confirmed and `script:<dir>/b/updater` not.
+- **Rows another process wrote.** With `sqlite3`, put rows into the copy's `rule` table and
+  open the detail each would answer for. For a process and for a listener, a `builtin` or
+  `user` row carrying the program's own identity, a pattern row (`builtin` `*:*` for ports,
+  `llm` `*:*` with a confirmed date), and an `llm` row whose `risk` is no level: each detail
+  reads as it did without the row, `No explanation yet.` or the shipped rule, never the
+  row's text. An `llm` row for the exact item with the program's identity does answer, as
+  `Model answer, unconfirmed`, or `Model answer, confirmed by you` with a confirmed date.
+  `drop table rule` with the copy running: the shipped rules still show, and `Explain` and
+  `Confirm` fail with `no such table: rule`. On a fresh database, after a launch, `$V db
+  "select count(*) from rule where source != 'llm'"` and `$V db "select count(*) from setting
+  where key like 'seed.%'"` are both 0. A host's rows need a named connection: a `user` or
+  `builtin` host row with the category `relay` or `ech-cover` leaves the Network row a plain
+  destination, and an unreadable `llm` row for `mask.icloud.com` leaves it `relayed`.
 - **An answer nothing can keep.** A launch agent running `/bin/sh -c "while :; do sleep 5;
   done"`, row `sh,`: `Signed by unnamed code`, `No explanation yet.` `Explain` shows the
   answer with no `Confirm`, and it is still there after the tab refreshes; `$V db "select
@@ -286,6 +302,15 @@ Preconditions:
   development Mac, the only one with either, run `2026-11-08T185833`. A host's whole-name rule, a
   tailnet name, an address spelled with hyphens and a public bound address rest on unit tests:
   `connect` reaches only its approved hosts, and neither Mac holds a public address.
+- Rows another process wrote proven 2026-11-15 on the test Mac, for processes and ports:
+  planted `builtin`, `user`, pattern and unreadable rows answered for nothing, only an exact
+  `llm` row answered, the shipped rules showed after the rule table was dropped, `Explain` and
+  `Confirm` worked and failed with `no such table: rule` after the drop, and a fresh database
+  held no shipped row and no `seed.*` key. The host rows were not run in the app, since a named
+  connection there waits for the test Mac's password, and rest on unit tests: the relay and
+  cover kinds (`testAPlantedHostRowDoesNotMakeADestinationReadRelayed`) and
+  `mask.icloud.com` with an unreadable row
+  (`testAPlantedRowThatCannotBeReadDoesNotUnmakeARelay`), in `PlantedRuleTests`.
 - The shared path and host rules proven 2026-11-08 on the test Mac at `996b934`, run
   `2026-11-08T201245`, its prompts copied with it to `build/verify/runs/test-mac-2026-11-08/`: the
   firmlink, an unmounted disk, a mounted disk named for the login, a project's `users/<login>`

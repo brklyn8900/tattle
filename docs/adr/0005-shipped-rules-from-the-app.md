@@ -44,9 +44,9 @@ the shipped rule about it. The row stayed until the seed file next changed.
   does not depend on the database. The user's own confirmed answers are kept and read as
   before.
 - **A shipped rule is as hard to change as the app.** The rules are files in the bundle's
-  `Contents/Resources/knowledge`. Whether macOS refuses to start an app whose resource
-  file was changed after its first launch is unverified; the executable does not hold the
-  files' hashes.
+  `Contents/Resources/knowledge`. A changed file breaks the code seal, but macOS still
+  launched an ad hoc signed app with one and showed no alert (the test Mac, 2026-11-15);
+  the executable does not hold the files' hashes.
 - **No rule of the user's own.** No screen makes a `user` rule, and a `user` row in the
   database is not read. A rule editor needs a storage decision of its own, and so does
   promoting a model's proposed pattern at confirmation.

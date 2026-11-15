@@ -74,7 +74,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27; an answer going with its code and one version of it, the shipped `claude` rule
   a host's prompt, a command that holds none of Tattle's grants and the Claude Code preset
-  2026-11-08.
+  2026-11-08; rows another process wrote into the rule table, for processes and ports,
+  2026-11-15.
 - [Panel open and closed](./panel.md): closing the panel keeps its views and stops their
   work, and what reopening shows. Proven 2026-11-09.
 - [App icon and menu bar glyph](./icon.md): the bundle's icon and the menu bar eye, running
