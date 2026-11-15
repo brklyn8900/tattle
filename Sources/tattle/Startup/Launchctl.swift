@@ -15,6 +15,8 @@ struct LaunchctlState: Equatable, Sendable {
         var services: [String: Service] = [:]
         /// Labels with a launchd override, and whether it is disabled.
         var overrides: [String: Bool] = [:]
+        /// Why the domain could not be read, nil when it was: its jobs' state is then not known.
+        var unread: String? = nil
     }
 
     /// `gui/<uid>`: agents of the logged-in session.
@@ -25,11 +27,24 @@ struct LaunchctlState: Equatable, Sendable {
 
     static func read() -> LaunchctlState {
         // One run per domain: `print` ends with the overrides `print-disabled` lists.
-        func domain(_ name: String) -> Domain {
-            let output = run(["print", name])
-            return Domain(services: parseServices(output), overrides: parseOverrides(output))
+        func read(_ domain: LaunchDomain) -> Domain {
+            Self.domain(domain.name, printed: try? Launchctl.run(["print", domain.name]))
         }
-        return LaunchctlState(gui: domain(LaunchDomain.gui.name), user: domain(LaunchDomain.user.name), system: domain(LaunchDomain.system.name))
+        return LaunchctlState(gui: read(.gui), user: read(.user), system: read(.system))
+    }
+
+    /// A domain from what `launchctl print <name>` gave; `result` is nil when it could not start.
+    /// A run that fails, or prints no list of jobs, leaves the domain unread rather than empty.
+    static func domain(_ name: String, printed result: (status: Int32, stdout: String, stderr: String)?) -> Domain {
+        guard let result else { return Domain(unread: "launchctl could not be started") }
+        guard result.status == 0 else {
+            let message = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return Domain(unread: "launchctl print \(name) failed with status \(result.status)" + (message.isEmpty ? "" : ": \(message)"))
+        }
+        guard result.stdout.split(separator: "\n").contains(where: { $0.hasSuffix("services = {") }) else {
+            return Domain(unread: "launchctl print \(name) listed no jobs")
+        }
+        return Domain(services: parseServices(result.stdout), overrides: parseOverrides(result.stdout))
     }
 
     subscript(_ domain: LaunchDomain) -> Domain {
@@ -72,10 +87,6 @@ struct LaunchctlState: Equatable, Sendable {
             else if trimmed.hasSuffix("=> enabled") { overrides[label] = false }
         }
         return overrides
-    }
-
-    private static func run(_ arguments: [String]) -> String {
-        (try? Launchctl.run(arguments))?.stdout ?? ""
     }
 }
 

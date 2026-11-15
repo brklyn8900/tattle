@@ -224,6 +224,22 @@ final class StartupSnapshotTests: XCTestCase {
         ])
     }
 
+    func testAJobInADomainLaunchctlCouldNotReadHasNoKnownState() {
+        let launchd = LaunchdReader.Result(items: [job("loaded"), job("absent", disabled: true)], appleCount: 0, unreadable: [])
+        var state = LaunchctlState()
+        state.gui = LaunchctlState.domain("gui/501", printed: (status: 113, stdout: "", stderr: "Could not find domain\n"))
+        let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil })
+        let reason = "launchctl print gui/501 failed with status 113: Could not find domain"
+        XCTAssertEqual(snapshot.items.map(\.state), [.unknown(reason: reason), .unknown(reason: reason)])
+        XCTAssertTrue(snapshot.items[0].facts.contains(Fact(name: "Reason", value: reason)))
+
+        XCTAssertEqual(LaunchctlState.domain("gui/501", printed: (status: 0, stdout: "", stderr: "")).unread, "launchctl print gui/501 listed no jobs")
+        XCTAssertEqual(LaunchctlState.domain("gui/501", printed: nil).unread, "launchctl could not be started")
+        let empty = LaunchctlState.domain("gui/501", printed: (status: 0, stdout: "gui/501 = {\n\tservices = {\n\t}\n}\n", stderr: ""))
+        XCTAssertNil(empty.unread, "a domain with no jobs is read")
+        XCTAssertEqual(empty.services, [:])
+    }
+
     /// An agent limited to the Background session loads in `user/<uid>`, not `gui/<uid>`.
     func testABackgroundAgentReadsTheUserDomain() throws {
         func agent(_ label: String, _ sessions: [String]) -> LaunchdItem {

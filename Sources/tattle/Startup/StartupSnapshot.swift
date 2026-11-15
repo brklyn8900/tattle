@@ -41,6 +41,8 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         case unreadable(reason: String)
         /// A folder Tattle could not list: launchd may still run the jobs in it.
         case unlisted(reason: String)
+        /// launchd's domain could not be read, so whether the job is loaded is not known.
+        case unknown(reason: String)
 
         var text: String {
             switch self {
@@ -54,6 +56,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
             case .off: "off"
             case .unreadable: "could not be read"
             case .unlisted: "could not be listed"
+            case .unknown: "state not known"
             }
         }
 
@@ -152,7 +155,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         facts.append(Fact(name: "When", value: trigger ?? "unknown"))
         facts.append(Fact(name: "State", value: state.text))
         switch state {
-        case .unreadable(let reason), .unlisted(let reason): facts.append(Fact(name: "Reason", value: reason))
+        case .unreadable(let reason), .unlisted(let reason), .unknown(let reason): facts.append(Fact(name: "Reason", value: reason))
         default: break
         }
         if let signature {
@@ -293,6 +296,7 @@ struct StartupSnapshot: Equatable, Sendable {
             if let pid = service.pid { return .running(pid: pid) }
             return .idle(lastExitStatus: service.lastExitStatus)
         }
+        if let reason = domains.lazy.compactMap(\.unread).first { return .unknown(reason: reason) }
         return domains.lazy.compactMap({ $0.overrides[job.label] }).first ?? job.disabled ? .disabled : .notLoaded
     }
 
