@@ -26,12 +26,13 @@ struct ConnectionOwner: Equatable, Sendable {
     var displayName: String { app?.name ?? processName }
     var groupID: String { app?.path ?? "process:\(processName)" }
     /// Not a signer the app's signature names, for a file in the app's bundle that the signer
-    /// did not sign. A reading that names no one stays.
+    /// did not sign or that is not the code the process runs (`isForeignToApp`). A reading
+    /// that names no one stays.
     var groupSignature: CodeSignature? {
         guard app != nil else { return signature }
         return isForeignToApp && appSignature?.namesSigner == true ? nil : appSignature
     }
-    /// None for a file in the app's bundle that its signer did not sign.
+    /// None for such a file in the app's bundle.
     var groupIdentity: CodeIdentity? {
         guard let app else { return identity }
         return isForeignToApp ? nil : CodeIdentity.of(appSignature, path: app.path)
@@ -244,7 +245,8 @@ struct ConnectionGroup: Equatable, Sendable, Identifiable {
     /// Who signed the row's program, when its connections all say the same: a process that
     /// took the name shares the row, so the newest connection's alone could name Apple over
     /// the impostor's connections. Not the app's signer with a connection from a file in the
-    /// app's bundle that the signer did not sign (`ConnectionOwner.groupSignature`).
+    /// app's bundle that the signer did not sign or that is not the code its process runs
+    /// (`ConnectionOwner.groupSignature`).
     var signature: CodeSignature? {
         guard let newest = connections.first?.owner.groupSignature,
               connections.allSatisfy({ newest.isSameSigner(as: $0.owner.groupSignature) }) else { return nil }

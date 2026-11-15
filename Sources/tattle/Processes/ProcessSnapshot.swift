@@ -185,11 +185,12 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// Members by memory, largest first.
     var members: [ProcessItem]
     /// Who signed the row's program: the app, or the top process. A signer the app's signature
-    /// names is not shown while a file in its bundle that the signer did not sign is running;
-    /// a reading that names no one stays, and each member keeps its own.
+    /// names is not shown while a file in its bundle is running that the signer did not sign,
+    /// or that is not the code its process runs (`AppBundle.holdsForeign`); a reading that
+    /// names no one stays, and each member keeps its own.
     var signature: CodeSignature?
     /// What tells the row's program from another's of its name: the app, or the top process.
-    /// None while a file in the app's bundle that its signer did not sign is running.
+    /// None while such a file in the app's bundle is running.
     var identity: CodeIdentity?
     /// The member `leader` names.
     var leaderPid: Int32?
