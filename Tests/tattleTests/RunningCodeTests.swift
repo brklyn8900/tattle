@@ -39,6 +39,7 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertEqual(ProcessTable.pidPath(pid), path, "the kernel names the same path")
         XCTAssertEqual(cache.signature(at: path)?.identifier, "com.apple.cat", "the file reads as what is there now")
         XCTAssertNil(cache.signature(of: pid, at: path), "which is not what the process runs")
+        XCTAssertTrue(cache.reading(of: pid, at: path).differsFromFile, "and the kernel holds the code it runs as it was signed")
         XCTAssertNil(cache.signature(of: pid, at: path), "nor at the next reading")
         XCTAssertNil(SignatureCache().signature(of: pid, at: path), "nor to a reader that never saw the first file")
 
@@ -212,6 +213,9 @@ final class RunningCodeTests: XCTestCase {
         machine.duringCheck = nil
         machine.ended = [9]
         XCTAssertFalse(differs(9), "a process that has ended reads as its file")
+        machine.code?.status = RunningCode.signedStatus
+        XCTAssertNil(machine.signer(of: 11))
+        XCTAssertFalse(differs(11), "code changed in memory, whatever the file holds")
         machine.code?.status = 1
         XCTAssertTrue(differs(10), "unsigned code under a file that names a signer")
         machine.signature = CodeSignature(signer: .adHoc)

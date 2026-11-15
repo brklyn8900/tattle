@@ -53,7 +53,7 @@ it is no longer on disk. The row of an app that loses its signer for such a file
 same, unless the bundle also holds a file its signer did not sign; a signature that was not
 read, or read while the file or the process changed, says nothing. The check fails too for
 code the kernel no longer holds as it was signed, such as a program that changed its own
-code in memory, though its file is untouched and its row says the same. What
+code in memory, though its file is untouched: that row says nothing of the disk. What
 says the running code is still the code last checked is the kernel's hash of it and its
 code-signing status, read with `csops`, which is in libSystem and in no SDK header: it is
 resolved at run time. Without it every reading makes the check, and a process on its way

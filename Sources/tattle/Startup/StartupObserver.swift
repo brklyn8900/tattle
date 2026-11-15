@@ -88,8 +88,10 @@ final class SignatureCache: @unchecked Sendable {
     struct ProcessReading: Sendable {
         var signature: CodeSignature?
         var isSettled = true
-        /// The file was checked and is not the code the process runs, which is why the reading
-        /// has no signature: not that none was read or that the reading did not settle.
+        /// The file was checked and is not the code the process runs, while the kernel holds
+        /// that code as it was signed: the file changed on disk since the process started. It
+        /// is why the reading has no signature, not that none was read or that the reading did
+        /// not settle. Not set for code changed in memory, which has no signature either.
         var differsFromFile = false
     }
 
@@ -108,7 +110,20 @@ final class SignatureCache: @unchecked Sendable {
         }
         guard let runs = runs(pid, entry, isSettled: isSettled, at: path) else { return ProcessReading(isSettled: false) }
         // A process that has ended reads as its file whether or not the file's reading settled.
-        return ProcessReading(signature: runs ? entry.signature : nil, isSettled: isSettled, differsFromFile: !runs)
+        return ProcessReading(signature: runs == .itsFile ? entry.signature : nil, isSettled: isSettled, differsFromFile: runs == .anotherFile)
+    }
+
+    /// What a process runs, against the file at its path.
+    private enum Runs {
+        case itsFile
+        /// The code of another file: unsigned code, or code the kernel holds as it was signed.
+        case anotherFile
+        /// Code the kernel no longer holds as it was signed.
+        case changedInMemory
+
+        init(matches: Bool, _ code: RunningCode.State) {
+            self = matches ? .itsFile : code.isInvalid ? .changedInMemory : .anotherFile
+        }
     }
 
     /// The signature at `path`, with the files it rests on and their versions from before it
@@ -135,21 +150,21 @@ final class SignatureCache: @unchecked Sendable {
     /// together with the versions of the files, and counts only when neither changed while the
     /// check was made: what changed meanwhile may not be what was checked. A process that has
     /// ended runs nothing, and reads as its file does.
-    private func runs(_ pid: Int32, _ entry: Entry, isSettled: Bool, at path: String) -> Bool? {
-        guard let code = running(pid) else { return true }
+    private func runs(_ pid: Int32, _ entry: Entry, isSettled: Bool, at path: String) -> Runs? {
+        guard let code = running(pid) else { return .itsFile }
         guard isSettled, code.path == path else { return nil }
         // Unsigned code is not a file that names a signer, and with no hash for it a check
         // would be made every time.
-        if code.isUnsigned { return false }
+        if code.isUnsigned { return .anotherFile }
         // Without the kernel's hash nothing says the code is the code last checked.
         if code.hash != nil, let kept = lock.withLock({ verdicts[pid] }), kept.code == code, kept.versions == entry.versions {
-            return kept.matches
+            return Runs(matches: kept.matches, code)
         }
         let matches = matchesFile(pid)
-        guard let after = running(pid) else { return true }
+        guard let after = running(pid) else { return .itsFile }
         guard after == code, Self.versions(of: path, entry.files) == entry.versions else { return nil }
         if code.hash != nil { keep(Verdict(code: code, versions: entry.versions, matches: matches), for: pid) }
-        return matches
+        return Runs(matches: matches, code)
     }
 
     private func keep(_ verdict: Verdict, for pid: Int32) {

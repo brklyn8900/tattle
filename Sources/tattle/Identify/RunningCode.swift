@@ -19,6 +19,10 @@ enum RunningCode {
         /// The kernel describes the process and holds no signature for its code. Told by the
         /// status and not by a missing hash, which the kernel may withhold for another reason.
         var isUnsigned: Bool { status.map { $0 & RunningCode.signedStatus == 0 } ?? false }
+
+        /// The kernel describes the process and no longer holds its code as it was signed: a
+        /// page of it changed in memory, whatever the file holds.
+        var isInvalid: Bool { status.map { $0 & RunningCode.validStatus == 0 } ?? false }
     }
 
     /// Nil once the process has ended, is a zombie, or is on its way out, when it runs
@@ -61,4 +65,6 @@ enum RunningCode {
     private static let hashLength = 20
     /// `CS_SIGNED` in the kernel's `kern/cs_blobs.h`: the process has a signature.
     static let signedStatus: UInt32 = 0x2000_0000
+    /// `CS_VALID` there: the kernel holds the process's code as it was signed.
+    static let validStatus: UInt32 = 0x1
 }
