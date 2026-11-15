@@ -132,11 +132,18 @@ final class CaptureFilterTests: XCTestCase {
                 XCTAssertEqual(Interpreter.run(filter, on: frame), CaptureFilter.snapLength, "IPv\(family): the filter passes it")
                 return namer.observe(try XCTUnwrap(Packet.parse(frame, dlt: PacketCapture.linkEthernet)), at: 1_700_000_000)
             }
-            var namer = FlowNamer(localAddresses: [IPAddress(bytes: me)], resolvers: [IPAddress(bytes: resolver)], hardwareAddress: mac)
+            // A Mac that resolves through a proxy of its own has a loopback address as resolver.
+            let loopback: [UInt8] = family == 4 ? [127, 0, 0, 1] : [UInt8](repeating: 0, count: 15) + [1]
+            var namer = FlowNamer(localAddresses: [IPAddress(bytes: me), IPAddress(bytes: loopback)],
+                                  resolvers: [IPAddress(bytes: resolver), IPAddress(bytes: loopback)], hardwareAddress: mac)
 
             let forged = ethernet(from: otherMac, to: mac, ip(from: me, to: peer, udp(sourcePort: 53, destinationPort: 443, payload: initial)))
             XCTAssertEqual(try read(forged, by: &namer), [], "IPv\(family): another host's frame is not this Mac's connection")
             XCTAssertEqual(namer.flowCount, 0, "IPv\(family)")
+
+            let forgedReply = ethernet(from: otherMac, to: mac, ip(from: loopback, to: me, udp(sourcePort: 53, destinationPort: 60000, payload: reply)))
+            XCTAssertEqual(try read(forgedReply, by: &namer), [], "IPv\(family)")
+            XCTAssertEqual(namer.dnsCount, 0, "IPv\(family): nor is it a reply from this Mac's own resolver")
 
             let answered = ethernet(from: otherMac, to: mac, ip(from: resolver, to: me, udp(sourcePort: 53, destinationPort: 60000, payload: reply)))
             XCTAssertEqual(try read(answered, by: &namer), [], "IPv\(family)")

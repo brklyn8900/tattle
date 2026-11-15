@@ -176,18 +176,20 @@ struct FlowNamer: Sendable {
         !local.contains(p.src) && !local.contains(p.dst) && !p.dst.isLocalScope
     }
 
-    /// Whether this Mac sent the packet. Its IP source is whatever the sender wrote, and any
-    /// host on the network can write this Mac's, so where frames carry a hardware address
-    /// the frame must also come from the interface's own, which is how the kernel filter
-    /// tells direction. A link without one (a tunnel) has only the IP source to go by.
-    private func sent(_ p: Packet) -> Bool {
-        guard local.contains(p.src) else { return false }
+    /// Whether a packet under one of this Mac's addresses came from this Mac. Its IP source
+    /// is whatever the sender wrote, and any host on the network can write this Mac's, so
+    /// where frames carry a hardware address the frame must come from the interface's own,
+    /// which is how the kernel filter tells direction. A link without one (a tunnel) has only
+    /// the IP source to go by.
+    private func isFromInterface(_ p: Packet) -> Bool {
         guard let hardwareAddress else { return true }
         return p.linkSource.map { $0.elementsEqual(hardwareAddress) } ?? false
     }
 
     mutating func observe(_ p: Packet, at ts: Double) -> [FlowEvent] {
-        let outbound = sent(p)
+        // Under this Mac's address but from another host: neither sent nor a reply to it.
+        let outbound = local.contains(p.src)
+        guard !outbound || isFromInterface(p) else { return [] }
         if p.proto == .udp && p.srcPort == 53 && !outbound {
             // Only an answer from a resolver this Mac asks, sent to this Mac, may name
             // addresses: any host on the network can broadcast a reply.
