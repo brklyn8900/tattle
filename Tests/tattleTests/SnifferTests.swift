@@ -166,8 +166,9 @@ final class SnifferTests: XCTestCase {
     }
 
     /// What a sniffer on en0 reports for a DNS reply from `resolver`, a host on the link, to
-    /// `mine`, and then this Mac's SYN to the address the reply names.
-    private func eventsAfterAReply(from resolver: IPAddress, to mine: IPAddress) -> [FlowEvent] {
+    /// `mine`, and then this Mac's SYN to the address the reply names. Any other interface of
+    /// this Mac holds `elsewhere`, for a sniffer that asked.
+    private func eventsAfterAReply(from resolver: IPAddress, to mine: IPAddress, elsewhere: Set<IPAddress>) -> [FlowEvent] {
         let mac = Self.first
         let reply = Self.reply(from: resolver, to: mine)
         let own: Set<IPAddress> = [Self.me, mine]
@@ -176,7 +177,7 @@ final class SnifferTests: XCTestCase {
         let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
         let sniffer = Sniffer(open: { _ in capture },
                               host: Sniffer.Host(primaryInterface: { "en0" }, hardwareAddress: { _ in mac },
-                                                 addresses: { _ in own }, resolvers: { [resolver] }),
+                                                 addresses: { $0 == "en0" ? own : elsewhere }, resolvers: { [resolver] }),
                               onEvents: { new in events.withLock { $0 += new } }, onStatus: { _ in })
         defer { sniffer.stop() }
         sniffer.start()
@@ -267,14 +268,16 @@ final class SnifferTests: XCTestCase {
     func testARouterAtLoopbacksLinkLocalAddressNamesAFlowByDNS() {
         let router = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 13) + [1])
         let mine = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd])
-        XCTAssertEqual(eventsAfterAReply(from: router, to: mine), Self.namedByDNS)
+        let loopback: Set<IPAddress> = [router, IPAddress(bytes: [127, 0, 0, 1]), IPAddress(bytes: [UInt8](repeating: 0, count: 15) + [1])]
+        XCTAssertEqual(eventsAfterAReply(from: router, to: mine, elsewhere: loopback), Self.namedByDNS)
     }
 
     /// The same for a resolver on a subnet that a bridge of this Mac's numbers too, as the
     /// one internet sharing or a virtual machine's network makes: 192.168.2.1 is the address
     /// internet sharing gives its bridge.
     func testAResolverAtAnAddressAnotherInterfaceHoldsNamesAFlowByDNS() {
-        XCTAssertEqual(eventsAfterAReply(from: IPAddress(bytes: [192, 168, 2, 1]), to: Self.me), Self.namedByDNS)
+        let resolver = IPAddress(bytes: [192, 168, 2, 1])
+        XCTAssertEqual(eventsAfterAReply(from: resolver, to: Self.me, elsewhere: [resolver]), Self.namedByDNS)
     }
 
     /// A tunnel's frames carry no hardware address, so the IP source alone tells direction,
