@@ -342,7 +342,21 @@ final class SnifferParserTests: XCTestCase {
         reply[7] = 2
         reply += [0xc0, 0x0c, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x0e, 0x10, 0x00, 0x00]  // CNAME, RDLENGTH 0
         reply += [1, 0x78, 0, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 17, 253, 144, 10]  // "x" A 17.253.144.10
-        XCTAssertEqual(DNS.parseReply(reply[...])?.addresses ?? [], [])
+        let parsed = DNS.parseReply(reply[...])
+        XCTAssertEqual(parsed?.name, "www.example.com")
+        XCTAssertEqual(parsed?.addresses, [])
+    }
+
+    /// A CNAME whose name runs past its RDATA drops only that alias: the question and its own
+    /// records still parse, as they did before the alias was bounded.
+    func testDNSDropsOnlyACNAMEThatRunsPastItsRecord() {
+        var reply = Array(Self.compressedReply.prefix(33))
+        reply[7] = 2
+        reply += [0xc0, 0x0c, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x0e, 0x10, 0x00, 0x00]  // CNAME, RDLENGTH 0
+        reply += [0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 93, 184, 216, 34]  // its own A
+        let parsed = DNS.parseReply(reply[...])
+        XCTAssertEqual(parsed?.name, "www.example.com")
+        XCTAssertEqual(parsed?.addresses.map(\.text), ["93.184.216.34"])
     }
 
     func testDNSIgnoresQueriesAndPointerLoops() {

@@ -44,7 +44,10 @@ enum DNS {
                     records.append((owner.text, IPAddress(bytes: Array(rdata))))
                 } else if type == 5 {
                     var target = ByteReader(bytes, from: start, to: start + rdlen)
-                    if let alias = try readName(bytes, &target, &walk) { aliases[owner.text, default: []].append(alias.text) }
+                    // A target that runs past its RDATA is no alias; the rest of the reply stands.
+                    do {
+                        if let alias = try readName(bytes, &target, &walk) { aliases[owner.text, default: []].append(alias.text) }
+                    } catch NameError.pastRecord {}
                 }
             }
             // Every name the question reaches through CNAMEs, each visited once.
@@ -59,10 +62,13 @@ enum DNS {
         }
     }
 
+    /// A name whose bytes in the stream run past the reader's end, inside the reply.
+    private enum NameError: Error { case pastRecord }
+
     // Reads a name with RFC 1035 compression; the reader advances past the name as it
     // appears in the sequential stream, not past any pointer target. That part of the name
     // lies within the reader's end, a record's RDATA for a CNAME; a pointer can lead anywhere
-    // in the reply. Nil for a name that is
+    // in the reply. A name that runs past that end throws `NameError.pastRecord`. Nil for a name that is
     // not a host name; a label holding a dot is one, since joining would hide it. Each label
     // and pointer spends one of the reply's `walk`. Throws for a name past RFC 1035's 255
     // bytes or a walk past the reply's limit: the walk stops inside the name, so where it
@@ -75,7 +81,9 @@ enum DNS {
         var hops = 0
         while true {
             let end = jumped ? bytes.count : r.end
-            guard pos < end else { throw ByteReader.ParseError.short }
+            // Past a record's end but inside the reply: the record is wrong, not the reply.
+            func short(_ inReply: Bool) -> Error { inReply ? NameError.pastRecord : ByteReader.ParseError.short }
+            guard pos < end else { throw short(pos < bytes.count) }
             let len = Int(bytes[pos])
             if len == 0 {
                 pos += 1
@@ -85,7 +93,7 @@ enum DNS {
             walk -= 1
             guard walk >= 0 else { throw ByteReader.ParseError.short }
             if len & 0xc0 == 0xc0 {
-                guard pos + 1 < end else { throw ByteReader.ParseError.short }
+                guard pos + 1 < end else { throw short(pos + 1 < bytes.count) }
                 let target = ((len & 0x3f) << 8) | Int(bytes[pos + 1])
                 if !jumped { r.pos = pos + 2 }
                 jumped = true
@@ -94,7 +102,7 @@ enum DNS {
                 guard hops < 64 else { throw ByteReader.ParseError.short }
                 continue
             }
-            guard pos + 1 + len <= end else { throw ByteReader.ParseError.short }
+            guard pos + 1 + len <= end else { throw short(pos + 1 + len <= bytes.count) }
             length += 1 + len
             guard length <= 255 else { throw ByteReader.ParseError.short }
             labels.append(bytes[(pos + 1)..<(pos + 1 + len)])
