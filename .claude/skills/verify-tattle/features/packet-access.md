@@ -151,7 +151,9 @@ Preconditions:
   `Contents/Resources/AppIcon.icns`, then `Install`. `ditto` copies the lock, so the script
   stops at `chown -R root:wheel`. The view shows the command's own line, `execution error:
   chown: /Library/PrivilegedHelperTools/.<stage>/Tattle.app/Contents/Resources/AppIcon.icns:
-  Operation not permitted (1)` (backlog); the log reads `broker install failed: <private>`;
-  no plist and no helper is left.
+  Operation not permitted (1)`; the log reads `broker install failed: <private>`;
+  no plist and no helper is left. Since `9e30597` the script refuses a Finder-locked copy
+  before `chown`, in a sentence of its own; that needs the test Mac's password and rests on
+  `testALockedFileFailsOneInstallAndWedgesNone` (2026-11-15).
 - Not proven: Cancel, `Install for this account`, and a second account
   against the installed daemon (to run on the test Mac).

@@ -321,3 +321,8 @@ Preconditions:
   from the two adversarial reviews is pinned in `testEveryInputFromBothReviews`.
 - A script's facts name its interpreter, not its own path (`Runs with: bash (/bin/bash)`), so a
   folder name in a script's path cannot be read from a process's prompt: use a plist's `Runs`.
+- A command that leaves its own process group proven 2026-11-15 on the test Mac, on the commits up
+  to `8b43e0b` before they were rebased: a custom command
+  `exec perl -MPOSIX -e 'POSIX::setpgid(0, getpgrp(getppid())); sleep 600'` ended at the 120 s
+  timeout and its process was gone. A tailnet name with an underscore label cannot be seen in
+  the panel and rests on `testATailnetNameIsReplaced`.

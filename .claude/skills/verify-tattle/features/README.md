@@ -58,7 +58,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   Proven 2026-10-25; a command line's signer 2026-11-07; Apple's developer tools, copies
   of them, `open`'s long options, xcrun, registered items and launch items running Apple's
   programs, a loaded job's state, plists that cannot be read and a daemon's controls
-  2026-11-08; an item gone under its open detail 2026-11-10.
+  2026-11-08; an item gone under its open detail 2026-11-10; arch, a long wrapper chain, a
+  label with a space and an agent's PATH 2026-11-15.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
   CPU, and Quit. Proven 2026-10-25; the macOS row, a script started by launchd, standard
   input under launchd, Python (with the Command Line Tools, with Xcode, and a Tk window),
@@ -74,8 +75,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   shipped rules, and what the prompt sends, through a local fake provider. Proven
   2026-10-27; an answer going with its code and one version of it, the shipped `claude` rule
   a host's prompt, a command that holds none of Tattle's grants and the Claude Code preset
-  2026-11-08; rows another process wrote into the rule table, for processes and ports,
-  2026-11-15.
+  2026-11-08; rows another process wrote into the rule table, for processes and ports, and a
+  command that leaves its process group, 2026-11-15.
 - [Panel open and closed](./panel.md): closing the panel keeps its views and stops their
   work, and what reopening shows. Proven 2026-11-09.
 - [App icon and menu bar glyph](./icon.md): the bundle's icon and the menu bar eye, running

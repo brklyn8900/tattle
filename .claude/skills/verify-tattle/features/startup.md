@@ -219,3 +219,14 @@ Preconditions:
   agent's plist, not loaded, deleted under its open detail; the panel closed and opened, with
   no `Refresh`: `No longer installed.` and `Load` gone. Copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-10/`. Not driven: the broker's row after `Remove`.
+- The refutation fixes proven 2026-11-15 on the test Mac, on the commits up to `8b43e0b` before
+  they were rebased; no run folder was copied to this Mac. `/usr/bin/arch` with no architecture
+  flag and with `-x86_64 -h` showed no signer, with `-x86_64` the program's; 40 `/usr/bin/nohup`
+  words before a program showed no signer and Startup stayed up, 30 showed the program's; a
+  running agent labelled with a space read `running, pid N`; an agent whose PATH starts with a
+  folder it cannot search showed the file found later on the PATH; every other row read as on
+  `main`. Unit-tested only: the daemon half of the PATH case and launchctl failing or listing
+  no jobs (`state not known` with its Reason), since a root-only daemon plist needs the test
+  Mac's password and launchctl cannot be made to fail under the app
+  (`testADaemonsProgramIsFoundAsRootFindsIt`,
+  `testAJobInADomainLaunchctlCouldNotReadHasNoKnownState`).

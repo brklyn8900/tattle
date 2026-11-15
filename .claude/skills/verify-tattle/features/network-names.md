@@ -349,3 +349,6 @@ Preconditions:
   peer rest on unit tests (`testAQUICStreamThatIsNoClientHelloEndsAtOnceAsOverTCP`,
   `testASocketAnotherProcessUsedLastIsTheSameConnection`,
   `testFirstContactCountsOnlyThisMacReachingOut`).
+- A CNAME read only inside its RDATA cannot be seen in the panel: it rests on
+  `testDNSReadsACNAMETargetOnlyInsideItsRecord` and `testDNSDropsOnlyACNAMEThatRunsPastItsRecord`
+  (2026-11-15).
