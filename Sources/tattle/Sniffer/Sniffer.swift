@@ -219,6 +219,9 @@ final class Sniffer: @unchecked Sendable {
                     return
                 }
                 follow(capture, interface: interface, installed: &installed, namer: &namer)
+                // An address the interface has gained is this Mac's from here on; a packet
+                // from it tells sooner, a reply sent to it does not.
+                namer.updateLocalAddresses(host.addresses(interface))
             }
         }
     }
