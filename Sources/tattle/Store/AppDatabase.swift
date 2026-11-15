@@ -73,38 +73,32 @@ struct AppDatabase: Sendable {
         self.writer = writer
     }
 
-    /// The rule table, here for a model's answers and in memory for the shipped rules
-    /// (`RuleStore`).
-    static func createRuleTable(in db: Database) throws {
-        try db.create(table: "rule") { t in
-            t.autoIncrementedPrimaryKey("id")
-            t.column("kind", .text).notNull()
-            t.column("match", .text).notNull()
-            t.column("pattern", .text).notNull()
-            t.column("owner", .text)
-            t.column("purpose", .text).notNull()
-            t.column("why", .text)
-            t.column("care", .text)
-            t.column("category", .text)
-            t.column("risk", .text)
-            t.column("confidence", .text)
-            t.column("source", .text).notNull()
-            // Empty, not null: SQLite treats nulls as distinct, so a key with one would
-            // never conflict.
-            t.column("identity", .text).notNull().defaults(to: "")
-            t.column("confirmed", .datetime)
-            t.column("created", .datetime).notNull()
-            // One rule per item and per program: a re-explained item or a reloaded seed
-            // replaces the earlier row instead of piling up duplicates, and an answer
-            // about one program with a name must not replace another's.
-            t.uniqueKey(["kind", "match", "pattern", "source", "identity"])
-        }
-    }
-
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1-schema") { db in
-            try createRuleTable(in: db)
+            try db.create(table: "rule") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull()
+                t.column("match", .text).notNull()
+                t.column("pattern", .text).notNull()
+                t.column("owner", .text)
+                t.column("purpose", .text).notNull()
+                t.column("why", .text)
+                t.column("care", .text)
+                t.column("category", .text)
+                t.column("risk", .text)
+                t.column("confidence", .text)
+                t.column("source", .text).notNull()
+                // Empty, not null: SQLite treats nulls as distinct, so a key with one would
+                // never conflict.
+                t.column("identity", .text).notNull().defaults(to: "")
+                t.column("confirmed", .datetime)
+                t.column("created", .datetime).notNull()
+                // One rule per item and per program: a re-explained item or a reloaded seed
+                // replaces the earlier row instead of piling up duplicates, and an answer
+                // about one program with a name must not replace another's.
+                t.uniqueKey(["kind", "match", "pattern", "source", "identity"])
+            }
             try db.create(table: "setting") { t in
                 t.primaryKey("key", .text)
                 t.column("value", .text).notNull()

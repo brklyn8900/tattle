@@ -8,14 +8,14 @@ import os
 /// or that holds a pattern, is not a rule (ADR-0005).
 struct RuleStore: Sendable {
     let database: AppDatabase
-    /// The shipped rules, where no other process writes. An SQLite table, so a pattern
-    /// matches here as it does in the file.
+    /// The shipped rules, where no other process writes: a database in memory, made by the
+    /// file's own migrations, so its rule table has the file's columns at every version.
     private let shipped: DatabaseQueue
 
     init(database: AppDatabase) throws {
         self.database = database
         shipped = try DatabaseQueue()
-        try shipped.write { try AppDatabase.createRuleTable(in: $0) }
+        try AppDatabase.migrator.migrate(shipped)
     }
 
     /// Counts the writes through this store and its copies, so a reader that remembers
