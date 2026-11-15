@@ -112,6 +112,12 @@
   earlier opening on its four-tuple, so it can land on an earlier connection's row, in
   history too, or miss its own (by reading, not run). Each outcome costs the main actor a
   write transaction of its own; one a batch would raise what it handles.
+- A DNS reply under the address of a resolver that is this Mac's own on another interface (a
+  DNS proxy bound to a bridge's or a tunnel's address, not to loopback) is taken from any host
+  on the capture link. Only the capture interface's addresses and loopback's count as this
+  Mac's there, because the same address can be another host's on that link, and such a reply
+  is the same packet as one from a resolver on a subnet a bridge of this Mac's also numbers
+  (`Sniffer.addresses`, `FlowNamer.swift`).
 - After the capture interface's hardware address changes under an open capture (Wi-Fi
   joining another network under a private address of its own; inferred, not observed), the
   kernel filter takes this Mac's frames for another host's and drops them until the next
@@ -288,8 +294,8 @@ what stays)
 - Coalesced QUIC Initials cost about 40 times an ordinary one, bounded per datagram. A local
   process can send them. So can a host on the network that forges this Mac's hardware address
   as well as its IP address (N25, not run), and whoever can put a packet on a tunnel under
-  one of this Mac's addresses: a link without hardware addresses has only the IP source to
-  tell direction by (`FlowNamer.swift`, `QUIC.swift`).
+  the tunnel's own address or a loopback one: a link without hardware addresses has only the
+  IP source to tell direction by (`FlowNamer.swift`, `QUIC.swift`).
 - The menu bar throughput label, on by default, resizes the status item as its digits change
   and goes with 8 wakeups a second against 3 with it off (`TattleApp.swift`). Correlated
   between two copies, not isolated.

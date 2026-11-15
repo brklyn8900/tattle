@@ -164,9 +164,12 @@ final class CaptureFilterTests: XCTestCase {
         let router: [UInt8] = [0xfe, 0x80] + [UInt8](repeating: 0, count: 13) + [1]
         let mine: [UInt8] = [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd]
         let loopback: [UInt8] = [UInt8](repeating: 0, count: 15) + [1]
-        let all = Set([myV6, mine, loopback, router].map(IPAddress.init(bytes:)))
+        let bridge: [UInt8] = [192, 168, 2, 1]
+        let all = Set([myV6, mine, loopback, router, [127, 0, 0, 1], bridge].map(IPAddress.init(bytes:)))
         let local = Sniffer.addresses(all, onLink: Set([myV6, mine].map(IPAddress.init(bytes:))))
-        XCTAssertEqual(local, Set([myV6, mine, loopback].map(IPAddress.init(bytes:))), "loopback's link-local address is not this link's")
+        XCTAssertEqual(local, Set([myV6, mine, loopback, [127, 0, 0, 1]].map(IPAddress.init(bytes:))),
+                       "the interface's own and loopback's, which no link carries; not loopback's link-local address, nor a bridge's")
+        XCTAssertEqual(Sniffer.addresses(all, onLink: []), [], "an interface with no address just now is no reading")
 
         let reply: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0x63, 0x64, 0x6e, 7, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 3, 0x6e, 0x65, 0x74, 0, 0, 1, 0, 1,
                               0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0x3c, 0, 4] + peerV4

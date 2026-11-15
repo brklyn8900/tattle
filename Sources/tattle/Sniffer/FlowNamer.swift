@@ -134,6 +134,8 @@ struct FlowNamer: Sendable {
         var finished: Bool { named || (tlsBuffer == nil && quicDone) }
     }
 
+    /// The addresses a packet on the capture interface can carry as this Mac's
+    /// (`Sniffer.addresses`).
     private var local: Set<IPAddress>
     private var resolvers: Set<IPAddress>
     /// The capture interface's hardware address, on a link whose frames carry one.

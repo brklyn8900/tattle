@@ -30,9 +30,9 @@ struct IPAddress: Hashable {
         return String(cBuffer: buf)
     }
 
-    /// An address that is unique on its own link only: 169.254/16, fe80::/10.
-    var isLinkLocal: Bool {
-        isV4 ? bytes[0] == 169 && bytes[1] == 254 : bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
+    /// A loopback address, which no link carries: 127/8, ::1.
+    var isLoopback: Bool {
+        isV4 ? bytes[0] == 127 : bytes[0..<15].allSatisfy { $0 == 0 } && bytes[15] == 1
     }
 
     // Destinations that never need a public name: private, loopback, link-local, multicast.

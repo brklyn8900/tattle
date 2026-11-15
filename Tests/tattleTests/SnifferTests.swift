@@ -165,35 +165,80 @@ final class SnifferTests: XCTestCase {
         }
     }
 
-    /// The namer's set of this Mac's addresses leaves out other links' link-local ones, so a
-    /// router that answers DNS from fe80::1, which loopback holds too, still names addresses.
-    func testARouterAtLoopbacksLinkLocalAddressNamesAFlowByDNS() {
-        let me = IPAddress(bytes: [192, 168, 1, 5])
-        let mine = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd])
-        let router = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 13) + [1])
-        let remote = IPAddress(bytes: [203, 0, 113, 7])
+    /// What a sniffer on en0 reports for a DNS reply from `resolver`, a host on the link, to
+    /// `mine`, and then this Mac's SYN to the address the reply names, when other interfaces of
+    /// this Mac hold `elsewhere`.
+    private func eventsAfterAReply(from resolver: IPAddress, to mine: IPAddress, elsewhere: Set<IPAddress>) -> [FlowEvent] {
         let mac: [UInt8] = [0x2a, 0, 0, 0, 0, 1], routerMac: [UInt8] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]
         let answer: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0x63, 0x64, 0x6e, 7, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 3, 0x6e, 0x65, 0x74, 0, 0, 1, 0, 1,
-                               0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0x3c, 0, 4] + remote.bytes
+                               0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0x3c, 0, 4] + Self.remote.bytes
         let datagram: [UInt8] = [0, 53, 0xea, 0x60, 0, UInt8(8 + answer.count), 0, 0] + answer
-        let reply: [UInt8] = mac + routerMac + [0x86, 0xdd, 0x60, 0, 0, 0, 0, UInt8(datagram.count), 17, 64] + router.bytes + mine.bytes + datagram
-        let syn: [UInt8] = routerMac + mac + [0x08, 0x00, 0x45, 0, 0, 40, 0, 0, 0, 0, 64, 6, 0, 0] + me.bytes + remote.bytes
-            + [0xc3, 0x51, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
-        let key = FlowKey(proto: .tcp, localPort: 50001, remote: remote, remotePort: 443)
+        let header: [UInt8] = resolver.isV4
+            ? [0x08, 0x00, 0x45, 0, 0, UInt8(20 + datagram.count), 0, 0, 0, 0, 64, 17, 0, 0]
+            : [0x86, 0xdd, 0x60, 0, 0, 0, 0, UInt8(datagram.count), 17, 64]
+        let reply = mac + routerMac + header + resolver.bytes + mine.bytes + datagram
+        let own: Set<IPAddress> = [Self.me, mine]
 
         let capture = Fed(linkType: PacketCapture.linkEthernet)
         let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
         let sniffer = Sniffer(open: { _ in capture },
                               host: Sniffer.Host(primaryInterface: { "en0" }, hardwareAddress: { _ in mac },
-                                                 addresses: { $0 == nil ? [me, mine, router] : [me, mine] }, resolvers: { [router] }),
+                                                 addresses: { $0 == nil ? own.union(elsewhere) : own }, resolvers: { [resolver] }),
                               onEvents: { new in events.withLock { $0 += new } }, onStatus: { _ in })
         defer { sniffer.stop() }
         sniffer.start()
         capture.feed([reply])
         // Opened long enough ago for the DNS fallback to be due at the next pass.
-        capture.feed([syn], secondsAgo: FlowNamer.dnsFallbackAfter + 1)
+        capture.feed([Self.syn(from: mac, port: 50001)], secondsAgo: FlowNamer.dnsFallbackAfter + 1)
+        _ = eventually { events.withLock { $0 }.count >= 2 }
+        return events.withLock { $0 }
+    }
+
+    private static let namedByDNS: [FlowEvent] = {
+        let key = FlowKey(proto: .tcp, localPort: 50001, remote: remote, remotePort: 443)
+        return [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("cdn.example.net", .dns))]
+    }()
+
+    /// An address another interface of this Mac holds can be another host's on the capture
+    /// link. Loopback holds fe80::1, and so do many routers, which answer DNS from it.
+    func testARouterAtLoopbacksLinkLocalAddressNamesAFlowByDNS() {
+        let router = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 13) + [1])
+        let mine = IPAddress(bytes: [0xfe, 0x80] + [UInt8](repeating: 0, count: 12) + [0xab, 0xcd])
+        XCTAssertEqual(eventsAfterAReply(from: router, to: mine, elsewhere: [router]), Self.namedByDNS)
+    }
+
+    /// The same for a resolver on a subnet that a bridge of this Mac's numbers too, as the
+    /// one internet sharing or a virtual machine's network makes.
+    func testAResolverAtAnAddressAnotherInterfaceHoldsNamesAFlowByDNS() {
+        let resolver = IPAddress(bytes: [192, 168, 2, 1])
+        XCTAssertEqual(eventsAfterAReply(from: resolver, to: Self.me, elsewhere: [resolver]), Self.namedByDNS)
+    }
+
+    /// A tunnel's frames carry no hardware address, so the IP source alone tells direction,
+    /// and there only the tunnel's own addresses are this Mac's, as they are to the kernel
+    /// filter: a packet under the LAN address did not leave through the tunnel.
+    func testOnATunnelOnlyTheTunnelsAddressesAreThisMacs() {
+        let tunnel = IPAddress(bytes: [10, 8, 0, 2])
+        let hello = SnifferParserTests.clientHello(sni: Array("tunnel.example".utf8))
+        let initial = SnifferParserTests.sealInitial([0x06, 0x00, 0x40 | UInt8(hello.count >> 8), UInt8(hello.count & 0xff)] + hello)
+        func datagram(from source: IPAddress, port: UInt16) -> [UInt8] {
+            let length = 8 + initial.count, total = 20 + length
+            return [2, 0, 0, 0, 0x45, 0, UInt8(total >> 8), UInt8(total & 0xff), 0, 0, 0, 0, 64, 17, 0, 0] + source.bytes + Self.remote.bytes
+                + [UInt8(port >> 8), UInt8(port & 0xff), 0x01, 0xbb, UInt8(length >> 8), UInt8(length & 0xff), 0, 0] + initial
+        }
+        let capture = Fed(linkType: PacketCapture.linkNull)
+        let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
+        let sniffer = Sniffer(open: { _ in capture },
+                              host: Sniffer.Host(primaryInterface: { "utun4" }, hardwareAddress: { _ in nil },
+                                                 addresses: { $0 == nil ? [Self.me, tunnel] : [tunnel] }, resolvers: { [] }),
+                              onEvents: { new in events.withLock { $0 += new } }, onStatus: { _ in })
+        defer { sniffer.stop() }
+        sniffer.start()
+        // From port 53 the kernel filter passes the first as a DNS reply.
+        capture.feed([datagram(from: Self.me, port: 53), datagram(from: tunnel, port: 50000)])
         XCTAssertTrue(eventually { events.withLock { $0 }.count >= 2 })
-        XCTAssertEqual(events.withLock { $0 }, [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("cdn.example.net", .dns))])
+        let key = FlowKey(proto: .udp, localPort: 50000, remote: Self.remote, remotePort: 443)
+        XCTAssertEqual(events.withLock { $0 }, [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("tunnel.example", .quic))])
     }
 
     private static let me = IPAddress(bytes: [192, 168, 1, 5])

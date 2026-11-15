@@ -151,11 +151,15 @@ final class Sniffer: @unchecked Sendable {
         Self.addresses(host.addresses(nil), onLink: host.addresses(interface))
     }
 
-    /// Every interface's addresses, but a link-local one only when it is the capture
-    /// interface's. Those are unique on one link only: loopback's fe80::1 is also the
-    /// address many routers answer DNS from, and their replies are not this Mac's packets.
+    /// The addresses a packet on the capture interface can carry as this Mac's: the
+    /// interface's own, as the kernel filter has them, and loopback's, which no link carries,
+    /// so that a frame under one came from another host. An address of another interface is
+    /// left out, since on this link it can be another host's: loopback's fe80::1 is also what
+    /// many routers answer DNS from, and a bridge of this Mac's can number the subnet a
+    /// resolver is on. Empty while the interface has no address, which the namer takes as no
+    /// reading.
     static func addresses(_ all: Set<IPAddress>, onLink own: Set<IPAddress>) -> Set<IPAddress> {
-        all.filter { !$0.isLinkLocal || own.contains($0) }
+        own.isEmpty ? [] : own.union(all.filter(\.isLoopback))
     }
 
     private func installFilter(on capture: any CaptureSource, direction: CaptureFilter.Direction, interface: String) {
@@ -245,6 +249,7 @@ final class Sniffer: @unchecked Sendable {
         Log.sniffer.notice("\(interface, privacy: .public) changed its addresses; rebuilding the kernel filter")
         installFilter(on: capture, direction: direction, interface: interface)
         namer.updateHardwareAddress(direction.hardwareAddress)
+        namer.updateLocalAddresses(addresses(on: interface))
         installed = direction
     }
 
