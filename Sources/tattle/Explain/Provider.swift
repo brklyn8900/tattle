@@ -104,8 +104,8 @@ struct ShellProvider: ExplainProvider {
     }
 
     /// Writes `input` to the command and reads its stdout and stderr until it exits, the
-    /// deadline passes or the two together pass `limit`. Then it kills the command's process
-    /// group, which ends whatever the command left running. A process that left the group, as
+    /// deadline passes or the two together pass `limit`. Then it kills the command and its
+    /// process group, which ends whatever the command left running in it. A process that left the group, as
     /// a daemonizing helper does, can hold a pipe open long after the command is gone, so
     /// nothing here waits on a pipe: the descriptors are non-blocking, and one kqueue watches
     /// them and the exit with the deadline as its timeout.
@@ -157,8 +157,10 @@ struct ShellProvider: ExplainProvider {
                 }
             }
         }
-        // The command is still unreaped, so its group id names only its own group.
+        // The command is still unreaped, so its pid and its group id name only its own. The
+        // command itself is killed apart from its group, which it can have left.
         _ = killpg(pid, SIGKILL)
+        _ = kill(pid, SIGKILL)
         try? writing?.close()
         // What the command wrote before it exited is already in the pipes.
         if !overflowed, receive(from: stdout, into: &output, room: limit - output.count - errors.count) == .full { overflowed = true }

@@ -1401,6 +1401,26 @@ final class ShellProviderTests: XCTestCase {
         }
     }
 
+    /// The command itself moved into another group, so the group kill missed it, and the wait
+    /// for its exit never returned while it lived.
+    func testTheTimeoutEndsACommandThatLeftItsOwnGroup() async throws {
+        let pidFile = FileManager.default.temporaryDirectory.appending(path: "tattle-leader-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        // The shell becomes perl, which joins its parent's group: this test's.
+        let command = "exec perl -MPOSIX -e 'POSIX::setpgid(0, getpgrp(getppid())) or die; "
+            + "open my $f, \">\", shift; print $f $$; close $f; sleep 6' '\(pidFile.path)'"
+        let start = Date()
+        do {
+            _ = try await ShellProvider(command: command, timeout: 1).explain("")
+            XCTFail("expected timeout")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .timedOut)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2.5, "returned at the timeout")
+        // The call reaps the command either way; the record shows it left its group.
+        XCTAssertNotNil(Int32(try String(contentsOf: pidFile, encoding: .utf8)), "the command left its group")
+    }
+
     private static let heldPipes = [("stdin", " <&0 >/dev/null 2>&1"), ("stdout", " </dev/null 2>/dev/null"),
                                     ("stderr", " </dev/null >/dev/null")]
     private static let largerThanAPipe = String(repeating: "x", count: 1_000_000)
