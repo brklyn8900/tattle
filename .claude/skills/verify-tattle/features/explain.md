@@ -13,7 +13,7 @@ installed programs, is known by the line; one whose line does not say where its 
 none. With nothing to tell that code by, such as unnamed code, the
 answer stays while the detail holds that code and is not kept. A host's prompt says nothing
 of the program that connected. Shipped rules about Apple's programs show only for Apple's own program
-by that name: Apple-signed, on the sealed system volume, and named for its own file. A
+by that name: Apple-signed, where only macOS installs programs, and named for its own file. A
 shipped rule with another publisher's name on it shows only for that publisher's program.
 The provider command runs answering for itself, so it holds none of Tattle's privacy grants
 (ADR-0004). The Claude Code preset keeps no transcript and starts none of the account's

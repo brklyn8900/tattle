@@ -214,13 +214,54 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(item("/Users/x/good", acme).identity, "team:ABCDE12345:com.acme.a", "a publisher's code, through any wrapper")
     }
 
-    /// /usr/local is on the Data volume, and Preboot's cryptex folders are world-writable, so a
-    /// copy placed there is not the program. /Library/Apple is kept for Apple's updates.
+    /// /usr/local is on the Data volume, so a copy placed there is not the program.
+    /// /Library/Apple is kept for Apple's updates. Of the other volumes only Preboot's two
+    /// cryptexes count: the folder they are in is world-writable, and so a copy can be placed
+    /// beside them or in the other folders there.
     func testWhereTheProgramRuns() {
         let apple = CodeSignature(signer: .apple)
+        func isNamed(at folder: String) -> Bool {
+            ApplesProgram.isNamed("mDNSResponder", path: "\(folder)/usr/sbin/mDNSResponder", signature: apple)
+        }
         XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/usr/local/bin/mDNSResponder", signature: apple))
-        XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/System/Volumes/Preboot/Cryptexes/App/usr/sbin/mDNSResponder", signature: apple))
         XCTAssertTrue(ApplesProgram.isNamed("XProtect", path: "/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect", signature: apple))
+        let cryptexes = "/System/Volumes/Preboot/Cryptexes"
+        XCTAssertTrue(isNamed(at: "\(cryptexes)/App"))
+        XCTAssertTrue(isNamed(at: "\(cryptexes)/OS"))
+        for folder in [cryptexes, "\(cryptexes)/Incoming", "\(cryptexes)/Incoming/OS", "\(cryptexes)/Rosetta", "\(cryptexes)/ExclaveOS",
+                       "\(cryptexes)/Apple", "\(cryptexes)/OS2", "/System/Volumes/Preboot", "/System/Volumes/Data", "/System/Volumes/Update",
+                       "/System/Volumes/Data/System/Volumes/Preboot/Cryptexes/App"] {
+            XCTAssertFalse(isNamed(at: folder), folder)
+        }
+    }
+
+    /// Safari and WebKit run from the cryptexes, by that path.
+    func testWhatRunsFromACryptexIsPartOfMacOS() throws {
+        let cryptexes = "/System/Volumes/Preboot/Cryptexes"
+        let safari = "\(cryptexes)/App/System/Applications/Safari.app"
+        let entries = machine + [
+            ProcessEntry(pid: 600, parentPid: 1, uid: 501, name: "Safari", path: "\(safari)/Contents/MacOS/Safari", started: started),
+            ProcessEntry(pid: 601, parentPid: 1, uid: 501, name: "com.apple.WebKit.Networking",
+                         path: "\(cryptexes)/OS/System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.Networking.xpc/Contents/MacOS/com.apple.WebKit.Networking",
+                         started: started),
+            ProcessEntry(pid: 602, parentPid: 1, uid: 501, name: "webpushd", path: "\(cryptexes)/Incoming/usr/libexec/webpushd", started: started),
+        ]
+        let snapshot = ProcessSnapshot.build(entries: entries, previous: nil, signature: appleSigned, responsible: { _ in nil }, takenAt: started)
+        let row = try XCTUnwrap(snapshot.group(id: safari))
+        XCTAssertEqual(row.signature?.summary, "Apple")
+        XCTAssertEqual(row.signature?.isVouchedFor, true)
+        XCTAssertTrue(row.isApplesProgram, "the shipped rules answer for it")
+        let system = try XCTUnwrap(snapshot.group(id: ProcessGroup.systemID))
+        XCTAssertTrue(system.members.contains { $0.pid == 601 }, "with no app of its own it is in the macOS row")
+        XCTAssertEqual(snapshot.item(pid: 601)?.signerText, "Apple")
+        XCTAssertEqual(snapshot.item(pid: 602)?.signerText, "Apple, outside macOS", "beside the cryptexes")
+        XCTAssertEqual(snapshot.group(id: "pid:602")?.kind, .process)
+
+        let byPid = Dictionary(entries.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+        let owner = ConnectionOwner.resolve(pid: 600, in: byPid, runningApp: { _ in nil }, responsible: { _ in nil }, signature: appleSigned)
+        XCTAssertEqual(owner.signature?.summary, "Apple")
+        XCTAssertEqual(owner.appSignature?.summary, "Apple")
+        XCTAssertTrue(owner.isApplesProgram)
     }
 
     private func connection(_ pid: Int32, at: TimeInterval) -> Connection {

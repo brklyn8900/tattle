@@ -8,9 +8,15 @@ import Foundation
 enum ApplesProgram {
     /// The sealed system volume, and /Library/Apple, which System Integrity Protection keeps
     /// for Apple's updates. /usr/local is the Data volume's, and /System/Volumes holds the
-    /// other volumes: the Data volume, and Preboot, whose cryptex folders are world-writable.
+    /// other volumes: the Data volume, and Preboot.
     private static let roots = ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"]
     private static let excluded = ["/usr/local/", "/System/Volumes/"]
+    /// Preboot's two cryptexes, where macOS keeps what it updates apart from the system
+    /// volume, and the path Safari and WebKit run from. Each is root's and carries the flag
+    /// that keeps it from being unlinked or renamed. Their parent does not count: anyone can
+    /// write to it, so a copy can be placed beside them, and its other folders are
+    /// world-writable or lack that flag.
+    private static let cryptexes = ["/System/Volumes/Preboot/Cryptexes/App/", "/System/Volumes/Preboot/Cryptexes/OS/"]
 
     static func isNamed(_ name: String, path: String?, signature: CodeSignature?) -> Bool {
         guard let path, signature?.signer == .apple, isInstalled(at: path) else { return false }
@@ -19,6 +25,7 @@ enum ApplesProgram {
 
     /// Where only macOS installs programs.
     static func isInstalled(at path: String) -> Bool {
-        roots.contains { path.hasPrefix($0) } && !excluded.contains { path.hasPrefix($0) }
+        if cryptexes.contains(where: { path.hasPrefix($0) }) { return true }
+        return roots.contains { path.hasPrefix($0) } && !excluded.contains { path.hasPrefix($0) }
     }
 }
