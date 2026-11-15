@@ -4,7 +4,8 @@ import os
 
 /// The knowledge base: the shipped rules, in memory, and the model's answers, in the file.
 /// Any process of the user can write the file, so of its rule table only a model's answers
-/// are read: a row there that claims a shipped source or the user's is not a rule (ADR-0005).
+/// are read, each for the exact item: a row there that claims a shipped source or the user's,
+/// or that holds a pattern, is not a rule (ADR-0005).
 struct RuleStore: Sendable {
     let database: AppDatabase
     /// The shipped rules, where no other process writes. An SQLite table, so a pattern
@@ -27,7 +28,7 @@ struct RuleStore: Sendable {
 
     /// Keeps a model's answer in the file, replacing an existing one with the same kind, match,
     /// pattern, source and identity. Returns the stored rule with its id. A rule of another
-    /// source is stored and never read. An unconfirmed rule never replaces a
+    /// source, or a pattern, is stored and never read. An unconfirmed rule never replaces a
     /// confirmed one of the same key: the upsert would reset the confirmation and the
     /// creation date, and a confirmed rule is the user's own.
     @discardableResult
@@ -65,16 +66,23 @@ struct RuleStore: Sendable {
     /// Every rule matching `key`, best first.
     func candidates(kind: Rule.Kind, key: String, now: Date = Date()) throws -> [Rule] {
         let key = Rule.normalize(key, for: kind)
-        let matching = """
-            SELECT * FROM rule
-            WHERE kind = :kind
-              AND ((match = 'exact' AND pattern = :key)
-                OR (match = 'glob' AND :key GLOB pattern))
-            """
         let arguments: StatementArguments = ["kind": kind.rawValue, "key": key]
-        let rules = try shipped.read { try Rule.fetchAll($0, sql: matching, arguments: arguments) }
+        let rules = try shipped.read { db in
+            try Rule.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM rule
+                    WHERE kind = :kind
+                      AND ((match = 'exact' AND pattern = :key)
+                        OR (match = 'glob' AND :key GLOB pattern))
+                    """,
+                arguments: arguments)
+        }
         let answers = try database.writer.read { db in
-            try Rule.fetchAll(db, sql: matching + " AND source = 'llm'", arguments: arguments)
+            try Rule.fetchAll(
+                db,
+                sql: "SELECT * FROM rule WHERE kind = :kind AND match = 'exact' AND pattern = :key AND source = 'llm'",
+                arguments: arguments)
         }
         return (rules + answers)
             .filter { !$0.isExpired(at: now) }
@@ -100,19 +108,14 @@ struct RuleStore: Sendable {
     }
 
     /// Marks a rule confirmed. The source is kept so provenance is never lost; the rule
-    /// ranks with user rules from now on. `pattern` promotes it to a glob rule: only the
-    /// user can do that, and only here.
-    func confirm(id: Int64, at date: Date = Date(), promotingTo pattern: String? = nil) throws {
+    /// ranks with user rules from now on.
+    func confirm(id: Int64, at date: Date = Date()) throws {
         defer { wrote() }
         try database.writer.write { db in
             guard var rule = try Rule.fetchOne(db, key: id) else {
                 throw RuleStoreError.notFound(id)
             }
             rule.confirmed = date
-            if let pattern {
-                rule.match = .glob
-                rule.pattern = Rule.normalize(pattern, for: rule.kind)
-            }
             try rule.update(db)
         }
     }
@@ -137,7 +140,9 @@ struct RuleStore: Sendable {
         if let kind { request = request.filter(Column("kind") == kind.rawValue) }
         let rules = try shipped.read { try request.fetchAll($0) }
         let answers = try database.writer.read { db in
-            try request.filter(Column("source") == Rule.Source.llm.rawValue).fetchAll(db)
+            try request
+                .filter(Column("source") == Rule.Source.llm.rawValue && Column("match") == Rule.Match.exact.rawValue)
+                .fetchAll(db)
         }
         return (rules + answers).sorted { ($0.kind.rawValue, $0.pattern) < ($1.kind.rawValue, $1.pattern) }
     }

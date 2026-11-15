@@ -82,6 +82,18 @@ final class PlantedRuleTests: XCTestCase {
         XCTAssertNil(found, said(found))
     }
 
+    /// A model's answer is kept for the exact item, so a pattern in the file is no one's
+    /// answer: a single row would speak for every host or every listener.
+    func testAPlantedPatternAnswersForNothing() async throws {
+        try plant(kind: "host", match: "glob", pattern: "*", source: "llm", confirmed: true)
+        try plant(kind: "port", match: "glob", pattern: "*:*", source: "llm", confirmed: true)
+        var found = try await explainer.lookup(ExplainRequest(kind: .host, key: "anything.example"))
+        XCTAssertNil(found, said(found))
+        found = try await explainer.lookup(ExplainRequest(kind: .port, key: "updater:tcp/7000"))
+        XCTAssertNil(found, said(found))
+        XCTAssertEqual(try store.rules(), [])
+    }
+
     /// A host is its own name, so its row needs no identity either, and a relay category
     /// changes what the Network row says of the connection.
     func testAPlantedHostRowDoesNotMakeADestinationReadRelayed() async throws {

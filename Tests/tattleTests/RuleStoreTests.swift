@@ -103,16 +103,6 @@ final class RuleStoreTests: XCTestCase {
         XCTAssertEqual(try store.lookup(kind: .host, key: "p61-caldav.icloud.com")?.purpose, "exact")
     }
 
-    func testPromotionToPatternOnlyAtConfirmation() throws {
-        let llm = try store.save(rule("p61-caldav.icloud.com", source: .llm, purpose: "CalDAV"))
-        XCTAssertNil(try store.lookup(kind: .host, key: "p62-caldav.icloud.com"))
-        try store.confirm(id: llm.id!, promotingTo: "P*-caldav.icloud.com")
-        let promoted = try XCTUnwrap(try store.lookup(kind: .host, key: "p62-caldav.icloud.com"))
-        XCTAssertEqual(promoted.match, .glob)
-        XCTAssertEqual(promoted.pattern, "p*-caldav.icloud.com")
-        XCTAssertEqual(promoted.source, .llm)
-    }
-
     func testUnconfirmedLLMRulesExpireAfter45Days() throws {
         let now = Date()
         let old = now.addingTimeInterval(-46 * 86_400)

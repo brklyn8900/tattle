@@ -11,7 +11,8 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     enum Match: String, Codable, Sendable {
         /// `pattern` is the item itself.
         case exact
-        /// `pattern` is an SQLite GLOB (`*`, `?`, `[...]`), e.g. `p*-caldav.icloud.com`.
+        /// `pattern` is an SQLite GLOB (`*`, `?`, `[...]`), e.g. `p*-caldav.icloud.com`. A
+        /// shipped rule's only: a pattern in the database is not read (ADR-0005).
         case glob
     }
 

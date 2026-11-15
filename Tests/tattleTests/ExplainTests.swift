@@ -766,7 +766,7 @@ final class ExplainerTests: XCTestCase {
         let rule = try await explainer.ask(request)
 
         XCTAssertEqual(rule.source, .llm)
-        XCTAssertEqual(rule.match, .exact, "the model may suggest a pattern; only the user promotes")
+        XCTAssertEqual(rule.match, .exact, "the model may suggest a pattern; its answer is kept for the exact item")
         XCTAssertEqual(rule.pattern, request.key)
         XCTAssertNil(rule.confirmed)
         XCTAssertEqual(rule.owner, "Acme")
