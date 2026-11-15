@@ -122,10 +122,11 @@ struct Redactor: Sendable {
         if captured { out = redactFolders(out) }
         out = redactMachineNames(out, in: context)
         // After the machine's names, so this Mac's own MagicDNS name reads as the machine. A
-        // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account.
+        // peer's is device.tailnet.ts.net, and the tailnet's name identifies the account. A
+        // label can hold "_", which DNS allows outside host names.
         if captured {
             out = out.replacingOccurrences(
-                of: Self.wholeHost("[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.ts\\.net"),
+                of: Self.wholeHost("[a-z0-9_-]+(?:\\.[a-z0-9_-]+)*\\.ts\\.net"),
                 with: "<tailnet-device>", options: [.regularExpression, .caseInsensitive])
         }
         out = redactUsername(out, in: context)

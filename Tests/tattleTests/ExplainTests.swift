@@ -227,6 +227,8 @@ final class RedactorTests: XCTestCase {
     func testATailnetNameIsReplaced() {
         XCTAssertEqual(redactor.redact("nas.tail1234.ts.net, NAS.Fluffy-Monster.ts.net. Then", as: .host), "<tailnet-device>, <tailnet-device>. Then")
         XCTAssertEqual(redactor.redact("ts.net, a.ts.net.example.com, nots.net, a.ts.network", as: .host), "ts.net, a.ts.net.example.com, nots.net, a.ts.network")
+        XCTAssertEqual(redactor.redact("my_nas.tail1234.ts.net, _ssh._tcp.tail1234.ts.net", as: .host), "<tailnet-device>, <tailnet-device>",
+                       "a label with an underscore")
         let own = Redactor(home: "", username: "", machineNames: ["nas.tail1234.ts.net"])
         XCTAssertEqual(own.redact("nas.tail1234.ts.net", as: .host), "<machine>", "this Mac's own name reads as the machine")
     }
