@@ -19,6 +19,10 @@
   and leave the program as it was. Whether macOS refuses to start an app whose resource
   changed after its first launch is unverified: measure that before pinning the hashes
   (ADR-0005, `SeedLoader.swift`).
+- The seed files are read, decoded and inserted at every launch, one statement per rule, in
+  `AppState.init` on the main actor, before the menu bar item exists. Not measured; 29 rules
+  today. Once the Tracker Radar and Apple hosts files carry thousands, load them off the main
+  actor (`SeedLoader.swift`, `AppState.swift`).
 - An answer that was not kept stays when neither side has an identity: with none on the row,
   the detail cannot tell its code changed (`sh -c x` closes, `sh -c y` joins), so the answer
   stays until the detail closes (`ExplainSection.swift`).
