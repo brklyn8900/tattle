@@ -110,4 +110,5 @@ struct PendingNames: Equatable, Sendable {
     }
 
     var count: Int { names.count }
+    var openingCount: Int { opened.count }
 }

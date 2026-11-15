@@ -38,6 +38,11 @@ final class NetworkObserver {
     private var pollRequested = false
     private var promptPollScheduled = false
     private let processRecords: @Sendable () -> ProcessRecords?
+    private let makeSniffer: SnifferFactory
+
+    /// Builds the sniffer from where its events and its status go; a test gives one a capture
+    /// of its own.
+    typealias SnifferFactory = (_ onEvents: @escaping @Sendable ([FlowEvent]) -> Void, _ onStatus: @escaping @Sendable (Sniffer.Status) -> Void) -> Sniffer
 
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
@@ -45,7 +50,9 @@ final class NetworkObserver {
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
          socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
          processRecords: @escaping @Sendable () -> ProcessRecords? = { ProcessTable.records() },
-         signature: (@Sendable (String) -> CodeSignature?)? = nil) {
+         signature: (@Sendable (String) -> CodeSignature?)? = nil,
+         sniffer: @escaping SnifferFactory = { Sniffer(onEvents: $0, onStatus: $1) }) {
+        makeSniffer = sniffer
         self.store = store
         self.rules = rules
         self.settings = settings
@@ -71,9 +78,9 @@ final class NetworkObserver {
                 try? await Task.sleep(for: interval)
             }
         }
-        let sniffer = Sniffer(
-            onEvents: { [weak self] events in Task { @MainActor in self?.handle(events) } },
-            onStatus: { [weak self] status in Task { @MainActor in self?.captureStatus = status } })
+        let sniffer = makeSniffer(
+            { [weak self] events in Task { @MainActor in self?.handle(events) } },
+            { [weak self] status in Task { @MainActor in self?.captureStatus = status } })
         sniffer.start()
         self.sniffer = sniffer
     }
@@ -125,6 +132,10 @@ final class NetworkObserver {
         }
         return false
     }
+
+    /// How much is held of what the sniffer reported: outcomes and openings waiting for their
+    /// connections, and names whose kind is remembered.
+    var held: (outcomes: Int, openings: Int, kinds: Int) { (names.count, names.openingCount, kinds.count) }
 
     // MARK: Sniffer events
 
