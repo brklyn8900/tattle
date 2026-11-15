@@ -61,17 +61,6 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertEqual(installed.signature?.isVouchedFor, true)
     }
 
-    /// Built by hand with Apple's signature, as no reading gives it.
-    func testAProcessIsPartOfMacOSOnlyWhereMacOSInstallsPrograms() {
-        func item(_ path: String?) -> ProcessItem {
-            ProcessItem(pid: 500, parentPid: 1, uid: 501, name: "x", path: path, started: started, signature: CodeSignature(signer: .apple))
-        }
-        XCTAssertTrue(item("/usr/libexec/x").isPartOfMacOS)
-        XCTAssertFalse(item("/private/tmp/x").isPartOfMacOS)
-        XCTAssertFalse(item("/usr/local/bin/x").isPartOfMacOS)
-        XCTAssertFalse(item(nil).isPartOfMacOS)
-    }
-
     /// A copy of one of Apple's apps, and a copy of Apple's interpreter running a script.
     func testAnAppAndAnInterpreterElsewhereAreNotReadAsApples() throws {
         let app = "/Users/x/Calculator.app"

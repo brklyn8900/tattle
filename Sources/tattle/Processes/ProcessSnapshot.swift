@@ -84,9 +84,9 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
     /// Part of macOS: the kernel, or Apple's own code run from where only macOS installs
-    /// programs. A script is not, whoever signed its interpreter, and neither is a file with
-    /// Apple's signature anywhere else (`CodeSignature.Signer.appleElsewhere`).
-    var isPartOfMacOS: Bool { pid == 0 || (signature?.signer == .apple && path.map(ApplesProgram.isInstalled(at:)) == true) }
+    /// programs, which is the only place `signature` reads as Apple's
+    /// (`CodeSignature.located`). A script is not, whoever signed its interpreter.
+    var isPartOfMacOS: Bool { pid == 0 || signature?.signer == .apple }
     var isApplesProgram: Bool { pid == 0 || ApplesProgram.isNamed(name, path: path, signature: signature) }
 
     /// What the row says after the name: "node script", "node, unnamed code", the signer, or
