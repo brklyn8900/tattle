@@ -228,12 +228,23 @@ and (d) are done)
 **From the review triage of 2026-11-07** (its "consider" list, verified at `a297ef7`; IDs
 are the triage's)
 
-- A4: A signer comes from the file at the process's path, so a running program that renames
-  a signed binary over its own path reads as that file's signer: a publisher's, or Apple's
-  outside macOS. Only `SecCodeCheckValidity` on the running code catches it; its cost per
-  process is unmeasured, and it passes a copy of one of Apple's tools made to load other
-  code, which those with a team identifier do through `DYLD_` variables (the Command Line
-  Tools' `lldb` did from a shell, not tried under launchd) (`CodeSignature.swift`).
+- A4: A signer comes from the file at the process's path. Closed for a process whose file
+  names a signer, outside the folders only macOS installs into: macOS checks the running code
+  against the file (`SecCodeCheckValidity`), and where that fails the process shows no signer
+  and has no identity. A running program that renames a signed binary over its own path no
+  longer reads as that file's signer, a publisher's or Apple's outside macOS, and an app
+  updated in place reads the same until it is started again (`RunningCode.swift`,
+  `SignatureCache.signature(of:at:)`). On the test Mac (Intel, 690 to 700 processes, 36 or 37
+  of them checked, a release build of the tests) the checks took 0.24 to 0.26 s of a first
+  full read of 8.7 to 9.8 s, and a refresh took 0.22 to 0.25 s with them and without. Open:
+  - The check passes a copy of one of Apple's tools made to load other code, which those
+    with a team identifier do through `DYLD_` variables (the Command Line Tools' `lldb` did
+    from a shell, not tried under launchd).
+  - Nothing is measured on Apple silicon: the cost, or what the check says of a process
+    running under Rosetta.
+  - A process whose file names no signer (ad hoc, unsigned) is not checked, so one that
+    renames another such file over its own path has that file's identity, and an answer kept
+    for the file is shown for it. Reasoned from `CodeIdentity.of`, not run.
 - The static signature check reads one architecture slice: a universal file whose native slice
   is Apple's or a publisher's beside a foreign one reads as that signer, and `arch -x86_64`
   runs the other slice under Rosetta. `kSecCSCheckAllArchitectures` on the static check would
