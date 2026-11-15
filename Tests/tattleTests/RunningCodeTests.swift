@@ -66,6 +66,25 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertFalse(RunningCode.matchesFile(Int32.max))
     }
 
+    /// The kernel lists a process that is exiting until it is a zombie, and by then answers
+    /// for neither its file nor its code: read as a running process, it would be one that runs
+    /// from no path. Whether a reading lands in that window is chance, so this ends several.
+    func testAProcessOnItsWayOutReadsAsEnded() throws {
+        for _ in 0..<20 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+            process.arguments = ["600"]
+            try process.run()
+            let pid = process.processIdentifier
+            XCTAssertNotNil(RunningCode.state(of: pid)?.status)
+            kill(pid, SIGKILL)
+            while let state = RunningCode.state(of: pid) {
+                XCTAssertNotNil(state.status, "listed, and described by nothing: \(state)")
+            }
+            process.waitUntilExit()
+        }
+    }
+
     // MARK: - When the check is made
 
     /// A machine with one program on it, a publisher's unless a test says otherwise, and the
