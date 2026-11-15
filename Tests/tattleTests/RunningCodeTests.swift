@@ -388,63 +388,124 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertNil(script.interpreterSignature)
     }
 
+    /// A process table of one agent, a socket table the test fills, and readings of the agent
+    /// that are settled or not as the test says.
+    private final class Network: @unchecked Sendable {
+        static let pid: Int32 = 9_000_100
+        static let signed = CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER"), identifier: "agent", teamIdentifier: "EXAMPLE123")
+        private let lock = NSLock()
+        private var sockets: [SocketEntry] = []
+        private var settled = false
+        private var running = true
+        private var read = 0
+
+        var isSettled: Bool {
+            get { lock.withLock { settled } }
+            set { lock.withLock { settled = newValue } }
+        }
+        var isRunning: Bool {
+            get { lock.withLock { running } }
+            set { lock.withLock { running = newValue } }
+        }
+        /// How many times the agent's signature was read.
+        var readings: Int { lock.withLock { read } }
+
+        func open(_ port: UInt16) {
+            let socket = SocketEntry(
+                proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: port, remoteAddress: "17.1.1.1", remotePort: 443,
+                tcpState: SocketEntry.tcpEstablished, pid: Self.pid, effectivePid: 0, uid: 501)
+            lock.withLock { sockets.append(socket) }
+        }
+
+        @MainActor
+        func observer() throws -> NetworkObserver {
+            let database = try AppDatabase.inMemory()
+            let agent = ProcessEntry(pid: Self.pid, parentPid: 1, uid: 501, name: "agent", path: "/opt/agent/agent", started: .distantPast)
+            return NetworkObserver(
+                store: ConnectionStore(database: database), rules: try RuleStore(database: database),
+                settings: try AppSettings(store: SettingsStore(database: database)),
+                socketTable: { self.lock.withLock { self.sockets } },
+                processRecords: {
+                    let records = self.isRunning ? [Self.pid: agent] : [:]
+                    return ProcessRecords { pids in
+                        ProcessTable.lines(of: pids, in: records, parent: \.parentPid, entry: { $0 }, responsible: { _ in nil })
+                    }
+                },
+                signature: { _ in nil },
+                executable: { _, _ in
+                    self.lock.withLock {
+                        self.read += 1
+                        return self.settled ? SignatureCache.ProcessReading(signature: Self.signed) : SignatureCache.ProcessReading(isSettled: false)
+                    }
+                })
+        }
+    }
+
+    @MainActor
+    private func owner(_ port: UInt16, in observer: NetworkObserver) -> ConnectionOwner? {
+        observer.snapshot?.connections.first { $0.connection.localPort == port }?.owner
+    }
+
     /// Network keeps an owner for as long as its process has a connection open. One read
     /// while its file or its process was changing has no signer, and would have none for
     /// every connection after.
     @MainActor
     func testNetworkReadsAnOwnerAgainWhenItsReadingWasNotSettled() async throws {
-        final class World: @unchecked Sendable {
-            private let lock = NSLock()
-            private var sockets: [SocketEntry] = []
-            private var settled = false
-            var table: [SocketEntry] {
-                get { lock.withLock { sockets } }
-                set { lock.withLock { sockets = newValue } }
-            }
-            var isSettled: Bool {
-                get { lock.withLock { settled } }
-                set { lock.withLock { settled = newValue } }
-            }
-        }
-        let world = World()
-        let pid: Int32 = 9_000_100
-        let signed = agent
-        let records = [pid: ProcessEntry(pid: pid, parentPid: 1, uid: 501, name: "agent", path: "/opt/agent/agent", started: .distantPast)]
-        func socket(_ port: UInt16) -> SocketEntry {
-            SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: port, remoteAddress: "17.1.1.1", remotePort: 443,
-                        tcpState: SocketEntry.tcpEstablished, pid: pid, effectivePid: 0, uid: 501)
-        }
-        let database = try AppDatabase.inMemory()
-        let observer = NetworkObserver(
-            store: ConnectionStore(database: database), rules: try RuleStore(database: database),
-            settings: try AppSettings(store: SettingsStore(database: database)),
-            socketTable: { world.table },
-            processRecords: {
-                ProcessRecords { pids in
-                    ProcessTable.lines(of: pids, in: records, parent: \.parentPid, entry: { $0 }, responsible: { _ in nil })
-                }
-            },
-            signature: { _ in nil },
-            executable: { _, _ in world.isSettled ? SignatureCache.ProcessReading(signature: signed) : SignatureCache.ProcessReading(isSettled: false) })
-        func signer(_ port: UInt16) -> CodeSignature? {
-            observer.snapshot?.connections.first { $0.connection.localPort == port }?.owner.signature
-        }
+        let network = Network()
+        let observer = try network.observer()
 
-        world.table = [socket(40000)]
+        network.open(40000)
         await observer.poll()
         XCTAssertEqual(observer.snapshot?.connections.count, 1)
-        XCTAssertNil(signer(40000), "nothing said whether the file was the running code")
+        XCTAssertNil(owner(40000, in: observer)?.signature, "nothing said whether the file was the running code")
 
-        world.isSettled = true
-        world.table = [socket(40000), socket(40001)]
+        network.isSettled = true
+        network.open(40001)
         await observer.poll()
-        XCTAssertEqual(signer(40001), signed, "the owner is read again for the next connection")
-        XCTAssertNil(signer(40000), "the first keeps the owner it opened with")
+        XCTAssertEqual(owner(40001, in: observer)?.signature, Network.signed, "the owner is read again for the next connection")
+        XCTAssertNil(owner(40000, in: observer)?.signature, "the first keeps the owner it opened with")
 
-        world.isSettled = false
-        world.table = [socket(40000), socket(40001), socket(40002)]
+        network.isSettled = false
+        let readings = network.readings
+        network.open(40002)
         await observer.poll()
-        XCTAssertEqual(signer(40002), signed, "a settled owner is kept")
+        XCTAssertEqual(owner(40002, in: observer)?.signature, Network.signed, "a settled owner is kept")
+        XCTAssertEqual(network.readings, readings, "and not read again")
+    }
+
+    /// A file that keeps changing never settles, and each reading of an owner reads its file.
+    @MainActor
+    func testNetworkStopsReadingAnOwnerThatNeverSettles() async throws {
+        let network = Network()
+        let observer = try network.observer()
+        var readings: [Int] = []
+        for port: UInt16 in 40000..<40008 {
+            network.open(port)
+            await observer.poll()
+            readings.append(network.readings)
+        }
+        let each = readings[0]
+        XCTAssertGreaterThan(each, 0)
+        XCTAssertEqual(readings, [1, 2, 3, 4, 4, 4, 4, 4].map { $0 * each }, "once, then \(NetworkObserver.ownerReadings) times more")
+        XCTAssertEqual(owner(40007, in: observer)?.processName, "agent", "the owner is kept as it was last read")
+        XCTAssertNil(owner(40007, in: observer)?.signature)
+    }
+
+    /// What is known of an owner is better than nothing: one waiting to be read again is not
+    /// dropped for a process that is gone by then.
+    @MainActor
+    func testNetworkKeepsAnUnsettledOwnerWhoseProcessHasEnded() async throws {
+        let network = Network()
+        let observer = try network.observer()
+        network.open(40000)
+        await observer.poll()
+        XCTAssertEqual(owner(40000, in: observer)?.processName, "agent")
+
+        network.isRunning = false
+        network.open(40001)
+        await observer.poll()
+        XCTAssertEqual(owner(40001, in: observer)?.processName, "agent", "not a row of its own named for the pid")
+        XCTAssertEqual(owner(40001, in: observer)?.groupID, owner(40000, in: observer)?.groupID)
     }
 
     func testPortsShowNoSignerForAProcessItsFileDoesNotVouchFor() throws {

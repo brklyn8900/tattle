@@ -25,6 +25,9 @@ final class NetworkObserver {
     private let executable: @Sendable (Int32, String) -> SignatureCache.ProcessReading
     private var tracker = ConnectionTracker()
     private var owners: [Int32: ConnectionOwner] = [:]
+    /// The owners that rest on a reading that was not settled, each with how many more times
+    /// it is read again when its process opens a connection.
+    private var ownersToReadAgain: [Int32: Int] = [:]
     private var known = Set<String>()
     private var names = PendingNames()
     /// What a name is, by the knowledge base, looked up once per name and dropped when a
@@ -60,6 +63,10 @@ final class NetworkObserver {
 
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
+
+    /// How many times an owner is read again for a reading that was not settled. A file that
+    /// keeps changing never settles, and each reading of it reads the file's signature.
+    static let ownerReadings = 3
 
     /// `signature` reads a file's signature and `executable` a process's, for its pid and its
     /// executable's path.
@@ -298,7 +305,8 @@ final class NetworkObserver {
     private func read() async {
         let now = Date()
         // Readings never overlap, so the tracker and the owners are as the fold will find them.
-        let (socketTable, processRecords, owners, tracker) = (socketTable, processRecords, owners, tracker)
+        let (socketTable, processRecords, tracker) = (socketTable, processRecords, tracker)
+        let owners = owners.filter { ownersToReadAgain[$0.key] == nil }
         let reading: (entries: [SocketEntry], unresolved: Set<Int32>, lines: ProcessLines?)
         do {
             reading = try await Task.detached(priority: .utility) {
@@ -322,31 +330,44 @@ final class NetworkObserver {
 
         // Owners are resolved once per pid and executable, off the main thread, from the lines
         // read with the table. A pid whose connections all closed is forgotten so a reused pid
-        // is resolved afresh, and so is one whose owner rests on a reading that was not settled:
-        // it is the owner of the connections opening now, and is read again for the next.
-        var unsettled = Set<Int32>()
+        // is resolved afresh. An owner that rests on a reading that was not settled is the owner
+        // of the connections opening now, and is read again for the next, a few times at most.
         if !unresolved.isEmpty {
-            let (signature, executable) = (signature, executable)
-            let resolved = await Task.detached(priority: .utility) { () -> (owners: [Int32: ConnectionOwner], unsettled: Set<Int32>) in
-                // With no lines, none of these is known to have exited.
-                guard let lines else { return (Dictionary(uniqueKeysWithValues: unresolved.map { ($0, .unknown) }), []) }
+            let (signature, executable, readAgain, readings) = (signature, executable, ownersToReadAgain, Self.ownerReadings)
+            let resolved = await Task.detached(priority: .utility) { () -> (owners: [Int32: ConnectionOwner], readAgain: [Int32: Int]) in
                 var result: [Int32: ConnectionOwner] = [:]
-                var unsettled = Set<Int32>()
+                var readAgain = readAgain
                 for pid in unresolved {
+                    let readingsLeft = readAgain[pid]
+                    readAgain[pid] = readingsLeft.flatMap { $0 > 1 ? $0 - 1 : nil }
+                    // What is known of an owner is better than nothing: one read again keeps it
+                    // when its process, or the table, is no longer there to read.
+                    if readingsLeft != nil, lines?.entries[pid]?.path == nil { continue }
+                    // With no lines, none of these is known to have exited.
+                    guard let lines else {
+                        result[pid] = .unknown
+                        continue
+                    }
+                    var isSettled = true
                     result[pid] = ConnectionOwner.resolve(
                         pid: pid, in: lines.entries,
                         runningApp: { NSRunningApplication(processIdentifier: $0)?.bundleURL?.path },
                         responsible: { lines.responsible[$0] },
                         executable: { process, path in
                             let reading = executable(process, path)
-                            if !reading.isSettled { unsettled.insert(pid) }
+                            if !reading.isSettled { isSettled = false }
                             return reading.signature
                         }, signature: signature)
+                    if isSettled {
+                        readAgain[pid] = nil
+                    } else if readingsLeft == nil {
+                        readAgain[pid] = readings
+                    }
                 }
-                return (result, unsettled)
+                return (result, readAgain)
             }.value
             owners.merge(resolved.owners) { _, new in new }
-            unsettled = resolved.unsettled
+            ownersToReadAgain = resolved.readAgain
         }
 
         var opened: [LiveConnection] = []
@@ -360,7 +381,8 @@ final class NetworkObserver {
         record(opened: opened, closed: changes.closed, now: now)
 
         let openPids = Set(tracker.live.values.map(\.pid))
-        owners = owners.filter { openPids.contains($0.key) && !unsettled.contains($0.key) }
+        owners = owners.filter { openPids.contains($0.key) }
+        ownersToReadAgain = ownersToReadAgain.filter { openPids.contains($0.key) }
         names.prune(now: now, keeping: Set(tracker.live.values.map(\.flowKey)))
 
         // Keep each live row's "new" mark and name from when it opened; a row with no outcome
