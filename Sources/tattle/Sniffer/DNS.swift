@@ -60,7 +60,9 @@ enum DNS {
     }
 
     // Reads a name with RFC 1035 compression; the reader advances past the name as it
-    // appears in the sequential stream, not past any pointer target. Nil for a name that is
+    // appears in the sequential stream, not past any pointer target. That part of the name
+    // lies within the reader's end, a record's RDATA for a CNAME; a pointer can lead anywhere
+    // in the reply. Nil for a name that is
     // not a host name; a label holding a dot is one, since joining would hide it. Each label
     // and pointer spends one of the reply's `walk`. Throws for a name past RFC 1035's 255
     // bytes or a walk past the reply's limit: the walk stops inside the name, so where it
@@ -72,7 +74,8 @@ enum DNS {
         var jumped = false
         var hops = 0
         while true {
-            guard pos < bytes.count else { throw ByteReader.ParseError.short }
+            let end = jumped ? bytes.count : r.end
+            guard pos < end else { throw ByteReader.ParseError.short }
             let len = Int(bytes[pos])
             if len == 0 {
                 pos += 1
@@ -82,7 +85,7 @@ enum DNS {
             walk -= 1
             guard walk >= 0 else { throw ByteReader.ParseError.short }
             if len & 0xc0 == 0xc0 {
-                guard pos + 1 < bytes.count else { throw ByteReader.ParseError.short }
+                guard pos + 1 < end else { throw ByteReader.ParseError.short }
                 let target = ((len & 0x3f) << 8) | Int(bytes[pos + 1])
                 if !jumped { r.pos = pos + 2 }
                 jumped = true
@@ -91,7 +94,7 @@ enum DNS {
                 guard hops < 64 else { throw ByteReader.ParseError.short }
                 continue
             }
-            guard pos + 1 + len <= bytes.count else { throw ByteReader.ParseError.short }
+            guard pos + 1 + len <= end else { throw ByteReader.ParseError.short }
             length += 1 + len
             guard length <= 255 else { throw ByteReader.ParseError.short }
             labels.append(bytes[(pos + 1)..<(pos + 1 + len)])

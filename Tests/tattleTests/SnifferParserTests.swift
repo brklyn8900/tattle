@@ -335,6 +335,16 @@ final class SnifferParserTests: XCTestCase {
         XCTAssertEqual(DNS.parseReply(appended[...])?.addresses.map(\.text), ["93.184.216.34"], "x is not www.example.com or its CNAME target")
     }
 
+    /// A CNAME's target is read inside its RDATA: with RDLENGTH 0 the next record's owner, "x",
+    /// was read as the alias, and x's address joined the question's.
+    func testDNSReadsACNAMETargetOnlyInsideItsRecord() {
+        var reply = Array(Self.compressedReply.prefix(33))
+        reply[7] = 2
+        reply += [0xc0, 0x0c, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x0e, 0x10, 0x00, 0x00]  // CNAME, RDLENGTH 0
+        reply += [1, 0x78, 0, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 17, 253, 144, 10]  // "x" A 17.253.144.10
+        XCTAssertEqual(DNS.parseReply(reply[...])?.addresses ?? [], [])
+    }
+
     func testDNSIgnoresQueriesAndPointerLoops() {
         var query = Self.compressedReply
         query[2] = 0x01  // QR bit clear
