@@ -34,14 +34,13 @@ final class AppState {
     var panelNetworkSnapshot: NetworkSnapshot? { panelIsShowing ? network.snapshot : heldNetworkSnapshot }
 
     init(database: AppDatabase, socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() }) throws {
-        rules = RuleStore(database: database)
+        rules = try RuleStore(database: database)
         connections = ConnectionStore(database: database)
         settings = try AppSettings(store: SettingsStore(database: database))
         explainer = Explainer(store: rules, settings: settings)
         network = NetworkObserver(store: connections, rules: rules, settings: settings, socketTable: socketTable)
         if let resources = Bundle.main.resourceURL {
-            SeedLoader(rules: rules, settings: SettingsStore(database: database))
-                .load(from: resources.appending(path: "knowledge"))
+            SeedLoader(rules: rules).load(from: resources.appending(path: "knowledge"))
         }
         let pruned = try rules.pruneExpired()
         if pruned > 0 {

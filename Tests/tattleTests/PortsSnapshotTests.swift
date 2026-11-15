@@ -149,11 +149,11 @@ final class PortsSnapshotTests: XCTestCase {
 
     func testBuiltinPortRulesResolve() throws {
         let database = try AppDatabase.inMemory()
-        let rules = RuleStore(database: database)
+        let rules = try RuleStore(database: database)
         let repoSeeds = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appending(path: "Resources/knowledge")
-        SeedLoader(rules: rules, settings: SettingsStore(database: database)).load(from: repoSeeds)
+        SeedLoader(rules: rules).load(from: repoSeeds)
         XCTAssertEqual(try rules.lookup(kind: .port, key: "ControlCenter:tcp/5000")?.category, "sharing")
         XCTAssertEqual(try rules.lookup(kind: .port, key: "Comet Helper:udp/5353")?.category, "system")
         XCTAssertEqual(try rules.lookup(kind: .port, key: "mDNSResponder:udp/5353")?.purpose.prefix(8), "The macO")

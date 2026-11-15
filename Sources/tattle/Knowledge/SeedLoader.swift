@@ -1,12 +1,9 @@
-import CryptoKit
 import Foundation
 
-/// Loads the seed knowledge files (one JSON file per source) into the rule table. A file
-/// is applied only when its contents changed since the last load, and applying it
-/// replaces that source's rules while keeping any confirmation the user gave.
+/// Loads the seed knowledge files (one JSON file per source) from the app into the store's
+/// memory, at every launch: the shipped rules are never read from the database (ADR-0005).
 struct SeedLoader: Sendable {
     let rules: RuleStore
-    let settings: SettingsStore
 
     struct File: Decodable {
         var source: Rule.Source
@@ -28,7 +25,7 @@ struct SeedLoader: Sendable {
     }
 
     enum SeedError: Error {
-        /// Seed files may only carry shipped sources; user, iap and llm rules are made at runtime.
+        /// Seed files may only carry shipped sources; a model's answers are made at runtime.
         case notASeedSource(Rule.Source)
     }
 
@@ -47,7 +44,7 @@ struct SeedLoader: Sendable {
         var applied: [Rule.Source] = []
         for url in files.filter({ $0.pathExtension == "json" }).sorted(by: { $0.path < $1.path }) {
             do {
-                if let source = try load(file: url) { applied.append(source) }
+                applied.append(try load(file: url))
             } catch {
                 Log.knowledge.error("seed \(url.lastPathComponent, privacy: .public) skipped: \(error, privacy: .public)")
             }
@@ -55,13 +52,9 @@ struct SeedLoader: Sendable {
         return applied
     }
 
-    /// The source applied, or nil when the file's hash matched the last load.
-    func load(file url: URL) throws -> Rule.Source? {
+    /// The source applied.
+    func load(file url: URL) throws -> Rule.Source {
         let data = try Data(contentsOf: url)
-        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let key = "seed." + url.lastPathComponent + ".hash"
-        if try settings.string(key) == hash { return nil }
-
         let file = try JSONDecoder().decode(File.self, from: data)
         guard Self.seedSources.contains(file.source) else {
             throw SeedError.notASeedSource(file.source)
@@ -72,8 +65,7 @@ struct SeedLoader: Sendable {
                  owner: entry.owner, purpose: entry.purpose, why: entry.why, care: entry.care, category: entry.category,
                  risk: entry.risk, confidence: entry.confidence, source: file.source, identity: entry.identity ?? "", created: now)
         }
-        try self.rules.replaceAll(source: file.source, with: rules)
-        try settings.set(key, hash)
+        try self.rules.replaceShipped(source: file.source, with: rules)
         Log.knowledge.info("seed \(url.lastPathComponent, privacy: .public): \(rules.count) rules")
         return file.source
     }

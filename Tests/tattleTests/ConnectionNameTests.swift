@@ -220,9 +220,11 @@ final class ConnectionNameTests: XCTestCase {
     @MainActor
     func testADnsNameIsNeverClassifiedAsRelayOrHidden() throws {
         let database = try AppDatabase.inMemory()
-        let rules = RuleStore(database: database)
-        try rules.save(Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin))
-        try rules.save(Rule(kind: .host, pattern: "cover.example", purpose: "p", category: "ech-cover", source: .builtin))
+        let rules = try RuleStore(database: database)
+        try rules.replaceShipped(source: .builtin, with: [
+            Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin),
+            Rule(kind: .host, pattern: "cover.example", purpose: "p", category: "ech-cover", source: .builtin),
+        ])
         let observer = NetworkObserver(store: ConnectionStore(database: database), rules: rules,
                                        settings: try AppSettings(store: SettingsStore(database: database)))
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .relay)
@@ -241,42 +243,42 @@ final class ConnectionNameTests: XCTestCase {
     /// An LLM answer's category is free text from a process Tattle does not control: it must
     /// not decide that a host's name is hidden from every later row.
     @MainActor
-    func testOnlySeedAndUserRulesDecideAKind() throws {
+    func testOnlyShippedRulesDecideAKind() throws {
         let database = try AppDatabase.inMemory()
-        let rules = RuleStore(database: database)
+        let rules = try RuleStore(database: database)
         let observer = try observer(rules: rules, database: database)
         try rules.save(Rule(kind: .host, pattern: "llm.example", purpose: "p", category: "relay", source: .llm))
         try rules.save(Rule(kind: .host, pattern: "confirmed.example", purpose: "p", category: "ech-cover", source: .llm, confirmed: t0))
-        try rules.save(Rule(kind: .host, pattern: "iap.example", purpose: "p", category: "relay", source: .iap))
+        try rules.replaceShipped(source: .iap, with: [Rule(kind: .host, pattern: "iap.example", purpose: "p", category: "relay", source: .iap)])
         XCTAssertEqual(observer.kind(of: "llm.example", source: .sni), .destination)
         XCTAssertEqual(observer.kind(of: "confirmed.example", source: .sni), .destination, "confirming ranks it higher, it is still a model's text")
         XCTAssertEqual(observer.kind(of: "iap.example", source: .sni), .destination)
 
         // A model rule that outranks the seed (confirmed) must not mask the seed's category.
-        try rules.save(Rule(kind: .host, pattern: "seeded.example", purpose: "p", category: "relay", source: .builtin))
+        try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "seeded.example", purpose: "p", category: "relay", source: .builtin)])
         try rules.save(Rule(kind: .host, pattern: "seeded.example", purpose: "p", category: "cdn", source: .llm, confirmed: t0))
         XCTAssertEqual(observer.kind(of: "seeded.example", source: .sni), .relay)
     }
 
     @MainActor
-    func testARuleSavedLaterIsSeenByTheNextLookup() throws {
+    func testARuleShippedLaterIsSeenByTheNextLookup() throws {
         let database = try AppDatabase.inMemory()
-        let rules = RuleStore(database: database)
+        let rules = try RuleStore(database: database)
         let observer = try observer(rules: rules, database: database)
         XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .destination)
-        try rules.save(Rule(kind: .host, pattern: "late.example", purpose: "p", category: "relay", source: .user))
+        try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "late.example", purpose: "p", category: "relay", source: .builtin)])
         XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .relay)
 
-        try rules.save(Rule(kind: .host, pattern: "late.example", purpose: "p", category: "ech-cover", source: .user))
-        XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .hidden, "the same user key was replaced")
+        try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "late.example", purpose: "p", category: "ech-cover", source: .builtin)])
+        XCTAssertEqual(observer.kind(of: "late.example", source: .sni), .hidden, "the same key was replaced")
     }
 
     @MainActor
     func testALookupThatFailedIsAskedAgain() throws {
         let database = try AppDatabase.inMemory()
-        let rules = RuleStore(database: database)
+        let rules = try RuleStore(database: database)
         let observer = try observer(rules: rules, database: database)
-        try rules.save(Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin))
+        try rules.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "relay.example", purpose: "p", category: "relay", source: .builtin)])
         try database.writer.write { try $0.execute(sql: "ALTER TABLE rule RENAME TO away") }
         XCTAssertEqual(observer.kind(of: "relay.example", source: .sni), .destination)
         try database.writer.write { try $0.execute(sql: "ALTER TABLE away RENAME TO rule") }

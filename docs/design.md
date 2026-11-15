@@ -61,7 +61,10 @@ generic record class in place of the private ones (`Startup/LoginItems.swift`).
 ## Knowledge base
 
 The seed knowledge base ships in the repo as JSON files, one per source. They are copied
-into the app bundle and loaded into SQLite at launch, each only when its content changed.
+into the app bundle and read from it into memory at every launch. None is read from the
+database, which any process of the user can write: its rule table holds the model's answers,
+and only those are read from it
+([ADR-0005](adr/0005-shipped-rules-from-the-app.md)).
 
 ## LLM presets
 
@@ -84,7 +87,7 @@ signatures, and launch agents need no root on current macOS. There is no `sudo`.
 ## Storage
 
 SQLite through GRDB: typed records and migrations. The tabs read in-memory `@Observable`
-snapshots, not the database. Tables: `connection` (history), `rule` (the knowledge base),
+snapshots, not the database. Tables: `connection` (history), `rule` (the model's answers),
 `setting`.
 
 ## Third-party data and licenses

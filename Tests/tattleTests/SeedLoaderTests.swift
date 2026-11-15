@@ -3,7 +3,6 @@ import XCTest
 
 final class SeedLoaderTests: XCTestCase {
     private var rules: RuleStore!
-    private var settings: SettingsStore!
     private var loader: SeedLoader!
 
     private let repoSeeds = URL(fileURLWithPath: #filePath)
@@ -11,10 +10,8 @@ final class SeedLoaderTests: XCTestCase {
         .appending(path: "Resources/knowledge")
 
     override func setUpWithError() throws {
-        let database = try AppDatabase.inMemory()
-        rules = RuleStore(database: database)
-        settings = SettingsStore(database: database)
-        loader = SeedLoader(rules: rules, settings: settings)
+        rules = try RuleStore(database: try AppDatabase.inMemory())
+        loader = SeedLoader(rules: rules)
     }
 
     func testRepoSeedsLoadAndRelayNamesResolve() throws {
@@ -100,12 +97,19 @@ final class SeedLoaderTests: XCTestCase {
         }
     }
 
-    func testUnchangedFileIsNotReapplied() throws {
+    /// The shipped rules are the app's own files, read at every launch: none goes into the
+    /// database, where another process could write one (ADR-0005).
+    func testShippedRulesAreNotWrittenToTheDatabase() throws {
         XCTAssertEqual(loader.load(from: repoSeeds).count, 3)
-        XCTAssertEqual(loader.load(from: repoSeeds), [])
+        XCTAssertFalse(try rules.rules().isEmpty)
+        let rows = try rules.database.writer.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM rule") }
+        XCTAssertEqual(rows, 0)
+        let hashes = try rules.database.writer.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM setting") }
+        XCTAssertEqual(hashes, 0, "and no record of a file's last load, which another process could write too")
+        XCTAssertEqual(try RuleStore(database: rules.database).rules(), [], "another launch starts with none until it loads them")
     }
 
-    func testChangedFileReplacesRulesAndKeepsConfirmation() throws {
+    func testALaterLoadReplacesTheSourcesRules() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -113,15 +117,11 @@ final class SeedLoaderTests: XCTestCase {
 
         try seed(file, ["a.example": "first", "stale.example": "going"])
         XCTAssertEqual(loader.load(from: folder), [.builtin])
-        let a = try XCTUnwrap(try rules.lookup(kind: .host, key: "a.example"))
-        try rules.confirm(id: a.id!, at: Date(timeIntervalSince1970: 1_000))
+        XCTAssertEqual(try rules.lookup(kind: .host, key: "a.example")?.purpose, "first")
 
         try seed(file, ["a.example": "second", "new.example": "fresh"])
         XCTAssertEqual(loader.load(from: folder), [.builtin])
-        let after = try XCTUnwrap(try rules.lookup(kind: .host, key: "a.example"))
-        XCTAssertEqual(after.purpose, "second")
-        XCTAssertEqual(after.confirmed, Date(timeIntervalSince1970: 1_000))
-        XCTAssertEqual(after.created, a.created)
+        XCTAssertEqual(try rules.lookup(kind: .host, key: "a.example")?.purpose, "second")
         XCTAssertNil(try rules.lookup(kind: .host, key: "stale.example"))
         XCTAssertNotNil(try rules.lookup(kind: .host, key: "new.example"))
     }

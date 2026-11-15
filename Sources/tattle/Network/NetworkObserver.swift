@@ -40,7 +40,7 @@ final class NetworkObserver {
     private let processRecords: @Sendable () -> ProcessRecords?
 
     /// Rule sources whose category may decide a connection's kind.
-    private static let kindSources = SeedLoader.seedSources.union([.user])
+    private static let kindSources = SeedLoader.seedSources
 
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
@@ -167,8 +167,8 @@ final class NetworkObserver {
             kindsRevision = rules.revision
         }
         if let kind = kinds[name] { return kind }
-        // Only Tattle's own and the user's rules say what a name is. A model's answer is free
-        // text, and a confirmed one outranks the seed in a plain lookup.
+        // Only the shipped rules say what a name is. A model's answer is free text, and a
+        // confirmed one outranks the seed in a plain lookup.
         let candidates: [Rule]
         do {
             candidates = try rules.candidates(kind: .host, key: name)

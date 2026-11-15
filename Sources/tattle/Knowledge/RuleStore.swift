@@ -2,8 +2,20 @@ import Foundation
 import GRDB
 import os
 
+/// The knowledge base: the shipped rules, in memory, and the model's answers, in the file.
+/// Any process of the user can write the file, so of its rule table only a model's answers
+/// are read: a row there that claims a shipped source or the user's is not a rule (ADR-0005).
 struct RuleStore: Sendable {
     let database: AppDatabase
+    /// The shipped rules, where no other process writes. An SQLite table, so a pattern
+    /// matches here as it does in the file.
+    private let shipped: DatabaseQueue
+
+    init(database: AppDatabase) throws {
+        self.database = database
+        shipped = try DatabaseQueue()
+        try shipped.write { try AppDatabase.createRuleTable(in: $0) }
+    }
 
     /// Counts the writes through this store and its copies, so a reader that remembers
     /// answers derived from rules can tell when they may be stale.
@@ -13,8 +25,9 @@ struct RuleStore: Sendable {
 
     private func wrote() { writes.withLock { $0 += 1 } }
 
-    /// Inserts a rule, replacing an existing one with the same kind, match, pattern, source
-    /// and identity. Returns the stored rule with its id. An unconfirmed rule never replaces a
+    /// Keeps a model's answer in the file, replacing an existing one with the same kind, match,
+    /// pattern, source and identity. Returns the stored rule with its id. A rule of another
+    /// source is stored and never read. An unconfirmed rule never replaces a
     /// confirmed one of the same key: the upsert would reset the confirmation and the
     /// creation date, and a confirmed rule is the user's own.
     @discardableResult
@@ -52,18 +65,18 @@ struct RuleStore: Sendable {
     /// Every rule matching `key`, best first.
     func candidates(kind: Rule.Kind, key: String, now: Date = Date()) throws -> [Rule] {
         let key = Rule.normalize(key, for: kind)
-        let rows = try database.writer.read { db in
-            try Rule.fetchAll(
-                db,
-                sql: """
-                    SELECT * FROM rule
-                    WHERE kind = :kind
-                      AND ((match = 'exact' AND pattern = :key)
-                        OR (match = 'glob' AND :key GLOB pattern))
-                    """,
-                arguments: ["kind": kind.rawValue, "key": key])
+        let matching = """
+            SELECT * FROM rule
+            WHERE kind = :kind
+              AND ((match = 'exact' AND pattern = :key)
+                OR (match = 'glob' AND :key GLOB pattern))
+            """
+        let arguments: StatementArguments = ["kind": kind.rawValue, "key": key]
+        let rules = try shipped.read { try Rule.fetchAll($0, sql: matching, arguments: arguments) }
+        let answers = try database.writer.read { db in
+            try Rule.fetchAll(db, sql: matching + " AND source = 'llm'", arguments: arguments)
         }
-        return rows
+        return (rules + answers)
             .filter { !$0.isExpired(at: now) }
             .sorted { a, b in
                 if a.rank != b.rank { return a.rank < b.rank }
@@ -73,32 +86,17 @@ struct RuleStore: Sendable {
             }
     }
 
-    /// Replaces every rule of `source` with `rules`, in one transaction. A rule that the
-    /// user had confirmed keeps its confirmation and creation date if it is still present.
-    func replaceAll(source: Rule.Source, with rules: [Rule]) throws {
+    /// Replaces the shipped rules of `source` with `rules`, in memory.
+    func replaceShipped(source: Rule.Source, with rules: [Rule]) throws {
         defer { wrote() }
-        try database.writer.write { db in
-            let existing = try Rule.filter(Column("source") == source.rawValue).fetchAll(db)
-            let kept = Dictionary(
-                existing.map { (Key(kind: $0.kind, match: $0.match, pattern: $0.pattern), $0) },
-                uniquingKeysWith: { first, _ in first })
+        try shipped.write { db in
             try Rule.filter(Column("source") == source.rawValue).deleteAll(db)
             for var rule in rules {
                 rule.id = nil
                 rule.source = source
-                if let old = kept[Key(kind: rule.kind, match: rule.match, pattern: rule.pattern)] {
-                    rule.confirmed = old.confirmed
-                    rule.created = old.created
-                }
                 try rule.upsert(db)
             }
         }
-    }
-
-    private struct Key: Hashable {
-        var kind: Rule.Kind
-        var match: Rule.Match
-        var pattern: String
     }
 
     /// Marks a rule confirmed. The source is kept so provenance is never lost; the rule
@@ -133,12 +131,15 @@ struct RuleStore: Sendable {
         }
     }
 
+    /// Every rule a lookup reads: the shipped ones and the model's answers.
     func rules(kind: Rule.Kind? = nil) throws -> [Rule] {
-        try database.writer.read { db in
-            var request = Rule.order(Column("kind"), Column("pattern"))
-            if let kind { request = request.filter(Column("kind") == kind.rawValue) }
-            return try request.fetchAll(db)
+        var request = Rule.all()
+        if let kind { request = request.filter(Column("kind") == kind.rawValue) }
+        let rules = try shipped.read { try request.fetchAll($0) }
+        let answers = try database.writer.read { db in
+            try request.filter(Column("source") == Rule.Source.llm.rawValue).fetchAll(db)
         }
+        return (rules + answers).sorted { ($0.kind.rawValue, $0.pattern) < ($1.kind.rawValue, $1.pattern) }
     }
 }
 

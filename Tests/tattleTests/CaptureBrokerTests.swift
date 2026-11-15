@@ -103,7 +103,7 @@ final class CaptureBrokerTests: XCTestCase {
     @MainActor
     func testInstallFailuresReachTheUserInPlainWords() async throws {
         let database = try AppDatabase.inMemory()
-        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: try RuleStore(database: database),
                                        settings: try AppSettings(store: SettingsStore(database: database)))
         let done = await observer.installBroker()
         XCTAssertFalse(done)

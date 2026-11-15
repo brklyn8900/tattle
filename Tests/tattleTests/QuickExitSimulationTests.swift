@@ -36,7 +36,7 @@ final class QuickExitSimulationTests: XCTestCase {
         let port = UInt16(bigEndian: address.sin_port)
 
         let database = try AppDatabase.inMemory()
-        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
+        let observer = NetworkObserver(store: ConnectionStore(database: database), rules: try RuleStore(database: database),
                                        settings: try AppSettings(store: SettingsStore(database: database)),
                                        socketTable: { Self.onLocalNetwork(try SocketTable.read(), port: port) })
         // The first reading takes every socket as already open; the second settles the rest.

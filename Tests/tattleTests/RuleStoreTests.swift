@@ -25,7 +25,12 @@ final class RuleStoreTests: XCTestCase {
     private var store: RuleStore!
 
     override func setUpWithError() throws {
-        store = RuleStore(database: try AppDatabase.inMemory())
+        store = try RuleStore(database: try AppDatabase.inMemory())
+    }
+
+    /// Ships `rules` as the builtin seed file would, in place of those shipped before.
+    private func ship(_ rules: Rule...) throws {
+        try store.replaceShipped(source: .builtin, with: rules)
     }
 
     private func rule(
@@ -38,24 +43,24 @@ final class RuleStoreTests: XCTestCase {
     }
 
     func testExactLookupAndMiss() throws {
-        try store.save(rule("gateway.icloud.com", source: .builtin, purpose: "iCloud"))
+        try ship(rule("gateway.icloud.com", source: .builtin, purpose: "iCloud"))
         XCTAssertEqual(try store.lookup(kind: .host, key: "gateway.icloud.com")?.purpose, "iCloud")
         XCTAssertNil(try store.lookup(kind: .host, key: "example.com"))
         XCTAssertNil(try store.lookup(kind: .process, key: "gateway.icloud.com"), "kind is part of the key")
     }
 
     func testGlobMatches() throws {
-        try store.save(rule("p*-caldav.icloud.com", match: .glob, source: .builtin, purpose: "CalDAV"))
-        try store.save(rule("com.apple.*", kind: .launchItem, match: .glob, source: .builtin, purpose: "Apple"))
+        try ship(rule("p*-caldav.icloud.com", match: .glob, source: .builtin, purpose: "CalDAV"),
+                 rule("com.apple.*", kind: .launchItem, match: .glob, source: .builtin, purpose: "Apple"))
         XCTAssertEqual(try store.lookup(kind: .host, key: "p61-caldav.icloud.com")?.purpose, "CalDAV")
         XCTAssertNil(try store.lookup(kind: .host, key: "p61-caldav.icloud.com.evil.net"))
         XCTAssertEqual(try store.lookup(kind: .launchItem, key: "com.apple.mdworker")?.purpose, "Apple")
     }
 
     func testHostsNormalizeCaseAndTrailingDot() throws {
-        try store.save(rule("Gateway.iCloud.com.", source: .builtin, purpose: "iCloud"))
+        try ship(rule("Gateway.iCloud.com.", source: .builtin, purpose: "iCloud"))
         XCTAssertEqual(try store.lookup(kind: .host, key: "GATEWAY.ICLOUD.COM")?.purpose, "iCloud")
-        try store.save(rule("/usr/bin/Foo", kind: .process, source: .builtin, purpose: "foo"))
+        try ship(rule("/usr/bin/Foo", kind: .process, source: .builtin, purpose: "foo"))
         XCTAssertNil(try store.lookup(kind: .process, key: "/usr/bin/foo"), "process keys stay case-sensitive")
     }
 
@@ -68,16 +73,17 @@ final class RuleStoreTests: XCTestCase {
     }
 
     func testSourcePrecedence() throws {
-        for source in Rule.Source.allCases {
-            try store.save(rule("a.example", source: source, purpose: source.rawValue))
+        let shipped: [Rule.Source] = [.builtin, .appleList, .trackerRadar]
+        for source in shipped.reversed() {
+            try store.replaceShipped(source: source, with: [rule("a.example", source: source, purpose: source.rawValue)])
         }
-        XCTAssertEqual(try store.lookup(kind: .host, key: "a.example")?.source, .user)
-        XCTAssertEqual(try store.candidates(kind: .host, key: "a.example").map(\.source),
-                       Rule.Source.allCases)
+        try store.save(rule("a.example", source: .llm, purpose: "llm"))
+        XCTAssertEqual(try store.lookup(kind: .host, key: "a.example")?.source, .builtin)
+        XCTAssertEqual(try store.candidates(kind: .host, key: "a.example").map(\.source), shipped + [.llm])
     }
 
     func testConfirmedRuleRanksWithUser() throws {
-        try store.save(rule("a.example", source: .builtin, purpose: "builtin"))
+        try ship(rule("a.example", source: .builtin, purpose: "builtin"))
         let llm = try store.save(rule("a.example", source: .llm, purpose: "llm"))
         XCTAssertEqual(try store.lookup(kind: .host, key: "a.example")?.purpose, "builtin")
 
@@ -89,10 +95,11 @@ final class RuleStoreTests: XCTestCase {
     }
 
     func testExactBeatsGlobAndLongerGlobBeatsShorter() throws {
-        try store.save(rule("*.icloud.com", match: .glob, source: .builtin, purpose: "short"))
-        try store.save(rule("*-caldav.icloud.com", match: .glob, source: .builtin, purpose: "long"))
+        let short = rule("*.icloud.com", match: .glob, source: .builtin, purpose: "short")
+        let long = rule("*-caldav.icloud.com", match: .glob, source: .builtin, purpose: "long")
+        try ship(short, long)
         XCTAssertEqual(try store.lookup(kind: .host, key: "p61-caldav.icloud.com")?.purpose, "long")
-        try store.save(rule("p61-caldav.icloud.com", source: .builtin, purpose: "exact"))
+        try ship(short, long, rule("p61-caldav.icloud.com", source: .builtin, purpose: "exact"))
         XCTAssertEqual(try store.lookup(kind: .host, key: "p61-caldav.icloud.com")?.purpose, "exact")
     }
 
@@ -113,7 +120,7 @@ final class RuleStoreTests: XCTestCase {
         try store.save(rule("old.example", source: .llm, created: old))
         try store.save(rule("fresh.example", source: .llm, created: fresh))
         try store.save(rule("kept.example", source: .llm, confirmed: now, created: old))
-        try store.save(rule("builtin.example", source: .builtin, created: old))
+        try ship(rule("builtin.example", source: .builtin, created: old))
 
         XCTAssertNil(try store.lookup(kind: .host, key: "old.example", now: now), "ignored before pruning")
         XCTAssertNotNil(try store.lookup(kind: .host, key: "fresh.example", now: now))
@@ -125,9 +132,9 @@ final class RuleStoreTests: XCTestCase {
     func testSaveReplacesSameKindPatternSource() throws {
         try store.save(rule("a.example", source: .llm, purpose: "first"))
         try store.save(rule("a.example", source: .llm, purpose: "second"))
-        try store.save(rule("a.example", source: .user, purpose: "user"))
+        try ship(rule("a.example", source: .builtin, purpose: "builtin"))
         XCTAssertEqual(try store.rules().count, 2)
-        XCTAssertEqual(try store.candidates(kind: .host, key: "a.example").map(\.purpose), ["user", "second"])
+        XCTAssertEqual(try store.candidates(kind: .host, key: "a.example").map(\.purpose), ["builtin", "second"])
     }
 
     func testConfirmUnknownIdThrows() {
@@ -142,8 +149,8 @@ final class RuleStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appending(path: "tattle.sqlite")
 
-        try RuleStore(database: try AppDatabase(at: url)).save(rule("a.example", source: .builtin))
-        let reopened = RuleStore(database: try AppDatabase(at: url))
+        try RuleStore(database: try AppDatabase(at: url)).save(rule("a.example", source: .llm))
+        let reopened = try RuleStore(database: try AppDatabase(at: url))
         XCTAssertEqual(try reopened.rules().count, 1)
     }
 }

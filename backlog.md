@@ -14,6 +14,11 @@
   signatures, then names each owner again.
 - Confirmed program answers from before identities stay as dead rows: they have no identity,
   so they are never shown, and a confirmed rule never expires.
+- The shipped rules are files in the bundle's `Contents/Resources/knowledge`, and the
+  executable holds no hash of them, so a process that can write the bundle can change a rule
+  and leave the program as it was. Whether macOS refuses to start an app whose resource
+  changed after its first launch is unverified: measure that before pinning the hashes
+  (ADR-0005, `SeedLoader.swift`).
 - An answer that was not kept stays when neither side has an identity: with none on the row,
   the detail cannot tell its code changed (`sh -c x` closes, `sh -c y` joins), so the answer
   stays until the detail closes (`ExplainSection.swift`).

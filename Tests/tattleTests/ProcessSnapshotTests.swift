@@ -435,11 +435,11 @@ final class ProcessSnapshotTests: XCTestCase {
 
     func testBuiltinGlossaryResolves() throws {
         let database = try AppDatabase.inMemory()
-        let rules = RuleStore(database: database)
+        let rules = try RuleStore(database: database)
         let repoSeeds = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appending(path: "Resources/knowledge")
-        SeedLoader(rules: rules, settings: SettingsStore(database: database)).load(from: repoSeeds)
+        SeedLoader(rules: rules).load(from: repoSeeds)
         for name in ["launchd", "kernel_task", "WindowServer", "logd", "cfprefsd", "distnoted", "coreaudiod", "trustd", "nsurlsessiond",
                      "apsd", "mDNSResponder", "cloudd", "bird", "rapportd", "sharingd", "mds"] {
             let rule = try XCTUnwrap(try rules.lookup(kind: .process, key: name), name)

@@ -482,7 +482,7 @@ final class NetworkSnapshotTests: XCTestCase {
     @MainActor
     private func observer(in world: World, database: AppDatabase? = nil, signature: @escaping @Sendable (String) -> CodeSignature? = { _ in nil }) throws -> NetworkObserver {
         let database = try database ?? AppDatabase.inMemory()
-        return NetworkObserver(store: ConnectionStore(database: database), rules: RuleStore(database: database),
+        return NetworkObserver(store: ConnectionStore(database: database), rules: try RuleStore(database: database),
                                settings: try AppSettings(store: SettingsStore(database: database)),
                                socketTable: { world.readTable() },
                                processRecords: { world.records() },
@@ -603,7 +603,7 @@ final class NetworkSnapshotTests: XCTestCase {
         defer { gate.open() }
         let socket = SocketEntry(proto: .tcp, isIPv6: false, localAddress: "192.168.1.5", localPort: 40000, remoteAddress: "17.1.1.1", remotePort: 443,
                                  tcpState: SocketEntry.tcpEstablished, pid: getpid(), effectivePid: 0, uid: 501)
-        let observer = NetworkObserver(store: store, rules: RuleStore(database: database),
+        let observer = NetworkObserver(store: store, rules: try RuleStore(database: database),
                                        settings: try AppSettings(store: SettingsStore(database: database)),
                                        socketTable: { [socket] }, signature: { _ in gate.hold(); return nil })
         let reading = Task { await observer.poll() }

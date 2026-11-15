@@ -736,7 +736,7 @@ final class ExplainerTests: XCTestCase {
 
     override func setUpWithError() throws {
         let database = try AppDatabase.inMemory()
-        store = RuleStore(database: database)
+        store = try RuleStore(database: database)
         settings = try AppSettings(store: SettingsStore(database: database))
         settings.providerCommand = "fake"
     }
@@ -812,12 +812,10 @@ final class ExplainerTests: XCTestCase {
         }
         XCTAssertEqual(try store.rules().map(\.purpose), ["mine"])
         XCTAssertNotNil(try store.rules().first?.confirmed)
-        // Another source is another key.
-        XCTAssertNoThrow(try store.save(Rule(kind: .host, pattern: "a.example", purpose: "seed", source: .builtin)))
     }
 
     func testLookupNeverCallsProvider() async throws {
-        try store.save(Rule(kind: .host, pattern: "a.example", purpose: "known", source: .builtin))
+        try store.replaceShipped(source: .builtin, with: [Rule(kind: .host, pattern: "a.example", purpose: "known", source: .builtin)])
         let provider = FakeProvider(output: "")
         let explainer = explainer(provider)
         let known = try await explainer.lookup(ExplainRequest(kind: .host, key: "a.example"))
@@ -833,7 +831,7 @@ final class ExplainerTests: XCTestCase {
         let repoSeeds = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appending(path: "Resources/knowledge")
-        SeedLoader(rules: store, settings: SettingsStore(database: store.database)).load(from: repoSeeds)
+        SeedLoader(rules: store).load(from: repoSeeds)
         let explainer = explainer(FakeProvider(output: ""))
         func lookup(_ kind: Rule.Kind, _ key: String, isApplesProgram: Bool) async throws -> Rule? {
             try await explainer.lookup(ExplainRequest(kind: kind, key: key, isApplesProgram: isApplesProgram))
@@ -878,7 +876,7 @@ final class ExplainerTests: XCTestCase {
         let repoSeeds = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appending(path: "Resources/knowledge")
-        SeedLoader(rules: store, settings: SettingsStore(database: store.database)).load(from: repoSeeds)
+        SeedLoader(rules: store).load(from: repoSeeds)
         let explainer = explainer(FakeProvider(output: ""))
         func lookup(_ identity: CodeIdentity?) async throws -> Rule? {
             try await explainer.lookup(ExplainRequest(kind: .process, key: "claude", identity: identity))
