@@ -34,6 +34,7 @@ final class NetworkObserver {
     private(set) var eventsDropped = 0
     private var unreportedDrops = 0
     private var lastDropReport = Date.distantPast
+    private var dropReportPending = false
     private var lastTouch = Date.distantPast
     private var lastPrune = Date.distantPast
     private var task: Task<Void, Never>?
@@ -159,20 +160,30 @@ final class NetworkObserver {
         while let next = mailbox.take(Self.eventBatch) {
             eventsDropped += next.dropped
             unreportedDrops += next.dropped
-            // Once a second at most: a flood drops events at every batch.
-            if Date().timeIntervalSince(lastDropReport) >= 1 { reportDrops() }
+            reportDrops()
             handle(next.events)
             await Task.yield()
         }
-        // The mailbox is empty, so the flood is over or has paused: say what is still unsaid.
-        reportDrops()
     }
 
+    /// Says in the log how many events were dropped, once a second at most: a flood drops
+    /// them at every batch. What is counted within a second of the last line is said when
+    /// the second is up, whether or not more events come.
     private func reportDrops() {
-        guard unreportedDrops > 0 else { return }
-        Log.sniffer.notice("dropped \(self.unreportedDrops) flow events that arrived faster than they were handled; their connections go without a name")
-        unreportedDrops = 0
-        lastDropReport = Date()
+        guard unreportedDrops > 0, !dropReportPending else { return }
+        let wait = 1 - Date().timeIntervalSince(lastDropReport)
+        guard wait > 0 else {
+            Log.sniffer.notice("dropped \(self.unreportedDrops) flow events that arrived faster than they were handled; their connections go without a name")
+            unreportedDrops = 0
+            lastDropReport = Date()
+            return
+        }
+        dropReportPending = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            self?.dropReportPending = false
+            self?.reportDrops()
+        }
     }
 
     private func handle(_ events: [FlowEvent]) {
