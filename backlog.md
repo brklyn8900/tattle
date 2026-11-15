@@ -130,8 +130,9 @@ and (d) are done)
   `find`, `xargs`) in place of the three tables and the checks by name, each kind with only
   the fields it uses: `Takes.code` now means inline code for an interpreter and a command
   not followed for a wrapper.
-- Processes reads as Apple's the code an Apple process runs inside itself: `jsc -e`, a vim
-  script, a pipe into bash under cron (`LaunchedCode.swift`, `ProcessTable.swift`).
+- Processes reads as Apple's the code an Apple process runs inside itself: `jsc -e` or a
+  script given to `jsc`, which the list of interpreters lacks, a vim script, a pipe into bash
+  under cron (`LaunchedCode.swift`, `ProcessTable.swift`).
 - A launch item through `/usr/bin/sudo` reads as `unsigned`: sudo cannot be read by the user
   (`r-s--x--x`), so Apple's signature on it cannot be either (`CodeSignature.swift`).
 - An agent an app registers with SMAppService reads by its executable: the
