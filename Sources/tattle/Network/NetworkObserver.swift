@@ -160,14 +160,19 @@ final class NetworkObserver {
             eventsDropped += next.dropped
             unreportedDrops += next.dropped
             // Once a second at most: a flood drops events at every batch.
-            if unreportedDrops > 0, Date().timeIntervalSince(lastDropReport) >= 1 {
-                Log.sniffer.notice("dropped \(self.unreportedDrops) flow events that arrived faster than they were handled; their connections go without a name")
-                unreportedDrops = 0
-                lastDropReport = Date()
-            }
+            if Date().timeIntervalSince(lastDropReport) >= 1 { reportDrops() }
             handle(next.events)
             await Task.yield()
         }
+        // The mailbox is empty, so the flood is over or has paused: say what is still unsaid.
+        reportDrops()
+    }
+
+    private func reportDrops() {
+        guard unreportedDrops > 0 else { return }
+        Log.sniffer.notice("dropped \(self.unreportedDrops) flow events that arrived faster than they were handled; their connections go without a name")
+        unreportedDrops = 0
+        lastDropReport = Date()
     }
 
     private func handle(_ events: [FlowEvent]) {
