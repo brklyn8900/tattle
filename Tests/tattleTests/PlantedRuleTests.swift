@@ -120,6 +120,35 @@ final class PlantedRuleTests: XCTestCase {
         XCTAssertEqual(observer.kind(of: "cloudflare-ech.com", source: .sni), .hidden)
     }
 
+    /// The shipped rule does not depend on the file, so a row there that the app cannot read
+    /// does not take it off the item's detail.
+    func testAPlantedRowThatCannotBeReadDoesNotHideTheShippedRule() async throws {
+        SeedLoader(rules: store).load(from: repoSeeds)
+        let shipped = try XCTUnwrap(try store.rules(kind: .process).first { $0.describesApplesProgram })
+        try plant(pattern: shipped.pattern, risk: "no such level", source: "llm")
+        try plant(kind: "host", pattern: "mask.icloud.com", risk: "no such level", source: "llm")
+        XCTAssertThrowsError(try store.candidates(kind: .process, key: shipped.pattern), "the row is one the app cannot read")
+        var found = try await explainer.lookup(ExplainRequest(kind: .process, key: shipped.pattern, isApplesProgram: true))
+        XCTAssertEqual(found?.purpose, shipped.purpose, said(found))
+        XCTAssertEqual(found?.source, .builtin, said(found))
+        found = try await explainer.lookup(ExplainRequest(kind: .host, key: "mask.icloud.com"))
+        XCTAssertEqual(found?.source, .builtin, said(found))
+    }
+
+    /// Nor does a rule table that is gone: every shipped rule still answers.
+    func testADroppedRuleTableDoesNotHideTheShippedRules() async throws {
+        SeedLoader(rules: store).load(from: repoSeeds)
+        let shipped = try XCTUnwrap(try store.rules(kind: .process).first { $0.describesApplesProgram })
+        try await database.writer.write { try $0.execute(sql: "DROP TABLE rule") }
+        XCTAssertThrowsError(try store.candidates(kind: .process, key: shipped.pattern))
+        var found = try await explainer.lookup(ExplainRequest(kind: .process, key: shipped.pattern, isApplesProgram: true))
+        XCTAssertEqual(found?.purpose, shipped.purpose, said(found))
+        found = try await explainer.lookup(ExplainRequest(kind: .host, key: "mask.icloud.com"))
+        XCTAssertEqual(found?.category, "relay", said(found))
+        found = try await explainer.lookup(ExplainRequest(kind: .host, key: "unknown.example"))
+        XCTAssertNil(found, said(found))
+    }
+
     /// Loading the seed files, at this launch or the next, does not make a planted row a rule.
     func testAPlantedRowIsNoRuleBesideTheShippedOnes() async throws {
         let loader = SeedLoader(rules: store)

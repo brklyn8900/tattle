@@ -27,9 +27,17 @@ final class Explainer {
     }
 
     /// What the knowledge base already says, if anything. Never reaches the model. A file an
-    /// identity rests on is read only when an answer was kept for that file.
+    /// identity rests on is read only when an answer was kept for that file. When the kept
+    /// answers cannot be read, the shipped rules still answer: they do not depend on the
+    /// database, which another process can damage (ADR-0005).
     func lookup(_ request: ExplainRequest) async throws -> Rule? {
-        let candidates = try store.candidates(kind: request.kind, key: request.key)
+        let candidates: [Rule]
+        do {
+            candidates = try store.candidates(kind: request.kind, key: request.key)
+        } catch {
+            Log.knowledge.error("kept answers unreadable, answering from the shipped rules: \(error, privacy: .public)")
+            candidates = try store.shippedCandidates(kind: request.kind, key: request.key)
+        }
         var identity: String?
         if let asked = request.identity, asked.contentFile == nil || candidates.contains(where: { asked.wasStored(as: $0.identity) }) {
             identity = await stored(asked)

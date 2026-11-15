@@ -187,8 +187,8 @@ are the triage's)
 - B6: The broker cancels the connection right after sending its reply, and the SDK says
   cancel discards unsent messages; a send barrier makes the order explicit
   (`tattle-capture-broker/main.c`).
-- K9: A database error in the explain lookup reads as "No explanation yet"
-  (`ExplainSection.swift`).
+- K9: A database error in the explain lookup reads as the shipped rule alone, or as "No
+  explanation yet" for an item with none (`ExplainSection.swift`).
 - K2: A process's own TLS server name can make its row read "relayed" or "name hidden"
   (`NetworkObserver.swift`).
 - N25: A LAN peer that forges this Mac's MAC address can relabel a live UDP row; the kernel's

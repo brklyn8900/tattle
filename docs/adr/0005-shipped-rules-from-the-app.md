@@ -39,9 +39,10 @@ the shipped rule about it. The row stayed until the seed file next changed.
   so a process can do this for its own code and for any program whose identity it knows.
   A confirmed answer ranks above a shipped rule, so such a row also takes the place of
   Tattle's rule for the item, under the model's label. A row the app cannot read, or a
-  damaged table, fails the lookup for its item, whose detail then shows no explanation,
-  the shipped rule included; what a name is on the Network tab does not depend on the
-  file. The user's own confirmed answers are kept and read as before.
+  damaged table, fails the database's lookup for its item: the detail then shows the
+  shipped rule, if there is one, and no kept answer. What a name is on the Network tab
+  does not depend on the database. The user's own confirmed answers are kept and read as
+  before.
 - **A shipped rule is as hard to change as the app.** The rules are files in the bundle's
   `Contents/Resources/knowledge`. Whether macOS refuses to start an app whose resource
   file was changed after its first launch is unverified; the executable does not hold the
