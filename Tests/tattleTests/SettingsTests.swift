@@ -44,6 +44,16 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(try AppSettings(store: SettingsStore(database: database)).promptInstructions, Prompt.defaultInstructions)
     }
 
+    /// The stored value can be edited outside the app; the pruning cutoff must stay in the past.
+    func testRetentionIsClampedToTheStepperRangeWhenLoaded() throws {
+        let database = try AppDatabase.inMemory()
+        let store = SettingsStore(database: database)
+        for (stored, loaded) in [("0", 1), ("-5", 1), ("366", 365), ("\(Int.max)", 365), ("1", 1), ("365", 365), ("x", 30)] {
+            try store.set("history.retentionDays", stored)
+            XCTAssertEqual(try AppSettings(store: store).retentionDays, loaded, stored)
+        }
+    }
+
     func testACommandTheUserEditedStaysTheirs() throws {
         let database = try AppDatabase.inMemory()
         let edited = #"claude -p --model haiku --tools "" --output-format json --json-schema {schema}"#

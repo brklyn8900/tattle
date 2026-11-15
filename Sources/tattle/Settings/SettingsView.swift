@@ -59,7 +59,7 @@ struct SettingsView: View {
                 }
             }
             Section("History") {
-                Stepper(value: $settings.retentionDays, in: 1...365) {
+                Stepper(value: $settings.retentionDays, in: AppSettings.retentionRange) {
                     Text("Keep connection history for \(settings.retentionDays) days")
                 }
             }

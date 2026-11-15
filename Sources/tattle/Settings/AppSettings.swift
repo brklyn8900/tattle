@@ -42,6 +42,7 @@ enum Appearance: String, CaseIterable, Sendable {
 @MainActor @Observable
 final class AppSettings {
     static let defaultRetentionDays = 30
+    static let retentionRange = 1...365
 
     /// Shell command template for the LLM provider. Empty until the user picks one.
     var providerCommand: String { didSet { write(Key.providerCommand, providerCommand) } }
@@ -69,7 +70,10 @@ final class AppSettings {
         self.store = store
         providerCommand = try store.string(Key.providerCommand) ?? ""
         promptInstructions = try store.string(Key.promptInstructions) ?? Prompt.defaultInstructions
-        retentionDays = try store.string(Key.retentionDays).flatMap(Int.init) ?? Self.defaultRetentionDays
+        // The stored value can be edited outside the app: 0 would prune every row, open
+        // connections included, and a negative value would put the cutoff in the future.
+        retentionDays = try store.string(Key.retentionDays).flatMap(Int.init)
+            .map { min(max($0, Self.retentionRange.lowerBound), Self.retentionRange.upperBound) } ?? Self.defaultRetentionDays
         showThroughputInMenuBar = try store.string(Key.menuBarThroughput).flatMap(Bool.init) ?? true
         appearance = try store.string(Key.appearance).flatMap(Appearance.init) ?? .system
     }

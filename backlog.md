@@ -187,8 +187,6 @@ are the triage's)
   development signer (the "Signed by" summary and the Team facts).
 - K6: A DNS-only name is unmarked in the Network detail headline, against ADR-0001
   decision 2, and becomes the Explain key (`NetworkTab.swift`, `NetworkSnapshot.swift`).
-- E16: Retention is checked only in the UI; a stored 0 or negative value deletes every
-  history row, open connections included (`AppSettings.swift`, `ConnectionStore.swift`).
 - E14: Choosing Custom in the provider picker does nothing and snaps back
   (`SettingsView.swift`).
 - E4: Back and reopen during an Explain starts a second paid call; Quit leaves the provider
