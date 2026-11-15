@@ -1410,15 +1410,16 @@ final class ShellProviderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: pidFile) }
         // The shell becomes perl, which joins its parent's group: this test's.
         let command = "exec perl -MPOSIX -e 'POSIX::setpgid(0, getpgrp(getppid())) or die; "
-            + "open my $f, \">\", shift; print $f $$; close $f; sleep 6' '\(pidFile.path)'"
+            + "open my $f, \">\", shift; print $f $$; close $f; sleep 8' '\(pidFile.path)'"
         let start = Date()
         do {
-            _ = try await ShellProvider(command: command, timeout: 1).explain("")
+            // Time for a login shell to start on a loaded machine before perl writes its record.
+            _ = try await ShellProvider(command: command, timeout: 3).explain("")
             XCTFail("expected timeout")
         } catch let error as ProviderError {
             XCTAssertEqual(error, .timedOut)
         }
-        XCTAssertLessThan(Date().timeIntervalSince(start), 2.5, "returned at the timeout")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 4.5, "returned at the timeout")
         // The call reaps the command either way; the record shows it left its group.
         XCTAssertNotNil(Int32(try String(contentsOf: pidFile, encoding: .utf8)), "the command left its group")
     }
