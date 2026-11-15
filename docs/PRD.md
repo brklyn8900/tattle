@@ -163,9 +163,9 @@ Resolution order for any item:
    (why such an item is probably on a Mac), `care` (the reason the owner should care or not),
    `category`, `risk`, `confidence`, `source`, `identity` (what tells the code the rule was given for from other
    code of that name, empty for a rule about no one program), and `confirmed` (a timestamp,
-   null until the user confirms). A model's answer about anything but a host, and a shipped
-   rule that names a publisher for a process or a port's listener, answers only for its
-   identity; a shipped rule about one of Apple's programs answers only for Apple's program
+   null until the user confirms). A rule about a process, a port's listener or a launch item,
+   from any source, answers only for its identity (a port-wide rule, `*:udp/5353`, is about
+   no one program); a shipped rule about one of Apple's programs answers only for Apple's program
    of that name. Sources in precedence order: `user`, `builtin`, `iap`, `apple-list`, `tracker-radar`,
    `llm`; a confirmed rule ranks with `user` whatever its source.
 3. **LLM**, on click only. The request carries the item and the facts from step 1 that say

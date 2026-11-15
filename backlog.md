@@ -10,9 +10,6 @@
   contact. Today the answer follows the rule's risk alone, so an unsigned program reaching a
   low-risk host reads "Probably not." Such facts are noisy: every build from source is
   unsigned or ad-hoc signed, and every new address is a first contact (raised 2026-11-11).
-- Invert the opt-in identity gate for rules: a rule about a program, from any source, needs
-  an identity unless Apple's gate covers it. Today only `llm` rules and `builtin` rules with
-  an owner do, and no shipped rule falls outside that.
 - A bundle's signature is cached by the folder's modification date. Replacing an executable
   inside the bundle does not change that date, so the app's row can keep a stale reading.
 - One naming step shared by Network and Processes: Network lists processes without their

@@ -853,6 +853,26 @@ final class ExplainerTests: XCTestCase {
         XCTAssertEqual(rule?.purpose.prefix(7), "Bonjour", "the port-wide rule, not the resolver's")
     }
 
+    /// Whether a rule needs the identity of the code it was given for follows what it is
+    /// about, not which file it came from: a program rule in any seed answers only for its code.
+    func testEveryRuleAboutAProgramNeedsItsIdentityWhateverItsSource() {
+        let identity = "team:ABCDE12345:com.acme.agent"
+        for source in Rule.Source.allCases {
+            for (kind, pattern) in [(Rule.Kind.process, "agent"), (.port, "agent:tcp/7000"), (.port, "*agent:tcp/7000"), (.launchItem, "com.acme.agent")] {
+                let rule = Rule(kind: kind, pattern: pattern, owner: "Acme", purpose: "x", source: source, identity: identity)
+                let request = ExplainRequest(kind: kind, key: pattern)
+                XCTAssertTrue(rule.needsIdentity, "\(source) \(kind) \(pattern)")
+                XCTAssertTrue(rule.answers(request, identity: identity), "\(source) \(kind) \(pattern)")
+                XCTAssertFalse(rule.answers(request, identity: "ad-hoc:ab:/tmp/agent"), "\(source) \(kind) \(pattern)")
+                XCTAssertFalse(rule.answers(request, identity: nil), "\(source) \(kind) \(pattern)")
+            }
+            let host = Rule(kind: .host, pattern: "example.com", owner: "Acme", purpose: "x", source: source)
+            XCTAssertFalse(host.needsIdentity, "\(source): a host is its own name")
+            let portWide = Rule(kind: .port, match: .glob, pattern: "*:udp/7000", owner: "Acme", purpose: "x", source: source)
+            XCTAssertFalse(portWide.needsIdentity, "\(source): a port-wide rule is about the port")
+        }
+    }
+
     /// Anyone can name a process "claude": the shipped rule is about Anthropic's program.
     func testTheShippedRuleAboutAnotherPublishersProgramNeedsThatProgram() async throws {
         let repoSeeds = URL(fileURLWithPath: #filePath)

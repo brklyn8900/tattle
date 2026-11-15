@@ -79,21 +79,20 @@ struct Rule: Codable, Equatable, Identifiable, Sendable {
     var rank: Int { confirmed == nil ? source.rank : Source.user.rank }
 
     /// A rule about a program by its name, which any program can take. A port-wide rule
-    /// (`*:udp/5353`) describes the port, whoever listens.
-    private var describesProgram: Bool { kind == .process || (kind == .port && !pattern.hasPrefix("*")) }
+    /// (`*:udp/5353`) describes the port, whoever listens; an exact key is one program's even
+    /// when that program is named `*`.
+    private var describesProgram: Bool {
+        kind == .process || (kind == .port && !(match == .glob && pattern.hasPrefix("*:")))
+    }
 
     /// A shipped rule about one of Apple's programs: `ApplesProgram` says which is one.
     var describesApplesProgram: Bool { source == .builtin && owner == "Apple" && describesProgram }
 
-    /// A model's answer was given for one program's code, and a shipped rule with another
-    /// publisher's name on it vouches for that publisher's. A host is its own name.
-    var needsIdentity: Bool {
-        switch source {
-        case .llm: kind != .host
-        case .builtin: owner != nil && !describesApplesProgram && describesProgram
-        default: false
-        }
-    }
+    /// A rule about a program, or the launch item that runs one, is about that program's code,
+    /// whatever its source: the name or label is anyone's. Apple's programs are told by
+    /// `ApplesProgram` instead. A host is its own name, and a port-wide rule is about no one
+    /// program.
+    var needsIdentity: Bool { !describesApplesProgram && (describesProgram || kind == .launchItem) }
 
     /// Whether this rule may explain the item: a name alone does not make it the program the
     /// rule is about, confirmed or not.
