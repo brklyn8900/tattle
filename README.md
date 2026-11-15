@@ -168,8 +168,8 @@ The Claude Code preset keeps no transcript of the call and starts none of your a
 connectors, but Claude Code adds the email address it is signed in with to the request, and
 Tattle cannot remove it.
 The command runs in your login shell, in an empty temporary folder, and is stopped after
-120 seconds or once it has written 4 MB. When it exits, Tattle kills what is left in its process group; a process that
-left the group keeps running.
+120 seconds or once it has written 4 MB. When it exits, Tattle kills what is left in its
+process group; a process that left the group keeps running.
 
 Tattle stores the answer as a rule for that item, marked unconfirmed until you click
 **Confirm**. Unconfirmed answers expire after 45 days. Two kinds of answer are shown without

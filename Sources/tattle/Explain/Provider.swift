@@ -105,10 +105,10 @@ struct ShellProvider: ExplainProvider {
 
     /// Writes `input` to the command and reads its stdout and stderr until it exits, the
     /// deadline passes or the two together pass `limit`. Then it kills the command's process
-    /// group, which ends whatever the command left running. A process that left the group, as a daemonizing helper does,
-    /// can hold a pipe open long after the command is gone, so nothing here waits on a pipe:
-    /// the descriptors are non-blocking, and one kqueue watches them and the exit with the
-    /// deadline as its timeout.
+    /// group, which ends whatever the command left running. A process that left the group, as
+    /// a daemonizing helper does, can hold a pipe open long after the command is gone, so
+    /// nothing here waits on a pipe: the descriptors are non-blocking, and one kqueue watches
+    /// them and the exit with the deadline as its timeout.
     private static func exchange(with pid: pid_t, on queue: Int32, input: Data, stdin: FileHandle,
                                  stdout: FileHandle, stderr: FileHandle,
                                  until deadline: DispatchTime, limit: Int) -> (output: Data, errors: Data, exited: Bool, overflowed: Bool) {
