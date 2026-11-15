@@ -145,13 +145,21 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertEqual(machine.cache.signature(at: machine.file.path), machine.signature, "the file still reads as its signer's")
     }
 
-    func testWithoutTheKernelsHashEveryReadingChecks() throws {
+    func testWithoutTheKernelsWordEveryReadingChecks() throws {
         let machine = try Machine()
-        machine.code?.hash = nil
+        machine.code = RunningCode.State(path: machine.file.path)
         XCTAssertEqual(machine.signer(of: 7), machine.signature)
         machine.matches = false
         XCTAssertNil(machine.signer(of: 7), "nothing says the code is the code last checked")
         XCTAssertEqual(machine.checks, 2)
+    }
+
+    func testUnsignedRunningCodeIsNotASignedFileWithoutACheck() throws {
+        let machine = try Machine()
+        machine.code?.hash = nil
+        XCTAssertNil(machine.signer(of: 7), "the kernel holds no signature for what runs")
+        XCTAssertNil(machine.signer(of: 7))
+        XCTAssertEqual(machine.checks, 0)
     }
 
     func testACheckThatSpansAChangeDoesNotVouch() throws {
