@@ -42,9 +42,14 @@ enum NameOutcome: Equatable, Sendable {
 
 /// Outcomes by flow key, waiting for or already attached to a connection. One can arrive
 /// before the socket table shows the connection or after; either way it is here when the
-/// other side turns up, and forgotten once nothing claimed it for a while.
+/// other side turns up, and forgotten once nothing claimed it for a while, or once
+/// `capacity` newer ones have arrived.
 struct PendingNames: Equatable, Sendable {
     static let keepFor: TimeInterval = 300
+    /// The most outcomes held, and the most openings. Every flow the sniffer reports adds one
+    /// of each, whether or not a connection ever claims it; past this many the oldest quarter
+    /// goes, an open connection's among them.
+    static let capacity = 4096
 
     /// Each flow's outcome, when it arrived, and when the flow opened.
     private var names: [String: (outcome: NameOutcome, at: Date, openedAt: Date)] = [:]
@@ -61,6 +66,14 @@ struct PendingNames: Equatable, Sendable {
     /// An outcome comes at most the namer's give-up time after its flow opened.
     mutating func set(_ outcome: NameOutcome, for flowKey: String, at date: Date) {
         names[flowKey] = (outcome, date, opened[flowKey] ?? date.addingTimeInterval(-FlowNamer.finalizeAfter))
+        if names.count > Self.capacity { names = Self.newest(names) { $0.at } }
+    }
+
+    /// The newest three quarters of `capacity`, so that the sort is paid once in a quarter
+    /// of a capacity's arrivals.
+    private static func newest<Value>(_ entries: [String: Value], at: (Value) -> Date) -> [String: Value] {
+        let kept = entries.sorted { at($0.value) > at($1.value) }.prefix(capacity * 3 / 4)
+        return Dictionary(uniqueKeysWithValues: kept.map { ($0.key, $0.value) })
     }
 
     func outcome(for flowKey: String) -> NameOutcome? { names[flowKey]?.outcome }
@@ -92,6 +105,7 @@ struct PendingNames: Equatable, Sendable {
             case .opened:
                 names[event.key.text] = nil
                 opened[event.key.text] = date
+                if opened.count > Self.capacity { opened = Self.newest(opened) { $0 } }
                 continue
             case .named(let text, let source):
                 outcome = .named(ConnectionName(name: text, source: source, kind: kind(text, source)))

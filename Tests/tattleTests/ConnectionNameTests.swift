@@ -105,6 +105,30 @@ final class ConnectionNameTests: XCTestCase {
         XCTAssertEqual(table.outcome(for: "k")?.name?.name, "later.apple.com", "the latest outcome wins")
     }
 
+    /// A flow that no connection claims was held for five minutes, so what was held grew with
+    /// the rate flows opened at, and each reading walked all of it.
+    func testPendingNamesHoldsAtMostItsCapacityAndDropsTheOldest() {
+        var table = PendingNames()
+        func key(_ number: Int) -> FlowKey {
+            FlowKey(proto: .tcp, localPort: UInt16(1024 + number % 60000), remote: IPAddress(bytes: [11, UInt8(number >> 16), UInt8(number >> 8 & 0xff), UInt8(number & 0xff)]), remotePort: 443)
+        }
+        let count = 3 * PendingNames.capacity
+        for number in 0..<count {
+            _ = table.apply([FlowEvent(key: key(number), kind: .opened), FlowEvent(key: key(number), kind: .named("h\(number).example", .sni))],
+                            at: t0 + Double(number) / 1000) { _, _ in .destination }
+            XCTAssertLessThanOrEqual(table.count, PendingNames.capacity)
+            XCTAssertLessThanOrEqual(table.openingCount, PendingNames.capacity)
+        }
+        XCTAssertGreaterThanOrEqual(table.count, PendingNames.capacity * 3 / 4)
+        let now = t0 + Double(count) / 1000
+        let newest = key(count - 1), kept = key(count - PendingNames.capacity * 3 / 4), oldest = key(0)
+        XCTAssertEqual(table.outcome(for: newest.text)?.name?.name, "h\(count - 1).example")
+        XCTAssertTrue(table.openingSeen(newest.text, at: now))
+        XCTAssertNotNil(table.outcome(for: kept.text), "the newest three quarters of a capacity are always held")
+        XCTAssertNil(table.outcome(for: oldest.text), "the oldest went")
+        XCTAssertFalse(table.openingSeen(oldest.text, at: t0 + 1), "and its opening")
+    }
+
     /// A connection the table still shows after another opened on its four-tuple keeps
     /// waiting: the outcome is the later connection's, as it is for the row and for history.
     func testAnOutcomeWaitsForItsOwnConnection() {
