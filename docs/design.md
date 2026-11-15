@@ -51,8 +51,10 @@ signed file over its own path, and an app updated in place until it is started a
 fails too for code the kernel no longer holds as it was signed, such as a program that
 changed its own code in memory, though its file is untouched. What says the running code is
 still the code last checked is the kernel's hash of it and its code-signing status, read with
-`csops`, which is in libSystem and in no SDK header: it is resolved at run time, and without
-it every reading makes the check (`Identify/RunningCode.swift`).
+`csops`, which is in libSystem and in no SDK header: it is resolved at run time. Without it
+every reading makes the check, and a process on its way out, which nothing then tells from
+one whose file is gone, shows no signer where it would read as its file
+(`Identify/RunningCode.swift`).
 
 Helpers are attributed to their app by
 walking the parent chain and by path containment (`Slack Helper (GPU)` lives inside

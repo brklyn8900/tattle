@@ -52,8 +52,9 @@ shell loses the PATH the user's CLI is found on.
   decides for the shell or the tool, not from Tattle's grant.
 - These two are not Tattle's only calls outside the SDK's headers. `csops`, in libSystem,
   reads the kernel's hash and status of a process's running code, and is resolved the same
-  way, in `RunningCode.swift`, where a missing call costs a check at every reading and no
-  more ([design](../design.md#processes)). It is not part of this decision.
+  way, in `RunningCode.swift`. What a missing call costs is in the
+  [design](../design.md#processes): never a signer shown for code that was not checked. It
+  is not part of this decision.
 - A private call can change without notice. Each start is checked, so a disclaim that stops
   having its effect refuses Explain on the user's Mac instead of handing over the grants, and
   `testTheCommandAnswersForItself` fails on it here.
