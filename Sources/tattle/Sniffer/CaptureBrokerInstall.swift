@@ -369,11 +369,13 @@ extension CaptureBroker {
                         layout: Layout = .system, runPrivileged: (String) throws -> Void = runPrivileged) throws -> String {
         guard FileManager.default.fileExists(atPath: bundle.appending(path: helperInBundle).path) else { throw InstallError.noHelperInBundle }
         let identity = try identity()
-        Log.sniffer.notice("installing the packet-access broker from \(bundle.path, privacy: .public)")
+        // The bundle's path can name the user's home folder, and so can the script's error,
+        // which carries ditto's message about the copy: both stay private in the log.
+        Log.sniffer.notice("installing the packet-access broker from \(bundle.path)")
         do {
             try runPrivileged(installScript(identity: identity, bundle: bundle, uid: uid, layout: layout))
         } catch {
-            Log.sniffer.error("broker install failed: \(String(describing: error), privacy: .public)")
+            Log.sniffer.error("broker install failed: \(String(describing: error))")
             throw error
         }
         Log.sniffer.notice("packet-access broker installed")

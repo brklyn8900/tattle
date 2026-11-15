@@ -49,7 +49,7 @@ Preconditions:
   pa-removed`.
 - **Install.** `$V ax press "Allow packet access"`, `$V ax press Install`. Stop for the
   password as above. Then: `$V log "installing the packet-access broker from|packet-access
-  broker installed|capturing on"` shows the run's bundle path and a new capture line; the
+  broker installed|capturing on"` shows the install line, its path `<private>`, and a new capture line; the
   plist exists, root-owned, with `--uid 501`; the link reads `Packet access on`; `$V save
   pa-installed`.
 - **Cancel.** Pressing Cancel in the dialog leaves the broker as it was and shows the error
