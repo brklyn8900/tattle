@@ -60,13 +60,17 @@ struct Packet {
     let payload: ArraySlice<UInt8>
     /// Payload bytes the packet carried past the capture's snap length.
     var uncaptured = 0
+    /// The hardware address the frame came from, on a link whose frames carry one.
+    var linkSource: ArraySlice<UInt8>?
 
     static func parse(_ bytes: [UInt8], dlt: UInt32) -> Packet? {
         var r = ByteReader(bytes)
         do {
+            var linkSource: ArraySlice<UInt8>?
             switch dlt {
             case 1:  // DLT_EN10MB
-                try r.skip(12)
+                try r.skip(6)
+                linkSource = try r.take(6)
                 let type = try r.u16()
                 guard type == 0x0800 || type == 0x86DD else { return nil }
             case 0:  // DLT_NULL (lo0, utun): 4-byte address family in host order
@@ -76,7 +80,9 @@ struct Packet {
             default:
                 return nil
             }
-            return try parseIP(&r)
+            var packet = try parseIP(&r)
+            packet?.linkSource = linkSource
+            return packet
         } catch {
             return nil
         }

@@ -267,8 +267,11 @@ what stays)
   (`Redactor.swift`).
 - A startup item labelled with the login reads `<user>` in its key, while its plist keeps the
   name: `/Library/LaunchAgents/username.plist` (`Redactor.swift`).
-- Coalesced QUIC Initials cost about 40 times an ordinary one. Only a local process can send
-  them and the cost is bounded per datagram (`FlowNamer.swift`, `QUIC.swift`).
+- Coalesced QUIC Initials cost about 40 times an ordinary one, bounded per datagram. A local
+  process can send them. So can a host on the network that forges this Mac's hardware address
+  as well as its IP address (N25, not run), and whoever can put a packet on a tunnel under the
+  tunnel's own address: a link without hardware addresses has only the IP source to tell
+  direction by (`FlowNamer.swift`, `QUIC.swift`).
 - The menu bar throughput label, on by default, resizes the status item as its digits change
   and goes with 8 wakeups a second against 3 with it off (`TattleApp.swift`). Correlated
   between two copies, not isolated.

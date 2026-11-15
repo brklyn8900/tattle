@@ -148,6 +148,51 @@ final class SnifferTests: XCTestCase {
         XCTAssertEqual(events.withLock { $0 }.last, FlowEvent(key: key(50002), kind: .unnamed(.captureEnded)), "stopped")
     }
 
+    /// A capture that delivers what the test feeds it, and applies no filter.
+    private final class Fed: CaptureSource, @unchecked Sendable {
+        let dataLinkType: UInt32
+        private let packets = OSAllocatedUnfairLock<[[UInt8]]>(initialState: [])
+        init(linkType: UInt32) { dataLinkType = linkType }
+        func feed(_ frames: [[UInt8]]) { packets.withLock { $0 += frames } }
+        func install(_ filter: CaptureFilter) throws {}
+        func readPackets(_ handle: (Double, [UInt8]) -> Void) throws {
+            for bytes in packets.withLock({ p in defer { p = [] }; return p }) { handle(Date().timeIntervalSince1970, bytes) }
+            usleep(10_000)
+        }
+    }
+
+    /// On Ethernet the namer is told the interface's hardware address, and again when it
+    /// changes, so a frame another host sent under this Mac's IP address opens no flow, with
+    /// or without a kernel filter in front.
+    func testOnEthernetOnlyFramesFromTheInterfaceOpenFlows() {
+        let me = IPAddress(bytes: [192, 168, 1, 5])
+        let remote = IPAddress(bytes: [203, 0, 113, 7])
+        func syn(from source: [UInt8], port: UInt16) -> [UInt8] {
+            [2, 0, 0, 0, 0, 9] + source + [0x08, 0x00, 0x45, 0, 0, 40, 0, 0, 0, 0, 64, 6, 0, 0] + me.bytes + remote.bytes
+                + [UInt8(port >> 8), UInt8(port & 0xff), 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0]
+        }
+        func opened(_ port: UInt16) -> FlowEvent { FlowEvent(key: FlowKey(proto: .tcp, localPort: port, remote: remote, remotePort: 443), kind: .opened) }
+        let first: [UInt8] = [0x2a, 0, 0, 0, 0, 1], rotated: [UInt8] = [0x2a, 0, 0, 0, 0, 2], other: [UInt8] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]
+        let mac = OSAllocatedUnfairLock(initialState: first)
+        let capture = Fed(linkType: PacketCapture.linkEthernet)
+        let events = OSAllocatedUnfairLock<[FlowEvent]>(initialState: [])
+        let sniffer = Sniffer(open: { _ in capture },
+                              host: Sniffer.Host(primaryInterface: { "en0" }, hardwareAddress: { _ in mac.withLock { $0 } },
+                                                 addresses: { _ in [me] }, resolvers: { [] }, interfaceCheckEvery: 0.05),
+                              onEvents: { new in events.withLock { $0 += new.filter { $0.kind == .opened } } }, onStatus: { _ in })
+        defer { sniffer.stop() }
+        sniffer.start()
+        capture.feed([syn(from: other, port: 50001), syn(from: first, port: 50002)])
+        XCTAssertTrue(eventually { !events.withLock { $0 }.isEmpty })
+        XCTAssertEqual(events.withLock { $0 }, [opened(50002)], "the other host's frame opened nothing")
+
+        mac.withLock { $0 = rotated }
+        usleep(300_000)  // six checks of the interface
+        capture.feed([syn(from: first, port: 50003), syn(from: rotated, port: 50004)])
+        XCTAssertTrue(eventually { events.withLock { $0 }.count >= 2 })
+        XCTAssertEqual(events.withLock { $0 }, [opened(50002), opened(50004)], "the namer follows the interface's new address")
+    }
+
     /// An opener that does not return until the test lets it, as a broker request that is slow
     /// to answer. Counts how many opens have begun.
     private final class SlowOpen: @unchecked Sendable {

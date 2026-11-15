@@ -26,6 +26,11 @@ struct CaptureFilter: Equatable, Sendable {
         case hardwareAddress([UInt8])
         /// Its IP source is one of these addresses (4 or 16 bytes each).
         case sourceAddresses([[UInt8]])
+
+        var hardwareAddress: [UInt8]? {
+            if case .hardwareAddress(let address) = self { return address }
+            return nil
+        }
     }
 
     static let snapLength: UInt32 = 2048

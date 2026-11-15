@@ -31,9 +31,9 @@ final class CaptureFilterTests: XCTestCase {
         [0x60, 0, 0, 0, UInt8(transport.count >> 8), UInt8(transport.count & 0xff), proto, 64] + src + dst + transport
     }
 
-    private func ethernet(from src: [UInt8], _ ip: [UInt8]) -> [UInt8] {
+    private func ethernet(from src: [UInt8], to dst: [UInt8]? = nil, _ ip: [UInt8]) -> [UInt8] {
         let type: [UInt8] = ip[0] >> 4 == 6 ? [0x86, 0xdd] : [0x08, 0x00]
-        return otherMac + src + type + ip
+        return (dst ?? otherMac) + src + type + ip
     }
 
     private func nullLink(_ ip: [UInt8]) -> [UInt8] {
@@ -109,6 +109,44 @@ final class CaptureFilterTests: XCTestCase {
         XCTAssertEqual(run(otherMac + mac + [0x08, 0x06] + [UInt8](repeating: 0, count: 28)), 0, "ARP")
         XCTAssertEqual(run(ethernet(from: mac, ipv4(from: myV4, to: peerV4, proto: 6, tcp(flags: 0x18, payload: 100), fragmentOffset: 0x0010))), 0)
         XCTAssertEqual(run(ethernet(from: mac, ipv4(from: myV4, to: peerV4, proto: 1, [8, 0, 0, 0, 0, 0, 0, 0]))), 0, "ICMP")
+    }
+
+    /// The filter passes any datagram from port 53 as a DNS reply, whatever its addresses, so
+    /// what reads it must not take the sender's word for the direction. A host on the network
+    /// that put this Mac's IP address on a frame of its own had a QUIC Initial of its choosing
+    /// decrypted and a flow named from it. What this Mac sends and what its resolver answers
+    /// are still read.
+    func testAFrameFromAnotherHostUnderThisMacsAddressIsNotReadAsSent() throws {
+        let filter = try XCTUnwrap(CaptureFilter.program(linkType: PacketCapture.linkEthernet, direction: .hardwareAddress(mac)))
+        let hello = SnifferParserTests.clientHello(sni: Array("forged.example".utf8))
+        let initial = SnifferParserTests.sealInitial([0x06, 0x00, 0x40 | UInt8(hello.count >> 8), UInt8(hello.count & 0xff)] + hello)
+        let reply: [UInt8] = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0x63, 0x64, 0x6e, 7, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 3, 0x6e, 0x65, 0x74, 0, 0, 1, 0, 1,
+                              0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0x3c, 0, 4] + peerV4
+        let resolverV6: [UInt8] = [0xfd, 0] + [UInt8](repeating: 0, count: 13) + [1]
+        for (family, me, peer, resolver) in [(4, myV4, peerV4, [192, 168, 1, 1]), (6, myV6, peerV6, resolverV6)] {
+            func ip(from src: [UInt8], to dst: [UInt8], _ datagram: [UInt8]) -> [UInt8] {
+                family == 4 ? ipv4(from: src, to: dst, proto: 17, datagram) : ipv6(from: src, to: dst, proto: 17, datagram)
+            }
+            /// Through the kernel filter, the parser and the namer, as a captured frame goes.
+            func read(_ frame: [UInt8], by namer: inout FlowNamer) throws -> [FlowEvent] {
+                XCTAssertEqual(Interpreter.run(filter, on: frame), CaptureFilter.snapLength, "IPv\(family): the filter passes it")
+                return namer.observe(try XCTUnwrap(Packet.parse(frame, dlt: PacketCapture.linkEthernet)), at: 1_700_000_000)
+            }
+            var namer = FlowNamer(localAddresses: [IPAddress(bytes: me)], resolvers: [IPAddress(bytes: resolver)], hardwareAddress: mac)
+
+            let forged = ethernet(from: otherMac, to: mac, ip(from: me, to: peer, udp(sourcePort: 53, destinationPort: 443, payload: initial)))
+            XCTAssertEqual(try read(forged, by: &namer), [], "IPv\(family): another host's frame is not this Mac's connection")
+            XCTAssertEqual(namer.flowCount, 0, "IPv\(family)")
+
+            let answered = ethernet(from: otherMac, to: mac, ip(from: resolver, to: me, udp(sourcePort: 53, destinationPort: 60000, payload: reply)))
+            XCTAssertEqual(try read(answered, by: &namer), [], "IPv\(family)")
+            XCTAssertEqual(namer.dnsCount, 1, "IPv\(family): the resolver's reply is remembered")
+
+            let sent = ethernet(from: mac, ip(from: me, to: peer, udp(sourcePort: 50000, destinationPort: 443, payload: initial)))
+            let key = FlowKey(proto: .udp, localPort: 50000, remote: IPAddress(bytes: peer), remotePort: 443)
+            XCTAssertEqual(try read(sent, by: &namer), [FlowEvent(key: key, kind: .opened), FlowEvent(key: key, kind: .named("forged.example", .quic))],
+                           "IPv\(family): this Mac's own Initial names its flow")
+        }
     }
 
     func testNullLinkFilterTellsDirectionFromAddresses() throws {

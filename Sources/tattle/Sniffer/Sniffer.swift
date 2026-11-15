@@ -162,7 +162,7 @@ final class Sniffer: @unchecked Sendable {
     /// Reads until the interface changes, the device fails, or stop is called.
     private func captureLoop(_ capture: any CaptureSource, interface: String, direction installed: CaptureFilter.Direction, shouldStop: () -> Bool) {
         var installed = installed
-        var namer = FlowNamer(localAddresses: host.addresses(nil), resolvers: host.resolvers())
+        var namer = FlowNamer(localAddresses: host.addresses(nil), resolvers: host.resolvers(), hardwareAddress: installed.hardwareAddress)
         // Every way out drops the namer, and with it the flows whose handshake was not read.
         defer {
             let events = namer.endCapture()
@@ -214,6 +214,7 @@ final class Sniffer: @unchecked Sendable {
                 if direction != installed {
                     Log.sniffer.notice("\(interface, privacy: .public) changed its addresses; rebuilding the kernel filter")
                     installFilter(on: capture, direction: direction, interface: interface)
+                    namer.updateHardwareAddress(direction.hardwareAddress)
                     installed = direction
                 }
             }

@@ -136,13 +136,21 @@ struct FlowNamer: Sendable {
 
     private var local: Set<IPAddress>
     private var resolvers: Set<IPAddress>
+    /// The capture interface's hardware address, on a link whose frames carry one.
+    private var hardwareAddress: [UInt8]?
     private var dnsMap = DNSMap()
     private var flows: [FlowKey: Flow] = [:]
     private var flowOrder = ArrivalOrder<FlowKey>()
 
-    init(localAddresses: Set<IPAddress>, resolvers: Set<IPAddress>) {
+    init(localAddresses: Set<IPAddress>, resolvers: Set<IPAddress>, hardwareAddress: [UInt8]? = nil) {
         local = localAddresses
         self.resolvers = resolvers
+        self.hardwareAddress = hardwareAddress
+    }
+
+    /// A private Wi-Fi address rotates under an open capture.
+    mutating func updateHardwareAddress(_ address: [UInt8]?) {
+        hardwareAddress = address
     }
 
     /// Addresses change with DHCP leases and network switches.
@@ -168,8 +176,18 @@ struct FlowNamer: Sendable {
         !local.contains(p.src) && !local.contains(p.dst) && !p.dst.isLocalScope
     }
 
+    /// Whether this Mac sent the packet. Its IP source is whatever the sender wrote, and any
+    /// host on the network can write this Mac's, so where frames carry a hardware address
+    /// the frame must also come from the interface's own, which is how the kernel filter
+    /// tells direction. A link without one (a tunnel) has only the IP source to go by.
+    private func sent(_ p: Packet) -> Bool {
+        guard local.contains(p.src) else { return false }
+        guard let hardwareAddress else { return true }
+        return p.linkSource.map { $0.elementsEqual(hardwareAddress) } ?? false
+    }
+
     mutating func observe(_ p: Packet, at ts: Double) -> [FlowEvent] {
-        let outbound = local.contains(p.src)
+        let outbound = sent(p)
         if p.proto == .udp && p.srcPort == 53 && !outbound {
             // Only an answer from a resolver this Mac asks, sent to this Mac, may name
             // addresses: any host on the network can broadcast a reply.
