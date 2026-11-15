@@ -108,6 +108,9 @@
 - A login item macOS has a record of and no plist is read in `gui/<uid>` only, so an agent
   limited to `Background` would read `enabled` or `off`, not `running`
   (`StartupSnapshot.loginItemState`).
+- A job running in the other per-user domain than its plist's session type gives reads
+  `not loaded` or `disabled`: only the domains `LaunchdItem.domains` names are looked in
+  (`StartupSnapshot.launchdState`).
 - On a hosted CI runner a broker test now and then reads `transport 54` (connection reset)
   where it expects `refused`: a different test in each of three runs out of five
   (`testBrokerRefusesCallersAnotherProcessCouldSteer`, `testBrokerAnswersOnlyTheInstallingUser`,
@@ -154,6 +157,15 @@ and (d) are done)
   file at that path outside the root, which is not the file that runs, so the row can name
   a publisher whose code does not run. chroot needs root, so this is a daemon's
   (`CodeSignature.swift`).
+- Every daemon's PATH is searched as root, though a daemon with `UserName` runs as that user:
+  `LaunchdItem` does not read `UserName`, so such a daemon can show a file only root can run,
+  or read as undetermined for a folder its user cannot search either (`StartupSnapshot.swift`,
+  `LaunchedCode.swift`).
+- An agent's PATH search takes a searchable folder named like the command as the program:
+  `isExecutableFile` is true for a folder, where execvp goes on to the next entry
+  (`LaunchedCode.located`).
+- `LaunchedCode.archRunsItsOperand` repeats arch's options (`-arch`, `-d` and `-e` take a
+  value), which the `wrappers` table already holds; the two can fall out of step.
 - A detail's "Interpreter signed by" and "Interpreter team" name clang, git and Xcode Service
   as interpreters, which they are not (`ProcessSnapshot.swift`).
 - `ProcessEntry`'s `interpreter` and `runsUnnamedCode` are one state in two fields, which
@@ -180,6 +192,10 @@ are the triage's)
   process is unmeasured, and it passes a copy of one of Apple's tools made to load other
   code, which those with a team identifier do through `DYLD_` variables (the Command Line
   Tools' `lldb` did from a shell, not tried under launchd) (`CodeSignature.swift`).
+- The static signature check reads one architecture slice: a universal file whose native slice
+  is Apple's or a publisher's beside a foreign one reads as that signer, and `arch -x86_64`
+  runs the other slice under Rosetta. `kSecCSCheckAllArchitectures` on the static check would
+  read every slice; measure its cost per universal binary first (`CodeSignature.swift`).
 - E7g: A personal Apple Development team identifier is sent to the model, twice for a
   development signer (the "Signed by" summary and the Team facts).
 - K6: A DNS-only name is unmarked in the Network detail headline, against ADR-0001
@@ -187,10 +203,20 @@ are the triage's)
 - E14: Choosing Custom in the provider picker does nothing and snaps back
   (`SettingsView.swift`).
 - E4: Back and reopen during an Explain starts a second paid call; Quit leaves the provider
-  and its temporary folder behind (`ExplainSection.swift`, `Provider.swift`).
+  and its temporary folder behind (`ExplainSection.swift`, `Provider.swift`). An answer that
+  was not kept lives only in the view, so seeing it again after back and reopen is a second
+  call too. One change closes both: keep the call in flight and the answer not kept in
+  `Explainer`, by request, instead of in the view's state.
 - B6: The broker cancels the connection right after sending its reply, and the SDK says
   cancel discards unsent messages; a send barrier makes the order explicit
   (`tattle-capture-broker/main.c`).
+- The broker's validity check opens the caller's executable by path, so a caller that renames
+  a FIFO over its own path can block the broker's one queue, for that user's capture only.
+  Checking the code by the caller's audit token without opening the path, or opening it
+  non-blocking and requiring a regular file, stops it (`tattle-capture-broker/main.c`).
+- `Prompt.swift` builds the prompt's JSON with `try!`; whether a key or fact from a plist
+  string holding a lone surrogate makes the serializer throw is not known. `try`, with the
+  request refused on error, removes the trap (`Prompt.swift`).
 - K9: A database error in the explain lookup reads as the shipped rule alone, or as "No
   explanation yet" for an item with none (`ExplainSection.swift`).
 - K2: A process's own TLS server name can make its row read "relayed" or "name hidden"
