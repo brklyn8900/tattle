@@ -321,6 +321,25 @@ Preconditions:
     at `984d28a`, which read owners after the table. Whether a side ran first or last in a
     round moved its count more than which side it was: two fixed-order sets of 480 gave 55 and
     58 at `ce4f212`, 68 (run second) and 44 (run first) at `8a4c783`.
+- What a flood of new flows costs behind the namer, simulated on the test Mac (release build
+  of the tests, not the app): a stand-in capture delivers new TCP flows at a fixed rate, each a
+  SYN and a ClientHello with a name and an address of its own, to a `NetworkObserver` with an
+  empty socket table and a database on disk. The simulation is `CaptureFloodSimulationTests`,
+  which runs only when `TATTLE_FLOOD_RATE` gives the flows a second (`TATTLE_FLOOD_SECONDS`
+  how long, 30): `TATTLE_FLOOD_RATE=1000 swift test -c release -Xswiftc -enable-testing
+  --filter CaptureFloodSimulationTests`. Each second it prints what the observer holds, the
+  process's footprint, how long a block queued on the main thread waited (`lag`) and how late
+  a 100 ms timer on its run loop fired (`timer`); the lines stop while the main thread is
+  held. 2026-11-15, `af1beeb` (nothing capped) against `262317b` (the kinds, the pending names
+  and the events on their way to the main actor capped), one run each:
+  - 1,000 flows a second for 330 s: outcomes and openings held 300,000 each against 4,089,
+    kinds 330,000 against 4,075, footprint 124 against 11 MB, `lag` up to 734 against 32 ms.
+    No event dropped.
+  - 10,000 a second for 30 s: outcomes, openings and kinds held 300,000 each against 4,089
+    (kinds 4,058), footprint 116 against 11 MB, `lag` up to 50 s against 27 ms, `timer` 48 s
+    against 26 ms, the main thread caught up 68 s after the last flow against 1 s. With the
+    caps 422,668 of the 600,000 events were dropped: about 3,000 flows a second were handled.
+  - 100 a second for 30 s: 3,000 of each held, 8 and 7 MB, no `lag`, on both.
 - A process's own name for itself proven 2026-11-09 at `984d28a`, run `2026-11-09T192510`:
   `exec -a` with `.`, `..` and `~` read as that text in the row and in `processName`, with no
   dependence on the app's working directory or home. A home folder (`~`, `~user`) or a relative
