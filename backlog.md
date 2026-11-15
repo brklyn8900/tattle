@@ -147,10 +147,11 @@
   `testBrokerRefusesOtherCallersAndBadInterfaces`), none in the other two (2026-11-11). Not
   seen on either Mac. Unknown whether the broker closes before its refusal is delivered or
   the runner resets the connection (`CaptureBrokerTests.swift`).
-- A shared arrival-order helper: `ArrivalOrder`, private to `FlowNamer.swift`, lets its flow
-  and DNS tables drop the oldest entry first without a sort. When a third place orders entries
-  by arrival, such as a cap that drops the oldest first by sorting, move it out and use it
-  there instead of a sort of that place's own (`FlowNamer.swift`).
+- A shared arrival-order helper is not wanted now. `ArrivalOrder`, private to `FlowNamer.swift`,
+  lets its flow and DNS tables drop their oldest entry at each new one past their cap, without
+  a sort. `PendingNames`' cap drops its oldest quarter by a sort of dated entries, about once
+  per thousand new flows, a different shape from that eviction one entry at a time. Share it
+  only if that sort shows up in a profile (`PendingNames.newest` in `ConnectionName.swift`).
 
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
 and (d) are done)
