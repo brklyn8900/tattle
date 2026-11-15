@@ -466,6 +466,8 @@ final class LaunchctlStateTests: XCTestCase {
             \t\t       0      0 \tcom.uaudio.ua-connect.ShipIt
             \t\t       0     -9 \tcom.example.crashed
             \t\t     685      - \tcom.apple.syncdefaultsd
+            \t\t     711      - \tlocal.my agent
+            \t\t     712      - \tlocal.tab\tagent
             \t}
             \tendpoints = {
             \t\t"com.not.a.service" => { port = 1 }
@@ -473,7 +475,9 @@ final class LaunchctlStateTests: XCTestCase {
             }
             """
         let services = LaunchctlState.parseServices(output)
-        XCTAssertEqual(services.count, 4)
+        XCTAssertEqual(services.count, 6)
+        XCTAssertEqual(services["local.my agent"], .init(pid: 711, lastExitStatus: nil), "a label holds what follows the tab")
+        XCTAssertEqual(services["local.tab\tagent"], .init(pid: 712, lastExitStatus: nil))
         XCTAssertEqual(services["application.com.ableton.live.62578060"], .init(pid: 76560, lastExitStatus: nil))
         XCTAssertEqual(services["com.uaudio.ua-connect.ShipIt"], .init(pid: nil, lastExitStatus: 0))
         XCTAssertEqual(services["com.example.crashed"], .init(pid: nil, lastExitStatus: -9))

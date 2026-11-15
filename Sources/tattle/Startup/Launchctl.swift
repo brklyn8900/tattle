@@ -40,7 +40,8 @@ struct LaunchctlState: Equatable, Sendable {
         }
     }
 
-    /// The `services = { pid status label }` block of `launchctl print <domain>`.
+    /// The `services = { pid status label }` block of `launchctl print <domain>`. The label is
+    /// everything after the tab that follows the status, spaces and tabs included.
     static func parseServices(_ output: String) -> [String: Service] {
         var services: [String: Service] = [:]
         var inBlock = false
@@ -48,10 +49,13 @@ struct LaunchctlState: Equatable, Sendable {
             if line.hasSuffix("services = {") { inBlock = true; continue }
             guard inBlock else { continue }
             if line.trimmingCharacters(in: .whitespaces) == "}" { break }
-            let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+            let fields = line.split(maxSplits: 2, whereSeparator: { $0 == " " || $0 == "\t" })
             guard fields.count == 3 else { continue }
+            let status = fields[1]
+            let rest = line[status.endIndex...].drop { $0 == " " }
+            guard rest.first == "\t", rest.count > 1 else { continue }
             let pid = Int32(fields[0]).flatMap { $0 > 0 ? $0 : nil }
-            services[String(fields[2])] = Service(pid: pid, lastExitStatus: Int32(fields[1]))
+            services[String(rest.dropFirst())] = Service(pid: pid, lastExitStatus: Int32(status))
         }
         return services
     }
