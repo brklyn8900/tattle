@@ -149,8 +149,8 @@ struct CodeSignature: Equatable, Sendable {
         return CodeSignature(signer: .launchItem(applesProgram: isNamed ? name : nil), codeHash: signature?.codeHash)
     }
 
-    /// A signature as read, with the files the reading rests on (`files(readWith:)`), so that
-    /// what keeps it can tell when to read it again.
+    /// A signature as read, with the files and folders the reading rests on
+    /// (`files(readWith:at:)`), so that what keeps it can tell when to read it again.
     struct Reading: Sendable {
         var signature: CodeSignature
         var files: [String] = []
@@ -169,31 +169,61 @@ struct CodeSignature: Equatable, Sendable {
         var staticCode: SecStaticCode?
         let url = URL(fileURLWithPath: path) as CFURL
         guard SecStaticCodeCreateWithPath(url, [], &staticCode) == errSecSuccess, let code = staticCode else {
-            return Reading(signature: CodeSignature(signer: .unsigned))
+            return Reading(signature: CodeSignature(signer: .unsigned), files: files(readWith: nil, at: path))
         }
         var error: Unmanaged<CFError>?
         let validity = SecStaticCodeCheckValidityWithErrors(code, SecCSFlags(rawValue: kSecCSDoNotValidateResources), nil, &error)
         // Taken whatever the verdict: the error is this caller's to release.
         _ = error?.takeRetainedValue()
         // Asked of unsigned and invalid code too, which it still names the main executable of.
-        var infoRef: CFDictionary?
-        let copied = SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef)
-        let info = copied == errSecSuccess ? infoRef as? [String: Any] : nil
-        let executable = (info?[kSecCodeInfoMainExecutable as String] as? URL)?.path
-        return Reading(signature: signature(of: code, validity: validity, info: info), files: executable.map(files(readWith:)) ?? [])
+        let info = information(of: code, SecCSFlags(rawValue: kSecCSSigningInformation))
+        return Reading(signature: signature(of: code, validity: validity, info: info), files: files(readWith: mainExecutable(in: info), at: path))
     }
 
-    /// The files a reading of the code with this main executable rests on. Code in a bundle
-    /// is read with the bundle's Info.plist and the seal over its resources, whether the path
-    /// read is the bundle or the executable, and writing over one of them leaves the bundle
-    /// folder's own dates as they were. They are beside the executable, or beside its `MacOS`
-    /// folder in a bundle with `Contents`.
-    static func files(readWith executable: String) -> [String] {
+    /// The files `reading(path:)` would name, asked without validating anything: what keeps a
+    /// reading notes them before the read as well as after it.
+    static func files(readAt path: String) -> [String] {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(URL(fileURLWithPath: path) as CFURL, [], &staticCode) == errSecSuccess, let code = staticCode else {
+            return files(readWith: nil, at: path)
+        }
+        return files(readWith: mainExecutable(in: information(of: code, [])), at: path)
+    }
+
+    private static func information(of code: SecStaticCode, _ flags: SecCSFlags) -> [String: Any]? {
+        var info: CFDictionary?
+        return SecCodeCopySigningInformation(code, flags, &info) == errSecSuccess ? info as? [String: Any] : nil
+    }
+
+    private static func mainExecutable(in info: [String: Any]?) -> String? {
+        (info?[kSecCodeInfoMainExecutable as String] as? URL)?.path
+    }
+
+    /// The files and folders a reading of the code at `path` rests on, given its main
+    /// executable, whether or not each is there: one that arrives later changes the reading
+    /// as much as one written over. Code in a bundle is read with the bundle's Info.plist and
+    /// what `_CodeSignature` holds, whether the path read is the bundle or the executable, and
+    /// writing over one of them leaves the bundle folder's own dates as they were. They are
+    /// beside the executable, or beside its `MacOS` folder in a bundle with `Contents`. The
+    /// folders between them are named too: a folder renamed over another brings files with the
+    /// dates they had, and only the folder that holds it shows the change.
+    static func files(readWith executable: String?, at path: String) -> [String] {
+        guard let executable else {
+            // Code that cannot be opened names no executable. A folder may be an app still
+            // being put in place, whose files arrive in `Contents`.
+            var isFolder: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue else { return [] }
+            return ["\(path)/Contents", "\(path)/Contents/MacOS", "\(path)/Contents/Info.plist"]
+        }
         let folder = (executable as NSString).deletingLastPathComponent
-        let bundle = folder.hasSuffix("/Contents/MacOS") ? (folder as NSString).deletingLastPathComponent : folder
-        let beside = ["\(bundle)/Info.plist", "\(bundle)/_CodeSignature/CodeResources"]
-        guard FileManager.default.fileExists(atPath: beside[0]) else { return [executable] }
-        return [executable] + beside.filter { FileManager.default.fileExists(atPath: $0) }
+        let hasContents = folder.hasSuffix("/Contents/MacOS")
+        let bundle = hasContents ? (folder as NSString).deletingLastPathComponent : folder
+        let info = "\(bundle)/Info.plist"
+        // A file with no Info.plist beside it is no bundle until one arrives.
+        guard hasContents || FileManager.default.fileExists(atPath: info) else { return [executable, info] }
+        let seal = "\(bundle)/_CodeSignature"
+        let sealed = ((try? FileManager.default.contentsOfDirectory(atPath: seal)) ?? []).sorted().map { "\(seal)/\($0)" }
+        return [executable, info, seal] + sealed + [bundle] + (hasContents ? [folder, (bundle as NSString).deletingLastPathComponent] : [])
     }
 
     private static func signature(of code: SecStaticCode, validity: OSStatus, info: [String: Any]?) -> CodeSignature {

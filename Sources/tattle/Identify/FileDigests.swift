@@ -19,12 +19,6 @@ struct FileVersion: Equatable, Sendable {
         values = [Int(info.st_dev), Int(truncatingIfNeeded: info.st_ino), Int(info.st_size), info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec,
                   info.st_ctimespec.tv_sec, info.st_ctimespec.tv_nsec]
     }
-
-    /// Whether the file changed between two readings of the clock, by its change time.
-    func changed(from start: timespec, to end: timespec) -> Bool {
-        let changed = (values[5], values[6])
-        return changed >= (start.tv_sec, start.tv_nsec) && changed <= (end.tv_sec, end.tv_nsec)
-    }
 }
 
 /// The SHA-256 of the files identities rest on (`CodeIdentity.contentFile`), each read once per

@@ -38,7 +38,7 @@ final class StartupObserver {
 }
 
 /// Signature reads cost up to a tenth of a second per app, so each path is read once per
-/// version of the files its reading rests on: the path, and the files the reading names.
+/// version of what its reading rests on: the path, and the files and folders the reading names.
 final class SignatureCache: @unchecked Sendable {
     private struct Entry {
         var files: [String]
@@ -48,31 +48,31 @@ final class SignatureCache: @unchecked Sendable {
 
     private let lock = NSLock()
     private var cache: [String: Entry] = [:]
+    private let files: @Sendable (String) -> [String]
     private let read: @Sendable (String) -> CodeSignature.Reading
 
-    init(read: @escaping @Sendable (String) -> CodeSignature.Reading = { CodeSignature.reading(path: $0) }) {
+    init(
+        files: @escaping @Sendable (String) -> [String] = { CodeSignature.files(readAt: $0) },
+        read: @escaping @Sendable (String) -> CodeSignature.Reading = { CodeSignature.reading(path: $0) }
+    ) {
+        self.files = files
         self.read = read
     }
 
     func signature(at path: String) -> CodeSignature? {
-        let own = FileVersion(path: path)
-        if let hit = lock.withLock({ cache[path] }), hit.versions == [own] + hit.files.map({ FileVersion(path: $0) }) { return hit.signature }
-        let started = Self.now()
+        if let hit = lock.withLock({ cache[path] }), hit.versions == Self.versions(of: path, hit.files) { return hit.signature }
+        // The versions are taken before the read and again after it, of the files named before
+        // it: a reading is kept only when it names the same files and none of them changed in
+        // between, since what changed while it was read may not be what was read.
+        let files = files(path).filter { $0 != path }
+        let versions = Self.versions(of: path, files)
         let reading = read(path)
-        let files = reading.files.filter { $0 != path }
-        let versions = files.map { FileVersion(path: $0) }
-        let finished = Self.now()
-        // The path's version was taken before the read, so a change to it during the read is
-        // read again. The other files are known only from the read: one that is gone, or that
-        // changed while the read ran, may not be what was read, so that reading is not kept.
-        let isSettled = versions.allSatisfy { $0?.changed(from: started, to: finished) == false }
-        lock.withLock { cache[path] = isSettled ? Entry(files: files, versions: [own] + versions, signature: reading.signature) : nil }
+        let isSettled = reading.files.filter { $0 != path } == files && versions == Self.versions(of: path, files)
+        lock.withLock { cache[path] = isSettled ? Entry(files: files, versions: versions, signature: reading.signature) : nil }
         return reading.signature
     }
 
-    private static func now() -> timespec {
-        var time = timespec()
-        clock_gettime(CLOCK_REALTIME, &time)
-        return time
+    private static func versions(of path: String, _ files: [String]) -> [FileVersion?] {
+        ([path] + files).map { FileVersion(path: $0) }
     }
 }

@@ -144,7 +144,7 @@ final class CodeSignatureTests: XCTestCase {
         }
         final class Reads: @unchecked Sendable { var count = 0 }
         let reads = Reads()
-        let cache = SignatureCache(read: { _ in
+        let cache = SignatureCache(files: { _ in [] }, read: { _ in
             reads.count += 1
             return CodeSignature.Reading(signature: CodeSignature(signer: .adHoc, codeHash: String(reads.count)))
         })
@@ -176,7 +176,7 @@ final class CodeSignatureTests: XCTestCase {
         }
         let reads = Reads()
         let files = [executable.path, info.path, seal.path]
-        let cache = SignatureCache(read: { _ in
+        let cache = SignatureCache(files: { _ in files }, read: { _ in
             reads.count += 1
             reads.during?()
             return CodeSignature.Reading(signature: CodeSignature(signer: .adHoc, codeHash: String(reads.count)), files: files)
@@ -256,13 +256,109 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(cache.signature(at: two.executable.path)?.signer, .invalid, "the executable is read as its bundle")
     }
 
-    /// The main executable, with the Info.plist and the seal beside it when it is a bundle's,
-    /// however the bundle is laid out and whether or not it is signed.
+    /// A folder renamed into an app brings its files with the dates they had, so no file's own
+    /// date says that it arrived while the signature was read.
+    func testAnAppWhoseFolderIsSwappedWhileItIsReadIsReadAgain() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let app = folder.appending(path: "Tool.app")
+        let programs = app.appending(path: "Contents/MacOS"), prepared = folder.appending(path: "prepared"), aside = folder.appending(path: "aside")
+        try FileManager.default.createDirectory(at: programs, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: "/bin/ls", toPath: programs.appending(path: "Tool").path)
+        try plist(identifier: "com.example.tool").write(to: app.appending(path: "Contents/Info.plist"))
+        try codesign(["--force", "--sign", "-", app.path])
+        try FileManager.default.createDirectory(at: prepared, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: "/bin/cat", toPath: prepared.appending(path: "Tool").path)
+        try codesign(["--remove-signature", prepared.appending(path: "Tool").path])
+        func swap() {
+            try? FileManager.default.moveItem(at: programs, to: aside)
+            try? FileManager.default.moveItem(at: prepared, to: programs)
+        }
+        func swapBack() {
+            try? FileManager.default.moveItem(at: programs, to: prepared)
+            try? FileManager.default.moveItem(at: aside, to: programs)
+        }
+        final class Reads: @unchecked Sendable {
+            var count = 0
+            var before: (() -> Void)?
+            var after: (() -> Void)?
+        }
+        let reads = Reads()
+        let cache = SignatureCache(read: {
+            reads.count += 1
+            reads.before?()
+            let reading = CodeSignature.reading(path: $0)
+            reads.after?()
+            return reading
+        })
+
+        // The app's own executable is read, and another is in its place by the end of the read.
+        reads.after = swap
+        let own = try XCTUnwrap(cache.signature(at: app.path))
+        XCTAssertEqual(own.signer, .adHoc)
+        reads.after = nil
+        XCTAssertNotEqual(cache.signature(at: app.path), own, "the reading of the executable that was swapped out is not kept")
+        XCTAssertEqual(reads.count, 2)
+
+        // The other executable is read, and the app's own is back by the end of the read.
+        swapBack()
+        (reads.before, reads.after) = (swap, swapBack)
+        XCTAssertNotEqual(cache.signature(at: app.path), own, "read while the other executable was in place")
+        (reads.before, reads.after) = (nil, nil)
+        XCTAssertEqual(cache.signature(at: app.path), own, "the reading of an executable that is gone again is not kept")
+        XCTAssertEqual(cache.signature(at: app.path), own)
+        XCTAssertEqual(reads.count, 4, "what is settled is read once")
+    }
+
+    /// An app being put in place is a folder whose files arrive one by one, each leaving the
+    /// folder's own dates as they were. What is missing at one reading is looked for at the next.
+    func testAnAppReadBeforeAllOfItIsThereIsReadAgain() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let app = folder.appending(path: "Tool.app"), contents = app.appending(path: "Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        final class Reads: @unchecked Sendable { var count = 0 }
+        let reads = Reads()
+        let cache = SignatureCache(read: {
+            reads.count += 1
+            return CodeSignature.reading(path: $0)
+        })
+        func readsAfterAsking() -> Int {
+            _ = cache.signature(at: app.path)
+            _ = cache.signature(at: app.path)
+            return reads.count
+        }
+
+        XCTAssertEqual(cache.signature(at: app.path)?.signer, .unsigned)
+        XCTAssertEqual(readsAfterAsking(), 1, "nothing arrived, so it is read once")
+        let before = try XCTUnwrap(FileVersion(path: app.path))
+        try FileManager.default.createDirectory(at: contents.appending(path: "MacOS"), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: "/bin/ls", toPath: contents.appending(path: "MacOS/Tool").path)
+        XCTAssertEqual(FileVersion(path: app.path), before, "the folder itself says nothing of it")
+        XCTAssertEqual(readsAfterAsking(), 2, "its executable arrived")
+        try plist(identifier: "com.example.tool").write(to: contents.appending(path: "Info.plist"))
+        XCTAssertEqual(readsAfterAsking(), 3, "its Info.plist arrived")
+        try FileManager.default.createDirectory(at: contents.appending(path: "_CodeSignature"), withIntermediateDirectories: true)
+        try Data("a seal".utf8).write(to: contents.appending(path: "_CodeSignature/CodeResources"))
+        XCTAssertEqual(readsAfterAsking(), 4, "the seal over its resources arrived")
+        try codesign(["--force", "--sign", "-", app.path])
+        XCTAssertEqual(cache.signature(at: app.path)?.signer, .adHoc)
+        XCTAssertEqual(readsAfterAsking(), 5)
+    }
+
+    /// The main executable, with the Info.plist, what `_CodeSignature` holds and the folders
+    /// between them when it is a bundle's, however the bundle is laid out, whether or not it
+    /// is signed, and whether or not each is there. Asking before the read names the same.
     func testAReadingNamesTheFilesItRestsOn() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString).resolvingSymlinksInPath()
         defer { try? FileManager.default.removeItem(at: folder) }
-        func files(_ path: URL) -> Set<String> {
-            Set(CodeSignature.reading(path: path.path).files.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path })
+        func files(_ path: URL, file: StaticString = #filePath, line: UInt = #line) -> Set<String> {
+            let read = CodeSignature.reading(path: path.path).files
+            XCTAssertEqual(CodeSignature.files(readAt: path.path), read, "asked before the read", file: file, line: line)
+            // By the folder each is in, which is there even when the file is not.
+            return Set(read.map { URL(fileURLWithPath: $0) }.map {
+                $0.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: $0.lastPathComponent).path
+            })
         }
         func make(_ executable: URL, info: URL) throws {
             try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -270,26 +366,33 @@ final class CodeSignatureTests: XCTestCase {
             try codesign(["--remove-signature", executable.path])
             try plist(identifier: "com.example.tool").write(to: info)
         }
+        func paths(_ folder: URL, _ names: String...) -> Set<String> { Set(names.map { folder.appending(path: $0).path }) }
 
         let app = folder.appending(path: "Tool.app")
         let executable = app.appending(path: "Contents/MacOS/Tool"), info = app.appending(path: "Contents/Info.plist")
+        let unsigned = paths(app, "Contents/MacOS/Tool", "Contents/Info.plist", "Contents/_CodeSignature", "Contents", "Contents/MacOS").union([app.path])
         try make(executable, info: info)
-        XCTAssertEqual(files(app), [executable.path, info.path], "unsigned")
-        XCTAssertEqual(files(executable), [executable.path, info.path], "the executable is read as its bundle")
+        XCTAssertEqual(files(app), unsigned, "unsigned, so its seal is named though it is not there")
+        XCTAssertEqual(files(executable), unsigned, "the executable is read as its bundle")
         try codesign(["--force", "--sign", "-", app.path])
-        XCTAssertEqual(files(app), [executable.path, info.path, app.appending(path: "Contents/_CodeSignature/CodeResources").path])
+        XCTAssertEqual(files(app), unsigned.union(paths(app, "Contents/_CodeSignature/CodeResources")))
 
         let shallow = folder.appending(path: "Shallow.app")
         try make(shallow.appending(path: "Tool"), info: shallow.appending(path: "Info.plist"))
-        XCTAssertEqual(files(shallow), [shallow.appending(path: "Tool").path, shallow.appending(path: "Info.plist").path], "no Contents folder")
+        XCTAssertEqual(files(shallow), paths(shallow, "Tool", "Info.plist", "_CodeSignature").union([shallow.path]), "no Contents folder")
 
         // As an iOS app is installed on a Mac.
         let wrapper = folder.appending(path: "Wrapped.app"), inner = wrapper.appending(path: "Wrapper/Inner.app")
         try make(inner.appending(path: "Tool"), info: inner.appending(path: "Info.plist"))
         try FileManager.default.createSymbolicLink(atPath: wrapper.appending(path: "WrappedBundle").path, withDestinationPath: "Wrapper/Inner.app")
-        XCTAssertEqual(files(wrapper), [inner.appending(path: "Tool").path, inner.appending(path: "Info.plist").path])
+        XCTAssertEqual(files(wrapper), paths(inner, "Tool", "Info.plist", "_CodeSignature").union([inner.path]))
 
-        XCTAssertEqual(files(URL(fileURLWithPath: "/bin/ls")), ["/bin/ls"])
+        // An app being put in place: a folder that cannot be read as code yet.
+        let partial = folder.appending(path: "Partial.app")
+        try FileManager.default.createDirectory(at: partial.appending(path: "Contents"), withIntermediateDirectories: true)
+        XCTAssertEqual(files(partial), paths(partial, "Contents", "Contents/MacOS", "Contents/Info.plist"))
+
+        XCTAssertEqual(files(URL(fileURLWithPath: "/bin/ls")), ["/bin/ls", "/bin/Info.plist"], "no bundle until an Info.plist is beside it")
         XCTAssertEqual(files(folder.appending(path: "missing")), [])
     }
 
