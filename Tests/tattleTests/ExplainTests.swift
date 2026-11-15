@@ -1168,7 +1168,7 @@ final class ShellProviderTests: XCTestCase {
     func testClaudePresetKeepsNothingAndLoadsNothingOfTheAccount() throws {
         let claude = try XCTUnwrap(ShellProvider.presets.first { $0.id == "claude" }).command
         for flag in ["--no-session-persistence", "--strict-mcp-config", "--system-prompt \"\"", "--tools \"\"",
-                     "--setting-sources project,local"] {
+                     "--setting-sources project,local", "--permission-prompts none"] {
             XCTAssertTrue(claude.contains(flag), flag)
         }
     }
