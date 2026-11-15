@@ -233,7 +233,9 @@ are the triage's)
 - K2: A process's own TLS server name can make its row read "relayed" or "name hidden"
   (`NetworkObserver.swift`).
 - N25: A LAN peer that forges this Mac's MAC address can relabel a live UDP row; the kernel's
-  direction flag (`BIOCSEXTHDR`) would stop it. Suspected, not run.
+  direction flag (`BIOCSEXTHDR`) would stop it. The SDK declares the flag only in the Kernel
+  framework's `net/bpf_private.h`, so using it is a private call, as ADR-0004's are.
+  Suspected, not run.
 - S6: Two startup items with one label or bundle identifier share one detail view and one
   explain key (`StartupSnapshot.swift`, `StartupTab.swift`).
 - S3: Login items from every account on the Mac are merged, and the first account's toggle
