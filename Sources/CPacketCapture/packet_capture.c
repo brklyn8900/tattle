@@ -24,7 +24,8 @@ int tattle_capture_open(const char *ifname) {
     char path[16];
     for (int i = 0; i < 256; i++) {
         snprintf(path, sizeof path, "/dev/bpf%d", i);
-        fd = open(path, O_RDONLY);
+        // Close-on-exec, so no program this process starts holds the capture.
+        fd = open(path, O_RDONLY | O_CLOEXEC);
         if (fd >= 0) break;
         if (errno != EBUSY) return -1;
     }
@@ -132,6 +133,8 @@ static int broker_request_once(const char *service, int privileged, const char *
         if (*status == 0) {
             fd = xpc_dictionary_dup_fd(reply, "descriptor");
             if (fd < 0) { *status = -1; *err = EPROTO; }
+            // XPC does not document whether the descriptor it makes is close-on-exec: set it, as at open.
+            else fcntl(fd, F_SETFD, FD_CLOEXEC);
         } else if (*status == 3) {
             *err = (int)xpc_dictionary_get_int64(reply, "errno");
         }
