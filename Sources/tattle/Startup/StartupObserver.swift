@@ -135,9 +135,9 @@ final class SignatureCache: @unchecked Sendable {
     private func runs(_ pid: Int32, _ entry: Entry, isSettled: Bool, at path: String) -> Bool? {
         guard let code = running(pid) else { return true }
         guard isSettled, code.path == path else { return nil }
-        // The kernel describes the process and holds no signature for its code: unsigned code
-        // is not a file that names a signer, and with no hash a check would be made every time.
-        if code.status != nil, code.hash == nil { return false }
+        // Unsigned code is not a file that names a signer, and with no hash for it a check
+        // would be made every time.
+        if code.isUnsigned { return false }
         // Without the kernel's hash nothing says the code is the code last checked.
         if code.hash != nil, let kept = lock.withLock({ verdicts[pid] }), kept.code == code, kept.versions == entry.versions {
             return kept.matches

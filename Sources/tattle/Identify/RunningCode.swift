@@ -15,11 +15,15 @@ enum RunningCode {
         var path: String?
         var hash: Data?
         var status: UInt32?
+
+        /// The kernel describes the process and holds no signature for its code. Told by the
+        /// status and not by a missing hash, which the kernel may withhold for another reason.
+        var isUnsigned: Bool { status.map { $0 & RunningCode.signedStatus == 0 } ?? false }
     }
 
     /// Nil once the process has ended, is a zombie, or is on its way out, when it runs
     /// nothing: the kernel still lists a process that is exiting, and says of its code that
-    /// there is no such process.
+    /// there is no such process. It can say so of the hash after it has given the status.
     static func state(of pid: Int32) -> State? {
         guard ProcessTable.commandName(pid) != nil else { return nil }
         let path = ProcessTable.pidPath(pid)
@@ -29,9 +33,9 @@ enum RunningCode {
         let hasStatus = csops(pid, statusOperation, &status, MemoryLayout<UInt32>.size) == 0
         guard hasStatus || errno != ESRCH else { return nil }
         var hash = [UInt8](repeating: 0, count: hashLength)
-        return State(
-            path: path, hash: csops(pid, hashOperation, &hash, hash.count) == 0 ? Data(hash) : nil,
-            status: hasStatus ? status : nil)
+        let hasHash = csops(pid, hashOperation, &hash, hash.count) == 0
+        guard hasHash || errno != ESRCH else { return nil }
+        return State(path: path, hash: hasHash ? Data(hash) : nil, status: hasStatus ? status : nil)
     }
 
     /// Whether the file at the process's path is the code it runs: macOS finds the running
@@ -55,4 +59,6 @@ enum RunningCode {
     private static let statusOperation: UInt32 = 0
     private static let hashOperation: UInt32 = 5
     private static let hashLength = 20
+    /// `CS_SIGNED` in the kernel's `kern/cs_blobs.h`: the process has a signature.
+    static let signedStatus: UInt32 = 0x2000_0000
 }

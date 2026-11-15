@@ -56,11 +56,12 @@ final class RunningCodeTests: XCTestCase {
         let own = try XCTUnwrap(RunningCode.state(of: getpid()))
         XCTAssertEqual(own.path, ProcessTable.pidPath(getpid()))
         XCTAssertEqual(own.hash?.count, 20, "the test runner is signed")
-        XCTAssertNotNil(own.status)
+        XCTAssertEqual(own.isUnsigned, false)
         XCTAssertEqual(RunningCode.state(of: getpid()), own, "the same at the next reading")
         XCTAssertTrue(RunningCode.matchesFile(getpid()))
         let launchd = try XCTUnwrap(RunningCode.state(of: 1), "another account's process")
         XCTAssertEqual(launchd.hash?.count, 20)
+        XCTAssertFalse(launchd.isUnsigned)
         XCTAssertNotEqual(launchd.hash, own.hash)
         XCTAssertNil(RunningCode.state(of: Int32.max), "no such process")
         XCTAssertFalse(RunningCode.matchesFile(Int32.max))
@@ -80,6 +81,7 @@ final class RunningCodeTests: XCTestCase {
             kill(pid, SIGKILL)
             while let state = RunningCode.state(of: pid) {
                 XCTAssertNotNil(state.status, "listed, and described by nothing: \(state)")
+                XCTAssertNotNil(state.hash, "listed, with a status and no hash for its signed code: \(state)")
             }
             process.waitUntilExit()
         }
@@ -92,7 +94,7 @@ final class RunningCodeTests: XCTestCase {
     private final class Machine: @unchecked Sendable {
         let file = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
         var signature = CodeSignature(signer: .developerID(name: "EXAMPLE DEVELOPER"), identifier: "tool", teamIdentifier: "EXAMPLE123")
-        lazy var code: RunningCode.State? = RunningCode.State(path: file.path, hash: Data([1]), status: 1)
+        lazy var code: RunningCode.State? = RunningCode.State(path: file.path, hash: Data([1]), status: RunningCode.signedStatus | 1)
         var ended = Set<Int32>()
         var matches = true
         var checks = 0
@@ -130,7 +132,7 @@ final class RunningCodeTests: XCTestCase {
         XCTAssertEqual(machine.signer(of: 7), machine.signature)
         XCTAssertEqual(machine.checks, 3, "the process started another program, or its pid went to another process")
 
-        machine.code?.status = 0
+        machine.code?.status = RunningCode.signedStatus
         XCTAssertEqual(machine.signer(of: 7), machine.signature)
         XCTAssertEqual(machine.checks, 4, "the kernel changed what it says of the code")
 
@@ -152,11 +154,17 @@ final class RunningCodeTests: XCTestCase {
         machine.matches = false
         XCTAssertNil(machine.signer(of: 7), "nothing says the code is the code last checked")
         XCTAssertEqual(machine.checks, 2)
+
+        machine.code = RunningCode.State(path: machine.file.path, status: RunningCode.signedStatus | 1)
+        machine.matches = true
+        XCTAssertEqual(machine.signer(of: 7), machine.signature, "signed code whose hash the kernel did not give")
+        XCTAssertEqual(machine.signer(of: 7), machine.signature)
+        XCTAssertEqual(machine.checks, 4)
     }
 
     func testUnsignedRunningCodeIsNotASignedFileWithoutACheck() throws {
         let machine = try Machine()
-        machine.code?.hash = nil
+        machine.code = RunningCode.State(path: machine.file.path, status: 1)
         XCTAssertNil(machine.signer(of: 7), "the kernel holds no signature for what runs")
         XCTAssertNil(machine.signer(of: 7))
         XCTAssertEqual(machine.checks, 0)
