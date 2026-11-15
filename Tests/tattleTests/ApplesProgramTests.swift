@@ -220,23 +220,50 @@ final class ApplesProgramTests: XCTestCase {
     /// beside them or in the other folders there.
     func testWhereTheProgramRuns() {
         let apple = CodeSignature(signer: .apple)
-        func isNamed(at folder: String) -> Bool {
-            ApplesProgram.isNamed("mDNSResponder", path: "\(folder)/usr/sbin/mDNSResponder", signature: apple)
-        }
         XCTAssertFalse(ApplesProgram.isNamed("mDNSResponder", path: "/usr/local/bin/mDNSResponder", signature: apple))
         XCTAssertTrue(ApplesProgram.isNamed("XProtect", path: "/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect", signature: apple))
+        let kept = ApplesProgram.cryptexes(isKept: { _ in true })
+        func isInstalled(at folder: String) -> Bool { ApplesProgram.isInstalled(at: "\(folder)/usr/sbin/mDNSResponder", cryptexes: kept) }
         let cryptexes = "/System/Volumes/Preboot/Cryptexes"
-        XCTAssertTrue(isNamed(at: "\(cryptexes)/App"))
-        XCTAssertTrue(isNamed(at: "\(cryptexes)/OS"))
+        XCTAssertTrue(isInstalled(at: "\(cryptexes)/App"))
+        XCTAssertTrue(isInstalled(at: "\(cryptexes)/OS"))
         for folder in [cryptexes, "\(cryptexes)/Incoming", "\(cryptexes)/Incoming/OS", "\(cryptexes)/Rosetta", "\(cryptexes)/ExclaveOS",
                        "\(cryptexes)/Apple", "\(cryptexes)/OS2", "/System/Volumes/Preboot", "/System/Volumes/Data", "/System/Volumes/Update",
                        "/System/Volumes/Data/System/Volumes/Preboot/Cryptexes/App"] {
-            XCTAssertFalse(isNamed(at: folder), folder)
+            XCTAssertFalse(isInstalled(at: folder), folder)
         }
+    }
+
+    /// A cryptex is on a volume that is not sealed, in a folder anyone can write to: only its
+    /// owner and a flag keep it from being written to or replaced with a copy.
+    func testACryptexCountsOnlyWhereItIsKeptForRoot() throws {
+        let app = "/System/Volumes/Preboot/Cryptexes/App/usr/libexec/webpushd"
+        let system = "/System/Volumes/Preboot/Cryptexes/OS/usr/libexec/webpushd"
+        let onlyApp = ApplesProgram.cryptexes(isKept: { $0 == "/System/Volumes/Preboot/Cryptexes/App" })
+        XCTAssertTrue(ApplesProgram.isInstalled(at: app, cryptexes: onlyApp))
+        XCTAssertFalse(ApplesProgram.isInstalled(at: system, cryptexes: onlyApp), "each is looked at for itself")
+        let neither = ApplesProgram.cryptexes(isKept: { _ in false })
+        XCTAssertFalse(ApplesProgram.isInstalled(at: app, cryptexes: neither))
+        XCTAssertFalse(ApplesProgram.isInstalled(at: system, cryptexes: neither))
+        XCTAssertTrue(ApplesProgram.isInstalled(at: "/usr/libexec/webpushd", cryptexes: neither), "the system volume is sealed")
+
+        // The check itself, on folders macOS sets up the same way on every Mac.
+        XCTAssertTrue(ApplesProgram.isKept(folder: "/Library"), "root's, closed to others, not to be unlinked")
+        XCTAssertFalse(ApplesProgram.isKept(folder: "/Applications"), "its group can write to it")
+        XCTAssertFalse(ApplesProgram.isKept(folder: "/usr"), "without the flag")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        XCTAssertFalse(ApplesProgram.isKept(folder: folder.path), "the user's own")
+        XCTAssertFalse(ApplesProgram.isKept(folder: folder.appending(path: "missing").path))
+        let link = folder.appending(path: "link")
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "/Library")
+        XCTAssertFalse(ApplesProgram.isKept(folder: link.path), "a link to a folder that is kept")
     }
 
     /// Safari and WebKit run from the cryptexes, by that path.
     func testWhatRunsFromACryptexIsPartOfMacOS() throws {
+        try XCTSkipUnless(ApplesProgram.cryptexes().count == 2, "this Mac's cryptexes are not kept for root")
         let cryptexes = "/System/Volumes/Preboot/Cryptexes"
         let safari = "\(cryptexes)/App/System/Applications/Safari.app"
         let entries = machine + [

@@ -12,11 +12,24 @@ enum ApplesProgram {
     private static let roots = ["/System/", "/usr/", "/bin/", "/sbin/", "/Library/Apple/"]
     private static let excluded = ["/usr/local/", "/System/Volumes/"]
     /// Preboot's two cryptexes, where macOS keeps what it updates apart from the system
-    /// volume, and the path Safari and WebKit run from. Each is root's and carries the flag
-    /// that keeps it from being unlinked or renamed. Their parent does not count: anyone can
+    /// volume, and the path Safari and WebKit run from. Their parent does not count: anyone can
     /// write to it, so a copy can be placed beside them, and its other folders are
-    /// world-writable or lack that flag.
-    private static let cryptexes = ["/System/Volumes/Preboot/Cryptexes/App/", "/System/Volumes/Preboot/Cryptexes/OS/"]
+    /// world-writable or lack the flag below. Nothing but that flag and its owner keeps a
+    /// cryptex itself from being written to or replaced, so each counts only where it has
+    /// them (`isKept`). They are looked at once: only root can change a folder that passes.
+    private static let keptCryptexes = cryptexes()
+
+    static func cryptexes(isKept: (String) -> Bool = isKept(folder:)) -> [String] {
+        ["/System/Volumes/Preboot/Cryptexes/App", "/System/Volumes/Preboot/Cryptexes/OS"].filter(isKept).map { $0 + "/" }
+    }
+
+    /// Whether the folder is root's, closed to writing by anyone else, and carries the flag
+    /// that keeps it from being unlinked or renamed. A link to such a folder is not one.
+    static func isKept(folder: String) -> Bool {
+        var info = stat()
+        guard lstat(folder, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return false }
+        return info.st_uid == 0 && info.st_mode & (S_IWGRP | S_IWOTH) == 0 && info.st_flags & UInt32(SF_NOUNLINK) != 0
+    }
 
     static func isNamed(_ name: String, path: String?, signature: CodeSignature?) -> Bool {
         guard let path, signature?.signer == .apple, isInstalled(at: path) else { return false }
@@ -24,7 +37,9 @@ enum ApplesProgram {
     }
 
     /// Where only macOS installs programs.
-    static func isInstalled(at path: String) -> Bool {
+    static func isInstalled(at path: String) -> Bool { isInstalled(at: path, cryptexes: keptCryptexes) }
+
+    static func isInstalled(at path: String, cryptexes: [String]) -> Bool {
         if cryptexes.contains(where: { path.hasPrefix($0) }) { return true }
         return roots.contains { path.hasPrefix($0) } && !excluded.contains { path.hasPrefix($0) }
     }

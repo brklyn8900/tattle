@@ -36,7 +36,8 @@ for the processes that call will not describe; the working directory from `proc_
 Code signature via `SecCodeCopySigningInformation`: Apple, a Team ID with the organization
 name read from the leaf certificate, or unsigned. Apple's signature reads as Apple's only on
 a file where only macOS installs programs (the system volume's folders, `/Library/Apple`
-and the two cryptexes Safari and WebKit run from);
+and the two cryptexes Safari and WebKit run from, each only where it is root's, closed to
+writing by others and flagged against being unlinked);
 on a file anywhere else it reads as Apple's outside macOS, and its process is not part of
 the macOS row. Helpers are attributed to their app by
 walking the parent chain and by path containment (`Slack Helper (GPU)` lives inside
