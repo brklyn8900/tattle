@@ -107,7 +107,10 @@
   a connection opened meanwhile can read as it does without packet access, with no name and no
   reason, and the log says how many events went. An outcome still waiting for its connection
   can go the same way once 3,072 newer ones have arrived
-  (`FlowEventMailbox.swift`, `ConnectionName.swift`). Each outcome costs the main actor a
+  (`FlowEventMailbox.swift`, `ConnectionName.swift`). An outcome whose opening went, dropped
+  on the way or past the cap, is dated by a stand-in (20 seconds before it arrived) or by an
+  earlier opening on its four-tuple, so it can land on an earlier connection's row, in
+  history too, or miss its own (by reading, not run). Each outcome costs the main actor a
   write transaction of its own; one a batch would raise what it handles.
 - An agent limited to `LoginWindow` reads `not loaded` and offers `Load` in a domain it does
   not belong to: any session type other than exactly `Aqua` or `Background` falls through to
