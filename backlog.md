@@ -112,6 +112,12 @@
   earlier opening on its four-tuple, so it can land on an earlier connection's row, in
   history too, or miss its own (by reading, not run). Each outcome costs the main actor a
   write transaction of its own; one a batch would raise what it handles.
+- After the capture interface's hardware address changes under an open capture (Wi-Fi
+  joining another network under a private address of its own; inferred, not observed), the
+  kernel filter takes this Mac's frames for another host's and drops them until the next
+  check of the interface, up to 5 seconds later: connections opened in between get no opening
+  and no name. Only with no kernel filter installed does such a frame reach the namer, which
+  then reads the address again at once (`Sniffer.swift`).
 - An agent limited to `LoginWindow` reads `not loaded` and offers `Load` in a domain it does
   not belong to: any session type other than exactly `Aqua` or `Background` falls through to
   `gui` and `user` (`LaunchdItem.domains`).
