@@ -202,6 +202,10 @@ are the triage's)
   capture fails for another reason (`PacketAccessView.swift`).
 - B8: The friendly "cancelled" text for the administrator dialog is never shown, because
   osascript always writes to stderr (`CaptureBrokerInstall.swift`).
+- An install from a bundle holding a Finder-locked file stops at the script's `chown`, and the
+  person sees the command's own line, `chown: <file>: Operation not permitted`, where the
+  script's other failures have sentences of their own. Nothing is installed
+  (`CaptureBrokerInstall.swift`).
 - E11: Confirm stays enabled during Ask again, and confirming then shows a raw
   `alreadyConfirmed` error (`ExplainSection.swift`).
 - N8: One failed history write drops the rest of that poll's history

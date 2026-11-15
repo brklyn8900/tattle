@@ -46,11 +46,12 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   that replaces itself, incoming connections and a Tailscale peer's reach 2026-11-08; an
   owner and its app read with the socket table and a process's own name for itself 2026-11-09;
   the history database written ahead and a name found by its flow, and DNS replies bounded,
-  2026-11-10.
+  2026-11-10; an Apple-signed file outside macOS 2026-11-15.
 - [Packet access](./packet-access.md): installing and removing the broker that gives the
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build; a
-  launcher's crash port, the drop at launch and the fixed stack 2026-11-08.
+  launcher's crash port, the drop at launch and the fixed stack 2026-11-08; Install and
+  Remove on an ad-hoc release, and a locked file in the bundle, 2026-11-15.
 - [Resources line](./resources.md): CPU, memory and the network rate above the tabs, and
   which interfaces the rate counts. Proven 2026-11-08.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
@@ -64,7 +65,9 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   Swift (its frontend and its tools) and a package by its folder 2026-11-07; a compile job,
   with the Command Line Tools and with Xcode, a copy of clang, an app among Xcode's
   developer tools, a developer tool reading standard input, an Apple-signed Xcode, Quit on
-  an app with a helper and another account's process 2026-11-08.
+  an app with a helper and another account's process 2026-11-08; an Apple binary moved over a
+  running program, Safari from its cryptex, a file put in a copy of one of Apple's apps and
+  an app's files changed while it runs 2026-11-15.
 - [Ports](./ports.md): what is listening, read by the code it runs. A script listening, its
   answer kept, and another account's listener proven 2026-11-08.
 - [Explain](./explain.md): the explanation at the end of every detail, the Apple gate on

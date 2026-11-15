@@ -94,6 +94,29 @@ Preconditions:
 - **An Apple-signed Xcode.** On the test Mac, whose Xcode is signed by Apple (the development Mac's is the App
   Store's and reads that): `open -ga Xcode`. Its row reads `Xcode, N processes · unnamed
   code`, its detail `Signed by unnamed code`.
+- **An Apple binary moved over a running program.** On the test Mac: your own program that
+  sleeps, ad hoc signed, at `/tmp/x`, started by a launch agent. Its row reads `x, 1 process
+  · ad hoc signed`, its detail `Signed by ad hoc signed`. `cp /bin/ls <dir>/ls`, then `mv
+  <dir>/ls /tmp/x`: the pid runs on from the file that was there. At the next refresh the row
+  reads `x, 1 process · Apple, outside macOS`, the detail `Signed by Apple, outside macOS`,
+  and it is still a row of its own, not a member of `macOS`. A copy of `/bin/sleep` moved over
+  another such program reads the same.
+- **Safari.** On the test Mac, with Safari open: its row reads `Safari, N processes · Apple`, its
+  detail's path is `/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app`, and
+  its WebKit helpers (`com.apple.WebKit.WebContent`, `.GPU`, `.Networking`) are its members,
+  each `· Apple`.
+- **A file put in a copy of one of Apple's apps.** On the test Mac: `cp -R
+  /System/Applications/Calculator.app /tmp/Trusted.app`, your own ad hoc signed program copied
+  to `Contents/MacOS/evil` and started by its path. The row reads `Trusted, 1 process`, with no
+  signer; the process's own detail has `Signed by ad hoc signed`. macOS ends the process within
+  about two seconds, so read the row at once.
+- **A file put in an ad hoc signed app.** The `Tool.app` of "A file put in a bundle" in
+  network-names.md, its `dropper` running: the row reads `Tool, 1 process · ad hoc signed`.
+- **An app's files changed while it runs.** On the test Mac, with `Tool.app` ad hoc signed and
+  running and the tab open: `mv` another program, unsigned, over `Contents/MacOS/Tool`; at the
+  next refresh the row reads `Tool, 1 process · unsigned`. With the executable left as it was
+  signed, write over `Contents/Info.plist` alone: at the next refresh the row reads `Tool, 1
+  process · invalid signature`, its detail `Signed by invalid signature`.
 - **A package by its folder.** As above, with `<node>`, `.` and `WorkingDirectory` a
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
   · node script`, not `.`. With node.js's own build (the test Mac's `~/.local/node`), the detail
@@ -185,6 +208,24 @@ Preconditions:
 - Quit with an older run of the app's binary proven 2026-11-08 on the test Mac, run
   `2026-11-08T232714` (commit `13807fc`); copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-08/`.
+- The Apple binary moved over a running program, Safari, the file in a copy of Calculator, the
+  ad hoc signed app and both changed files proven 2026-11-15 on the test Mac (commit
+  `7e9f4cb`); no run folder was kept. On `main` before it the program moved over had no row
+  and counted in `macOS, N processes · Apple`, and the copy's row read `Trusted, 1 process ·
+  Apple`.
+- On the test Mac a copy of one of macOS's own programs (`/bin/sleep`, `/bin/ls`, `/usr/bin/nc`)
+  is killed as it starts, though `codesign` finds its signature valid, so an Apple-signed file
+  outside macOS is reached by moving the copy over a program that is already running. A
+  program put in a copy of one of Apple's apps and started by its path ran for about two
+  seconds before macOS killed it: long enough for its row, not for two to run together.
+- Not seen in the app, resting on unit tests: a WebKit helper with no app above it, in the
+  `macOS` row (`testWhatRunsFromACryptexIsPartOfMacOS`; every helper running was Safari's); a
+  group's detail with no `Signed by` when it holds a file its app's signer did not sign
+  (`testARowHoldingAFileItsAppsSignerDidNotSignNamesNoSigner`; it needs two members running);
+  the grey slashed shield beside `Apple, outside macOS`
+  (`testApplesSignatureOnAFileElsewhereIsNotPartOfMacOS`; the rows read carry an app icon);
+  and the `Interpreter signed by Apple, outside macOS` lines above, not read in the app since
+  they changed (`testAnAppAndAnInterpreterElsewhereAreNotReadAsApples`).
 - An app row's members sit below its facts: scroll its detail (`$V ax scroll down`) before
   pressing one.
 - On the development Mac the panel closed partway through two runs (`2026-11-07T224046`,

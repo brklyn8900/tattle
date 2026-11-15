@@ -132,6 +132,12 @@ Preconditions:
   launch agent. Row `Tool, 1 on this network · ad hoc signed`; `Explain` shows the answer with
   no `Confirm` and stores nothing. With `Tool` itself running instead, and the dropper's
   connection gone, `Explain` offers `Confirm` and stores `ad-hoc:<hash>:<path of Tool.app>`.
+- **An Apple-signed file outside macOS.** On the test Mac, with no need of the broker: a launch
+  agent's own program, at a path outside macOS's folders, that waits and then holds a
+  connection to `example.com:80`; move a copy of `/usr/bin/nc` over its path before it
+  connects. The connection's detail has `Signed by Apple, outside macOS`. Moved over once the
+  connection is open, the detail keeps its first reading: an owner is read when its connection
+  is first seen.
 - **A process that replaces itself.** A launch agent running `/bin/bash exec.sh $IP`, which
   does `exec 3<>/dev/tcp/$1/18095; sleep 12; exec /usr/bin/nc $1 18096 < <(sleep 300)`. `$V db
   "select pid, processName, signer, remotePort from connection where remotePort in (18095,
@@ -175,11 +181,19 @@ Preconditions:
   (`testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode` in `NetworkSnapshotTests`).
 - A foreign executable inside a copy of a publisher's bundle rests on the unit tests
   (`testAConnectionIsSignedByItsOwnProcessAndItsAppApart`,
-  `testAFileInABundleItsSignerDidNotSignTakesAwayTheRowsIdentity`): on the test Mac a new binary put
+  `testAFileInABundleItsSignerDidNotSignTakesAwayTheRowsIdentity`, and for the row that names no
+  signer `testARowHoldingAFileItsAppsSignerDidNotSignNamesNoSigner`): on the test Mac a new binary put
   in a copy of `Calculator.app`, unsigned or ad hoc, sat held at launch (state `S`, no CPU,
   and a program that only returns never returned), with macOS's `"Calculator" is damaged and
-  can't be opened` alert on the screen, so it never opened a connection to read.
+  can't be opened` alert on the screen, so it never opened a connection to read. Started by
+  its path, one ran for about two seconds before macOS killed it (2026-11-15): its row in
+  Processes was read (processes.md), none in this tab.
   One put in a bundle built on the machine runs, which is the recipe above.
+- An Apple-signed file outside macOS proven 2026-11-15 on the test Mac (commit `7e9f4cb`),
+  without the broker; no run folder was kept. Running a copy of `nc` itself is not the way:
+  the copy is killed as it starts. The `Interpreter signed by Apple, outside macOS` lines
+  above have not been read in the app since they changed, and rest on the unit tests in
+  `ApplesProgramTests`.
 - Incoming connections and the Tailscale peer's reach proven 2026-11-08 on the test Mac, run
   `2026-11-08T210232` (commit `a687b73`); copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-08/`. `from the internet` needs a public peer, so it rests

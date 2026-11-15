@@ -137,5 +137,21 @@ Preconditions:
   broker`, a request to example.com was named (`http`), and `Remove` took the daemon and its
   plist away. No run folder: the panel was driven outside a `$V` run. Not tried: a move by
   hand in the Finder.
+- Install and Remove from the view, 2026-11-15 on the test Mac: an ad-hoc release build of
+  `7e9f4cb`, the user typing the password in each dialog (`osascript wants to make changes.`).
+  Install: the view showed the plist it would write, with this build's `cdhash` and `--uid
+  502`; the log read `installing the packet-access broker from <private>`, `packet-access
+  broker installed`, `capturing on en0, link type 1, through the broker`; the plist and the
+  helper were root's, the daemon running, the link `Packet access on`. Remove: the plist and
+  the helper gone, the daemon not loaded, the link `Allow packet access`, and the view `Not
+  capturing: cannot open the packet capture device: Permission denied.` with `Install`. The
+  `removing the packet-access broker` line is written when `Remove` is pressed, before the
+  password: wait for the plist to go, not for the line. No run folder was kept.
+- A Finder-locked file in the bundle, the same build and day: `chflags uchg` on
+  `Contents/Resources/AppIcon.icns`, then `Install`. `ditto` copies the lock, so the script
+  stops at `chown -R root:wheel`. The view shows the command's own line, `execution error:
+  chown: /Library/PrivilegedHelperTools/.<stage>/Tattle.app/Contents/Resources/AppIcon.icns:
+  Operation not permitted (1)` (backlog); the log reads `broker install failed: <private>`;
+  no plist and no helper is left.
 - Not proven: Cancel, `Install for this account`, and a second account
   against the installed daemon (to run on the test Mac).
