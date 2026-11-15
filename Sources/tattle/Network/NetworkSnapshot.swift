@@ -9,15 +9,15 @@ struct ConnectionOwner: Equatable, Sendable {
     var interpreter: String?
     var app: AppBundle?
     /// Who signed the code the process runs: its executable, or no one for a script or
-    /// unnamed code.
+    /// unnamed code. Nil when the file at its path is not the code it runs.
     var signature: CodeSignature?
     /// The executable's signature when it is an interpreter running a script or unnamed code.
     var interpreterSignature: CodeSignature?
     /// Who signed the app the connection is filed under. The app only started the process, or
     /// holds it in its bundle, so this says nothing about the process's own code.
     var appSignature: CodeSignature?
-    /// The executable is a file in the app's bundle that the app's signer did not sign
-    /// (`AppBundle.holdsForeign`).
+    /// The executable is a file in the app's bundle that the app's signer did not sign, or
+    /// one that is not the code the process runs (`AppBundle.holdsForeign`).
     var isForeignToApp = false
     /// What tells the process's code from another's of its name (`ProcessEntry.identity`).
     var identity: CodeIdentity?
@@ -55,29 +55,30 @@ struct ConnectionOwner: Equatable, Sendable {
 
     /// Resolves a pid against a process list, attributing helpers to their app the same
     /// way the Processes tab does, and reads what it runs as that tab does. `byPid` is named
-    /// without signatures; `signature` reads each executable the owner's line passes through,
-    /// and the app bundle.
+    /// without signatures; `executable` reads the executable of each process the owner's line
+    /// passes through, for its pid and path, and `signature` the app bundle.
     static func resolve(
         pid: Int32, in byPid: [Int32: ProcessEntry], runningApp: (Int32) -> String?,
-        responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), signature: (String) -> CodeSignature?
+        responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:),
+        executable: (Int32, String) -> CodeSignature?, signature: (String) -> CodeSignature?
     ) -> ConnectionOwner {
         // The list carries no signatures, so the owner and the ancestors its app comes from
         // are named here by theirs.
         func named(_ pid: Int32) -> ProcessEntry? {
-            byPid[pid].map { $0.named(signature: $0.path.flatMap(signature)) }
+            byPid[pid].map { $0.named(signature: $0.executableSignature(executable)) }
         }
         guard let entry = named(pid) else { return ConnectionOwner(processName: "pid \(pid)") }
         var memo: [Int32: AppBundle?] = [:]
         let app = ProcessSnapshot.app(of: pid, in: named, runningApp: runningApp, responsible: responsible, memo: &memo)
-        let executable = entry.path.flatMap(signature)
-        let own = entry.codeSignature(executable: executable)
-        let interpreter = entry.interpreterSignature(executable: executable)
+        let signed = entry.executableSignature(executable)
+        let own = entry.codeSignature(executable: signed)
+        let interpreter = entry.interpreterSignature(executable: signed)
         let appSignature = app?.signature(reading: signature)
         return ConnectionOwner(
             processName: entry.name, path: entry.path, interpreter: entry.interpreter, app: app,
             signature: own, interpreterSignature: interpreter, appSignature: appSignature,
             isForeignToApp: app?.holdsForeign(entry.path, signed: interpreter ?? own, bundle: appSignature) ?? false,
-            identity: entry.identity(executable: executable))
+            identity: entry.identity(executable: signed))
     }
 }
 

@@ -52,7 +52,7 @@ struct PortItem: Equatable, Sendable, Identifiable {
     var uid: UInt32
     var process: ProcessEntry?
     /// Who signed the code the listener runs: its executable, or no one for a script or
-    /// unnamed code.
+    /// unnamed code. Nil when the file at its path is not the code it runs.
     var signature: CodeSignature?
     /// The executable's signature when it is an interpreter running a script or unnamed code.
     var interpreterSignature: CodeSignature?
@@ -118,10 +118,11 @@ struct PortsSnapshot: Equatable, Sendable {
 
     /// One row per process, protocol, port and binding; the IPv4 and IPv6 sockets of a
     /// dual-stack listener are merged. `processes` gives a pid's process as the table lists
-    /// it, named without its signature; each listener is read here by its own.
+    /// it, named without its signature; each listener is read here by its own, which
+    /// `executable` gives for its pid and its executable's path.
     static func build(
         entries: [SocketEntry], services: ServiceNames,
-        processes: (Int32) -> ProcessEntry?, signature: (String) -> CodeSignature?, takenAt: Date = Date()
+        processes: (Int32) -> ProcessEntry?, executable: (Int32, String) -> CodeSignature?, takenAt: Date = Date()
     ) -> PortsSnapshot {
         var byKey: [String: PortItem] = [:]
         var order: [String] = []
@@ -135,14 +136,15 @@ struct PortsSnapshot: Equatable, Sendable {
                 byKey[key] = existing
                 continue
             }
-            let process = processes(entry.pid).map { $0.named(signature: $0.path.flatMap(signature)) }
-            let executable = process?.path.flatMap(signature)
+            let listed = processes(entry.pid)
+            let signed = listed?.executableSignature(executable)
+            let process = listed?.named(signature: signed)
             byKey[key] = PortItem(
                 id: key, proto: entry.proto, port: entry.localPort, binding: binding, families: family,
                 pid: entry.pid, uid: process?.uid ?? entry.uid, process: process,
-                signature: process?.codeSignature(executable: executable),
-                interpreterSignature: process?.interpreterSignature(executable: executable),
-                identity: process?.identity(executable: executable),
+                signature: process?.codeSignature(executable: signed),
+                interpreterSignature: process?.interpreterSignature(executable: signed),
+                identity: process?.identity(executable: signed),
                 serviceName: services.name(port: entry.localPort, proto: entry.proto))
             order.append(key)
         }

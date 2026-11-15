@@ -28,9 +28,10 @@ struct AppBundle: Hashable, Sendable {
     }
 
     /// Whether the executable at `path` is a file in this bundle that the bundle's signer did
-    /// not sign. The bundle's signature is read without its resources, so it says nothing of a
-    /// file put there: an answer given for the app is not about that file, and neither is the
-    /// app's signer.
+    /// not sign, or one that is not the code its process runs, which reads as signed by no one
+    /// (`ProcessEntry.executableSignature`). The bundle's signature is read without its
+    /// resources, so it says nothing of a file put there: an answer given for the app is not
+    /// about that file, and neither is the app's signer.
     func holdsForeign(_ path: String?, signed executable: CodeSignature?, bundle: CodeSignature?) -> Bool {
         guard let path, path.hasPrefix(self.path + "/") else { return false }
         return bundle?.owns(executable) != true
@@ -72,7 +73,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// Activity Monitor. Nil until there is a previous reading of this process.
     var cpu: Double?
     /// Who signed the code the process runs: its executable, or no one for a script or
-    /// unnamed code.
+    /// unnamed code. Nil when the file at its path is not the code it runs.
     var signature: CodeSignature?
     /// The executable's signature when it is an interpreter running a script or unnamed code.
     var interpreterSignature: CodeSignature?
@@ -314,15 +315,17 @@ struct ProcessSnapshot: Equatable, Sendable {
     func item(pid: Int32) -> ProcessItem? { items.first { $0.pid == pid } }
     func group(id: String) -> ProcessGroup? { groups.first { $0.id == id } }
 
-    /// Attributes and rolls up. `signature` is called per executable and app bundle path;
-    /// the observer passes a cached reader, tests pass a table. `runningApp` gives the
+    /// Attributes and rolls up. `signature` is called per app bundle path, and `executable`
+    /// per process, with its pid and its executable's path; the observer passes a cached
+    /// reader's two readings, tests pass tables. `runningApp` gives the
     /// bundle Launch Services opened a pid from, for the processes whose path does not
     /// say: Chromium browsers run their main process from a code-sign clone of the
     /// bundle under a .app.bundle name. CPU shares come from the difference against
     /// `previous`, when `continuesPrevious` says nothing separates the two readings.
     static func build(
         entries: [ProcessEntry], previous: ProcessSnapshot?, continuesPrevious: Bool = true,
-        signature: (String) -> CodeSignature?, runningApp: (Int32) -> String? = { _ in nil },
+        signature: (String) -> CodeSignature?, executable: (Int32, String) -> CodeSignature?,
+        runningApp: (Int32) -> String? = { _ in nil },
         mainExecutable: (AppBundle) -> String? = { Bundle(path: $0.path)?.executablePath },
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
     ) -> ProcessSnapshot {
@@ -335,7 +338,7 @@ struct ProcessSnapshot: Equatable, Sendable {
         items.reserveCapacity(entries.count)
         var apps: [Int32: AppBundle?] = [:]
         for entry in entries {
-            let executableSignature = entry.path.flatMap(signature)
+            let executableSignature = entry.executableSignature(executable)
             var cpu: Double?
             if let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
                let now = entry.usage?.cpuSeconds, let then = before.usage?.cpuSeconds {

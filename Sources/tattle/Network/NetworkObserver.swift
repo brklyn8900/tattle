@@ -22,6 +22,7 @@ final class NetworkObserver {
     private let settings: AppSettings
     private let socketTable: @Sendable () throws -> [SocketEntry]
     private let signature: @Sendable (String) -> CodeSignature?
+    private let executable: @Sendable (Int32, String) -> CodeSignature?
     private var tracker = ConnectionTracker()
     private var owners: [Int32: ConnectionOwner] = [:]
     private var known = Set<String>()
@@ -60,10 +61,13 @@ final class NetworkObserver {
     /// How soon after a flow opens the socket table is read for its owner.
     static let promptPollDelay: Duration = .milliseconds(20)
 
+    /// `signature` reads a file's signature and `executable` a process's, for its pid and its
+    /// executable's path; a test that gives only `signature` has each process read as its file.
     init(store: ConnectionStore, rules: RuleStore, settings: AppSettings,
          socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() },
          processRecords: @escaping @Sendable () -> ProcessRecords? = { ProcessTable.records() },
          signature: (@Sendable (String) -> CodeSignature?)? = nil,
+         executable: (@Sendable (Int32, String) -> CodeSignature?)? = nil,
          sniffer: @escaping SnifferFactory = { Sniffer(onEvents: $0, onStatus: $1) }) {
         makeSniffer = sniffer
         self.store = store
@@ -73,6 +77,13 @@ final class NetworkObserver {
         self.processRecords = processRecords
         let signatures = SignatureCache()
         self.signature = signature ?? { signatures.signature(at: $0) }
+        if let executable {
+            self.executable = executable
+        } else if let signature {
+            self.executable = { _, path in signature(path) }
+        } else {
+            self.executable = { signatures.signature(of: $0, at: $1) }
+        }
     }
 
     func start(every interval: Duration = .seconds(2)) {
@@ -319,7 +330,7 @@ final class NetworkObserver {
         // read with the table. A pid whose connections all closed is forgotten so a reused pid
         // is resolved afresh.
         if !unresolved.isEmpty {
-            let signature = signature
+            let (signature, executable) = (signature, executable)
             let resolved = await Task.detached(priority: .utility) { () -> [Int32: ConnectionOwner] in
                 // With no lines, none of these is known to have exited.
                 guard let lines else { return Dictionary(uniqueKeysWithValues: unresolved.map { ($0, .unknown) }) }
@@ -329,7 +340,7 @@ final class NetworkObserver {
                         pid: pid, in: lines.entries,
                         runningApp: { NSRunningApplication(processIdentifier: $0)?.bundleURL?.path },
                         responsible: { lines.responsible[$0] },
-                        signature: signature)
+                        executable: executable, signature: signature)
                 }
                 return result
             }.value

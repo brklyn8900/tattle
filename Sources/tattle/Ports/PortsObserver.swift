@@ -17,10 +17,10 @@ final class PortsObserver {
             do {
                 let entries = try SocketTable.read()
                 // Listed without their signatures: each listener's is read when it is named.
-                let byPid = Dictionary(try ProcessTable.list(signature: { _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
+                let byPid = Dictionary(try ProcessTable.list(signature: { _, _ in nil }).map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
                 return .success(PortsSnapshot.build(
                     entries: entries, services: services,
-                    processes: { byPid[$0] }, signature: signatures.signature(at:)))
+                    processes: { byPid[$0] }, executable: signatures.signature(of:at:)))
             } catch {
                 return .failure(error)
             }

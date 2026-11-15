@@ -39,7 +39,20 @@ a file where only macOS installs programs (the system volume's folders, `/Librar
 and the two cryptexes Safari and WebKit run from, each only where it is root's, closed to
 writing by others and flagged against being unlinked);
 on a file anywhere else it reads as Apple's outside macOS, and its process is not part of
-the macOS row. Helpers are attributed to their app by
+the macOS row.
+
+The signature is read from the file at the process's path, so it counts for the process only
+while that file is the code it runs. For a file that names a signer, outside those folders,
+macOS is asked for the running code by pid (`SecCodeCopyGuestWithAttributes`) and to check it
+against the file (`SecCodeCheckValidity`), once per process, running code and version of the
+file. Where the lookup or the check fails, the file says nothing of the process, which shows
+no signer and takes no identity for the knowledge base from it: a program that renamed a
+signed file over its own path, and an app updated in place until it is started again. What says the running code is still the code
+last checked is the kernel's hash of it and its code-signing status, read with `csops`, which
+is in libSystem and in no SDK header: it is resolved at run time, and without it every
+reading makes the check (`Identify/RunningCode.swift`).
+
+Helpers are attributed to their app by
 walking the parent chain and by path containment (`Slack Helper (GPU)` lives inside
 `Slack.app`). A service launchd started for an app has neither, so it is filed under the
 "responsible process" macOS tracks for TCC, which only a private call reads

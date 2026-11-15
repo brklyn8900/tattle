@@ -8,9 +8,9 @@ struct CodeSignature: Equatable, Sendable {
         case apple
         /// Apple's signature on a file that is not where only macOS installs programs
         /// (`located`). It says who made the file and not that the file is part of macOS: a
-        /// copy of one of Apple's binaries keeps it anywhere, a running program can move such
-        /// a file over its own, and a copy of one of Apple's tools can be made to load other
-        /// code.
+        /// copy of one of Apple's binaries keeps it anywhere, and a copy of one of Apple's
+        /// tools can be made to load other code. A running program that moves such a file over
+        /// its own does not read as this: it has no signer (`SignatureCache.signature(of:at:)`).
         case appleElsewhere
         case appStore
         /// Developer ID: the name on the certificate is the publisher.

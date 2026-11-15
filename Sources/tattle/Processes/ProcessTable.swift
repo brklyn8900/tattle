@@ -86,6 +86,14 @@ struct ProcessEntry: Equatable, Sendable, Identifiable {
         return entry
     }
 
+    /// The executable's signature as `reading` gives it for this process, by its pid and the
+    /// path of its executable (`SignatureCache.signature(of:at:)`): nil when the file there is
+    /// not the code the process runs, and then nothing here names a signer or tells its code
+    /// from another's.
+    func executableSignature(_ reading: (Int32, String) -> CodeSignature?) -> CodeSignature? {
+        path.flatMap { reading(pid, $0) }
+    }
+
     /// Who signed the code the process runs, given its executable's signature: no one for a
     /// script or unnamed code.
     func codeSignature(executable: CodeSignature?) -> CodeSignature? {
@@ -167,9 +175,10 @@ enum ProcessTable {
 
     /// Every process with its usage. `fallback` is asked once for the pids libproc
     /// would not answer for; the default spawns `ps`, tests pass a table. `signature` is
-    /// called per executable path, to know Apple's interpreters by their signing identifier.
+    /// called per process, with its pid and its executable's path, to know Apple's
+    /// interpreters by their signing identifier.
     static func read(
-        fallback: ([Int32]) -> [Int32: ProcessUsage] = ProcessUsageFallback.read, signature: (String) -> CodeSignature?
+        fallback: ([Int32]) -> [Int32: ProcessUsage] = ProcessUsageFallback.read, signature: (Int32, String) -> CodeSignature?
     ) throws -> [ProcessEntry] {
         var entries = try list(signature: signature)
         let uid = getuid()
@@ -192,7 +201,7 @@ enum ProcessTable {
 
     /// The kernel's process list. Zombies are left out: they hold nothing and are gone
     /// as soon as their parent notices.
-    static func list(signature: (String) -> CodeSignature?) throws -> [ProcessEntry] {
+    static func list(signature: (Int32, String) -> CodeSignature?) throws -> [ProcessEntry] {
         // One argmax-sized scratch buffer for the command lines: allocating a
         // megabyte per process made a sweep of 1,600 take over a second.
         var scratch: [UInt8] = []
@@ -231,7 +240,7 @@ enum ProcessTable {
         for record in records where Int32(record.kp_proc.p_stat) != SZOMB { byPid[record.kp_proc.p_pid] = record }
         return ProcessRecords { pids in
             var scratch: [UInt8] = []
-            return lines(of: pids, in: byPid, parent: { $0.kp_eproc.e_ppid }, entry: { entry($0, scratch: &scratch, signature: { _ in nil }) },
+            return lines(of: pids, in: byPid, parent: { $0.kp_eproc.e_ppid }, entry: { entry($0, scratch: &scratch, signature: { _, _ in nil }) },
                          responsible: ResponsibleProcess.pid(for:))
         }
     }
@@ -267,7 +276,7 @@ enum ProcessTable {
         return lines
     }
 
-    private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (String) -> CodeSignature?) -> ProcessEntry? {
+    private static func entry(_ info: kinfo_proc, scratch: inout [UInt8], signature: (Int32, String) -> CodeSignature?) -> ProcessEntry? {
         guard Int32(info.kp_proc.p_stat) != SZOMB else { return nil }
         let pid = info.kp_proc.p_pid
         let command = commandName(of: info)
@@ -276,7 +285,7 @@ enum ProcessTable {
         let own = pid > 0 && info.kp_eproc.e_ucred.cr_uid == getuid()
         let arguments = own ? self.arguments(pid: pid, scratch: &scratch) : nil
         let named = ProcessEntry.name(
-            path: path, arguments: arguments, command: command, signature: path.flatMap(signature),
+            path: path, arguments: arguments, command: command, signature: path.flatMap { signature(pid, $0) },
             startedByLaunchd: info.kp_eproc.e_ppid == 1)
         let started = info.kp_proc.p_starttime
         return ProcessEntry(
