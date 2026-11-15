@@ -403,6 +403,13 @@ final class RunningCodeTests: XCTestCase {
             XCTAssertNil(row.signature, "a file in the bundle its signer did not sign")
             XCTAssertNil(row.signerText)
         }
+
+        let both = ProcessSnapshot.build(
+            entries: processes.values.sorted { $0.pid < $1.pid }, previous: nil, signature: { self.signatures[$0] },
+            executable: { pid, path in pid == 101 ? SignatureCache.ProcessReading(signature: other) : self.reading(pid, path) },
+            mainExecutable: { _ in "\(self.app)/Contents/MacOS/Slack" }, responsible: { _ in nil })
+        XCTAssertEqual(both.item(pid: 100)?.signerText, "changed on disk since it started")
+        XCTAssertNil(both.group(id: app)?.signerText, "the app updated in place, with a file its signer did not sign beside it")
     }
 
     func testNetworkShowsNoSignerForAProcessItsFileDoesNotVouchFor() {

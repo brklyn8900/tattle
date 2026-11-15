@@ -199,8 +199,8 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// What tells the row's program from another's of its name: the app, or the top process.
     /// None while such a file in the app's bundle is running.
     var identity: CodeIdentity?
-    /// The app's signer is withheld because a file in its bundle is not the code its process
-    /// runs, as an app updated in place is until it is started again.
+    /// The app's signer is withheld only because files in its bundle are not the code their
+    /// processes run, as an app updated in place is until it is started again.
     var differsFromFile = false
     /// The member `leader` names.
     var leaderPid: Int32?
@@ -402,14 +402,17 @@ struct ProcessSnapshot: Equatable, Sendable {
         for index in groups.indices {
             groups[index].members.sort { ($0.memoryBytes, $1.pid) > ($1.memoryBytes, $0.pid) }
             guard case .app(let bundle) = groups[index].kind else { continue }
-            let foreign = groups[index].members.filter {
-                bundle.holdsForeign($0.path, signed: $0.interpreterSignature ?? $0.signature, bundle: groups[index].signature)
+            let signed = groups[index].signature
+            let isForeign = { (item: ProcessItem) in
+                bundle.holdsForeign(item.path, signed: item.interpreterSignature ?? item.signature, bundle: signed)
             }
-            if !foreign.isEmpty {
+            if groups[index].members.contains(where: isForeign) {
                 groups[index].identity = nil
-                if groups[index].signature?.namesSigner == true {
+                if signed?.namesSigner == true {
                     groups[index].signature = nil
-                    groups[index].differsFromFile = foreign.contains(where: \.differsFromFile)
+                    // Only when each such file is one that changed on disk: a file the app's
+                    // signer did not sign is not an update.
+                    groups[index].differsFromFile = groups[index].members.allSatisfy { !isForeign($0) || $0.differsFromFile }
                 }
             }
             let executable = mainExecutable(bundle)

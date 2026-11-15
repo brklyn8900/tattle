@@ -49,10 +49,11 @@ file. Where the lookup or the check fails, the file says nothing of the process,
 no signer and takes no identity for the knowledge base from it: a program that renamed a
 signed file over its own path, and an app updated in place until it is started again. Its
 row in Processes says it changed on disk since it started, where a deleted executable's says
-it is no longer on disk, and so does the row of an app that loses its signer for it; a
-signature that was not read, or read while the file or the process changed, says nothing. It
-fails too for code the kernel no longer holds as it was signed, such as a program that
-changed its own code in memory, though its file is untouched and its row says the same. What
+it is no longer on disk. The row of an app that loses its signer for such a file says the
+same, unless the bundle also holds a file its signer did not sign; a signature that was not
+read, or read while the file or the process changed, says nothing. The check fails too for
+code the kernel no longer holds as it was signed, such as a program that changed its own
+code in memory, though its file is untouched and its row says the same. What
 says the running code is still the code last checked is the kernel's hash of it and its
 code-signing status, read with `csops`, which is in libSystem and in no SDK header: it is
 resolved at run time. Without it every reading makes the check, and a process on its way
