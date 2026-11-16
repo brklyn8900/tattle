@@ -86,7 +86,16 @@ endif
 	@for f in $(APPDIR)/Contents/MacOS/$(APP) $(APPDIR)/Contents/MacOS/$(BROKER); do \
 	  archs=$$(lipo -archs $$f) && [ -n "$$archs" ] \
 	    || { echo "error: cannot read the architectures of $$f" >&2; exit 1; }; \
+	  for a in $(ARCHS); do \
+	    case " $$archs " in *" $$a "*) ;; *) echo "error: $$f has no $$a slice" >&2; exit 1 ;; esac; \
+	  done; \
 	  for a in $$archs; do \
+	    if [ -z "$(SIGN_IDENTITY)" ] || [ "$(SIGN_IDENTITY)" = - ]; then \
+	      info=$$(codesign --display --verbose=2 --arch $$a $$f 2>&1); \
+	      echo "$$info" | grep -qx 'Signature=adhoc' && echo "$$info" | grep -qx 'TeamIdentifier=not set' \
+	        && ! echo "$$info" | grep -q '^Authority=' \
+	        || { echo "error: $$f ($$a) is not signed ad hoc: it names a team or a signing authority" >&2; exit 1; }; \
+	    fi; \
 	    codesign --display --verbose --arch $$a $$f 2>&1 | grep -q 'flags=.*runtime' \
 	      || { echo "error: $$f ($$a) is not signed with the hardened runtime" >&2; exit 1; }; \
 	    ! codesign --display --entitlements - --arch $$a $$f 2>/dev/null | grep -q get-task-allow \
@@ -114,6 +123,14 @@ release:
 	  || { echo "error: give the version as VERSION=YYYY.MM.DD.N" >&2; exit 1; }
 	rm -rf $(DISTDIR)
 	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app ARCHS="arm64 x86_64" SIGN_IDENTITY=- VERSION=$(VERSION)
+	@# A build on a person's Mac leaves their home folder's path in the binaries, and signing
+	@# with an identity leaves its certificate's name: neither ships. Only the path of GitHub's
+	@# runner account, where releases are built, is expected; a release built elsewhere fails.
+	@test -d $(DISTDIR)/Tattle.app
+	@others=$$(grep -rahoE '/Users/[A-Za-z0-9._-]+' $(DISTDIR)/Tattle.app | sort -u | grep -vxE '/Users/(runner|Shared)'); \
+	  [ -z "$$others" ] || { echo "error: the app holds the path of an account other than the runner's: $$others" >&2; exit 1; }
+	@! grep -rlaE 'Apple Development: [^[:cntrl:]]' $(DISTDIR)/Tattle.app \
+	  || { echo "error: the files above hold a development certificate's name" >&2; exit 1; }
 	cd $(DISTDIR) && ditto -c -k --sequesterRsrc --keepParent Tattle.app Tattle-$(VERSION).zip
 	@# The zip must give back an app whose signature still holds.
 	mkdir $(DISTDIR)/unzipped

@@ -37,37 +37,6 @@ jobs:
       - name: Build
         run: make release VERSION=${{ steps.version.outputs.version }}
 
-      - name: Check the app names no account, identity or team
-        run: |
-          app=build/dist/Tattle.app
-          fail=0
-          for f in "$app/Contents/MacOS/tattle" "$app/Contents/MacOS/tattle-capture-broker"; do
-            archs=$(lipo -archs "$f")
-            for need in arm64 x86_64; do
-              case " $archs " in *" $need "*) ;; *) echo "::error::$f has no $need slice"; fail=1 ;; esac
-            done
-            for a in $archs; do
-              info=$(codesign --display --verbose=2 --arch "$a" "$f" 2>&1)
-              echo "$info" | grep -qx 'Signature=adhoc' \
-                || { echo "::error::$f ($a) is not signed ad hoc"; fail=1; }
-              echo "$info" | grep -qx 'TeamIdentifier=not set' \
-                || { echo "::error::$f ($a) names a team"; fail=1; }
-              if echo "$info" | grep -q '^Authority='; then
-                echo "::error::$f ($a) names a signing authority"; fail=1
-              fi
-            done
-          done
-          # A build path under another account's home folder, which a build on a person's Mac
-          # leaves in the binaries. The runner's own home folder is expected.
-          others=$(grep -rahoE '/Users/[A-Za-z0-9._-]+' "$app" | sort -u | grep -vxF -e "$HOME" -e /Users/Shared || true)
-          if [ -n "$others" ]; then echo "::error::the app holds another account's path: $others"; fail=1; fi
-          # A development certificate's name. The app's own code holds the bare prefix, which
-          # it reads signatures by.
-          if grep -rlaE 'Apple Development: [^[:cntrl:]]' "$app"; then
-            echo "::error::the files above hold a development certificate's name"; fail=1
-          fi
-          exit $fail
-
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
