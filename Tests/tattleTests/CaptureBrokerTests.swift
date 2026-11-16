@@ -1,4 +1,5 @@
 import CPacketCapture
+import os
 import Security
 import XCTest
 import XPC
@@ -320,6 +321,36 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: own.service)))
     }
 
+    /// Every caller gets its answer, however busy the Mac: a broker that closes the connection
+    /// while its caller waits can make the caller drop a reply already delivered. Opt-in, since
+    /// the loss shows only under load and takes thousands of asks to see: `TATTLE_BROKER_ASKS`
+    /// gives how many (4000 take about half a minute), asked 16 at a time beside two busy
+    /// threads per core.
+    func testEveryCallerGetsItsAnswerUnderLoad() throws {
+        guard let asks = Int(ProcessInfo.processInfo.environment["TATTLE_BROKER_ASKS"] ?? "") else {
+            throw XCTSkip("set TATTLE_BROKER_ASKS to the number of asks")
+        }
+        let hardened = try caller(.hardened)
+        // A broker for another account refuses at once, the answer most often lost.
+        let broker = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1))
+        let busy = OSAllocatedUnfairLock(initialState: true)
+        for _ in 0..<(2 * ProcessInfo.processInfo.activeProcessorCount) {
+            Thread { while busy.withLock({ $0 }) {} }.start()
+        }
+        defer { busy.withLock { $0 = false } }
+
+        let began = Date()
+        var answers: [String: Int] = [:]
+        for first in stride(from: 0, to: asks, by: 16) {
+            let batch = try (first..<min(first + 16, asks)).map { _ in try start(hardened, service: broker.service) }
+            for started in batch { answers[answer(started), default: 0] += 1 }
+            if (first + 16) % 1000 < 16 {
+                print("\(Date().formatted(date: .omitted, time: .standard)) +\(Int(Date().timeIntervalSince(began)))s asked \(min(first + 16, asks)) of \(asks): \(answers)")
+            }
+        }
+        XCTAssertEqual(answers, ["refused": asks], "lost answers read as transport 54; broker log lines: \(broker.log.split(separator: "\n").count)")
+    }
+
     /// A plist without a usable uid, an older one for instance, must not start a broker that
     /// serves every account. The arguments are read before anything else, outside launchd too.
     func testBrokerRequiresTheInstallingUser() throws {
@@ -429,6 +460,112 @@ final class CaptureBrokerTests: XCTestCase {
         xpc_connection_send_message(connection, message)
         let reply = xpc_connection_send_message_with_reply_sync(connection, message)
         XCTAssertTrue(xpc_get_type(reply) == XPC_TYPE_ERROR, "a second message on the connection was answered: \(String(describing: reply))")
+    }
+
+    /// A connection of this process that asks once and is left open, with when its reply came
+    /// and when the broker closed it.
+    final class OpenAsk: @unchecked Sendable {
+        let connection: xpc_connection_t
+        private let state = OSAllocatedUnfairLock<(answered: Date?, closed: Date?)>(initialState: (nil, nil))
+        var answered: Date? { state.withLock { $0.answered } }
+        var closed: Date? { state.withLock { $0.closed } }
+
+        init(_ service: String) {
+            connection = xpc_connection_create_mach_service(service, nil, 0)
+            let state = state
+            xpc_connection_set_event_handler(connection) { event in
+                if event === XPC_ERROR_CONNECTION_INTERRUPTED { state.withLock { $0.closed = $0.closed ?? Date() } }
+            }
+            xpc_connection_activate(connection)
+            let message = xpc_dictionary_create_empty()
+            xpc_dictionary_set_string(message, "interface", "en0")
+            xpc_connection_send_message_with_reply(connection, message, nil) { reply in
+                if xpc_get_type(reply) == XPC_TYPE_DICTIONARY { state.withLock { $0.answered = Date() } }
+            }
+        }
+
+        deinit { xpc_connection_cancel(connection) }
+    }
+
+    /// Waits until `condition` holds or `seconds` pass.
+    private func wait(_ seconds: TimeInterval, until condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !condition() && Date() < deadline { usleep(1_000) }
+    }
+
+    /// The broker answers and leaves the closing to the caller, so a close cannot overtake the
+    /// reply; a caller that keeps the connection open has it closed after the client's own
+    /// deadline (`requestTimeout`, the broker's close_seconds). A connection gone before that,
+    /// closed by its caller or with a killed caller, leaves nothing that fires on it later.
+    func testTheBrokerClosesWhatACallerLeavesOpenAndNothingElse() throws {
+        let broker = try runBroker(requirement: nobody)
+        let left = OpenAsk(broker.label)
+        let closed = OpenAsk(broker.label)
+        wait(5) { left.answered != nil && closed.answered != nil }
+        let answered = try XCTUnwrap(left.answered, "the broker answered")
+        xpc_connection_cancel(closed.connection)
+        let hardened = try caller(.hardened)
+        for _ in 0..<5 {
+            let (process, _) = try start(hardened, service: broker.service)
+            kill(process.processIdentifier, SIGKILL)
+            waitForExit(process)
+        }
+        let pid = try XCTUnwrap(broker.pid, "launchd started the broker")
+
+        wait(CaptureBroker.requestTimeout + 3) { left.closed != nil }
+        let after = try XCTUnwrap(left.closed, "the broker closed the connection left open").timeIntervalSince(answered)
+        XCTAssertGreaterThan(after, CaptureBroker.requestTimeout - 1, "closed while the caller could still be waiting")
+        XCTAssertLessThan(after, CaptureBroker.requestTimeout + 2)
+        XCTAssertNil(closed.closed, "a connection its caller closed is not closed again")
+
+        usleep(1_000_000)  // past the closes the other connections would have had
+        XCTAssertEqual(try ask(hardened, service: broker.service), "refused", broker.log)
+        XCTAssertEqual(broker.pid, pid, "the same broker still answers")
+    }
+
+    /// Past 256 answered connections left open, the broker closes the oldest at once, so a
+    /// caller that never closes holds at most that many.
+    func testTheBrokerHoldsAtMostItsCapOfConnectionsLeftOpen() throws {
+        let cap = 256  // lingering_cap in the broker's main.c
+        let broker = try runBroker(requirement: nobody)
+        var asks: [OpenAsk] = []
+        for _ in 0..<(cap + 44) {
+            asks.append(OpenAsk(broker.label))
+            // In order: each is answered before the next is opened, so the oldest is known.
+            wait(5) { asks.last?.answered != nil }
+        }
+        XCTAssertEqual(asks.filter { $0.answered != nil }.count, cap + 44, "every ask answered")
+        wait(2) { asks.filter { $0.closed != nil }.count >= 44 }
+        let began = try XCTUnwrap(asks.first?.answered)
+        XCTAssertLessThan(Date().timeIntervalSince(began), CaptureBroker.requestTimeout, "measured before any close was due")
+        XCTAssertEqual(asks.prefix(44).filter { $0.closed == nil }.count, 0, "the oldest closed")
+        XCTAssertEqual(asks.dropFirst(44).filter { $0.closed != nil }.count, 0, "the newest left open")
+    }
+
+    /// A close still due when the broker reaches its idle exit neither keeps it running nor
+    /// starts it again. Opt-in, since the idle exit is a minute away: set TATTLE_BROKER_IDLE.
+    func testACloseStillDueNeitherKeepsTheBrokerRunningNorStartsIt() throws {
+        guard ProcessInfo.processInfo.environment["TATTLE_BROKER_IDLE"] != nil else {
+            throw XCTSkip("set TATTLE_BROKER_IDLE to wait out the broker's idle exit")
+        }
+        // A broker for another account: this process's asks do not put its idle exit off,
+        // which comes a minute after launchd starts it.
+        let broker = try runBroker(requirement: nobody, uid: String(getuid() + 1))
+        let first = OpenAsk(broker.label)
+        wait(5) { first.answered != nil }
+        let started = try XCTUnwrap(first.answered, "the broker answered")
+        XCTAssertEqual(broker.runs, 1)
+        usleep(useconds_t((57 - Date().timeIntervalSince(started)) * 1_000_000))
+        let late = OpenAsk(broker.label)  // its close is due after the idle exit
+        wait(5) { late.answered != nil }
+        XCTAssertNotNil(late.answered)
+
+        wait(10) { broker.pid == nil }
+        XCTAssertNil(broker.pid, "the broker still runs")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 62, "the broker outlived its idle exit")
+        usleep(10_000_000)
+        XCTAssertNil(broker.pid, "something started the broker again")
+        XCTAssertEqual(broker.runs, 1)
     }
 
     /// A request is judged by the process that sent it, not by what its pid runs when the
