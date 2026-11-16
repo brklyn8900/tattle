@@ -8,12 +8,11 @@ struct ResourcesLine: View {
         if #available(macOS 26.0, *) {
             // From macOS 26 the four readings lie on the glass itself, the numerals first.
             // Four columns of one width. The numerals keep one size, so they share a baseline
-            // and the two meters a line; a memory total too wide for its column ("of 128 GB" beside
-            // "101.9") is written shorter ("/128 GB") and shrinks, the numeral never does.
+            // and the two meters a line; only the memory total's text may shrink.
             HStack(alignment: .top, spacing: 14) {
                 stat("CPU", sample.cpu.formatted(.percent.precision(.fractionLength(0))), share: sample.cpu)
                     .help(Self.allCoresHelp)
-                stat("Memory", memory.used, memory.total, shortUnit: memoryShortTotal, share: memoryShare)
+                stat("Memory", memory.used, memoryTotal, share: memoryShare)
                 stat("In", rate(sample.bytesInPerSecond).value, rate(sample.bytesInPerSecond).unit, symbol: "arrow.down")
                 stat("Out", rate(sample.bytesOutPerSecond).value, rate(sample.bytesOutPerSecond).unit, symbol: "arrow.up")
             }
@@ -31,7 +30,7 @@ struct ResourcesLine: View {
     static let perCoreHelp = "Share of one core. 100% is one core fully used; this Mac has \(cores)."
 
     /// One reading: what it is, its number, and a meter when it is a share of a whole.
-    private func stat(_ label: String, _ value: String, _ unit: String = "", shortUnit: String? = nil, share: Double? = nil, symbol: String? = nil) -> some View {
+    private func stat(_ label: String, _ value: String, _ unit: String = "", share: Double? = nil, symbol: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 3) {
                 if let symbol {
@@ -47,12 +46,10 @@ struct ResourcesLine: View {
                     .monospacedDigit()
                     .fixedSize()
                 if !unit.isEmpty {
-                    ViewThatFits(in: .horizontal) {
-                        Text(unit)
-                        Text(shortUnit ?? unit).minimumScaleFactor(0.7)
-                    }
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    Text(unit)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .minimumScaleFactor(0.7)
                 }
             }
             .lineLimit(1)
@@ -104,10 +101,14 @@ struct ResourcesLine: View {
         return (used, "of \(total) GB")
     }
 
-    /// The total written short, "/128 GB", for a column too narrow for "of 128 GB".
-    private var memoryShortTotal: String {
-        let total = (Double(sample.memory.total) / 1_073_741_824.0).formatted(.number.precision(.fractionLength(0...1)))
-        return "/\(total) GB"
+    /// The total beside the used figure: "of 64 GB", or "/128 GB" from 100 GB up, where the
+    /// long form beside a three-digit figure is wider than the column. Chosen by the total,
+    /// which does not change while Tattle runs, so the form does not flip as the used figure
+    /// crosses 100.
+    private var memoryTotal: String {
+        let gigabytes = Double(sample.memory.total) / 1_073_741_824.0
+        guard gigabytes >= 100 else { return memory.total }
+        return "/\(gigabytes.formatted(.number.precision(.fractionLength(0...1)))) GB"
     }
 
     /// The number and its unit, apart: "1.2" and "MB/s".
