@@ -32,7 +32,7 @@ struct CodeSignature: Equatable, Sendable {
         /// installs them, named here unless its plist changes the root folder, when the path
         /// would not say which file runs. No one signs the plist that says what the program is
         /// told to do, so Apple's signature on the program vouches for nothing the item does. A
-        /// copy elsewhere reads as `appleElsewhere`.
+        /// copy elsewhere reads as `appleElsewhere`, unless the plist changes the root folder.
         case launchItem(applesProgram: String?)
         /// Signed, but the signature does not match the binary.
         case invalid
@@ -106,7 +106,7 @@ struct CodeSignature: Equatable, Sendable {
     /// does not name as a file; nil when Apple's programs lead to one the command line does
     /// not locate. Startup lists only items that are not Apple's (its own, under
     /// /System/Library, are counted), so a program of Apple's reads as `launchItem`, and a
-    /// copy of one elsewhere as `appleElsewhere`.
+    /// copy of one elsewhere as `appleElsewhere` unless the plist changes the root folder.
     ///
     /// A script file's signature is not read: a script rarely carries one, and no interpreter
     /// runs a signed binary as its script, so a signed file in the script's place is an
@@ -144,16 +144,16 @@ struct CodeSignature: Equatable, Sendable {
     /// `signature`, the signature of `program`, as a launch item that is not Apple's shows it.
     /// A copy of one of Apple's programs outside the folders macOS installs into reads as
     /// Processes reads it, as Apple's outside macOS: signed, by Apple, and not part of macOS.
+    /// Under another root folder the path names another file, whose signature was not read.
     static func launchItem(running program: String, signature: CodeSignature?, changesRoot: Bool = false) -> CodeSignature? {
         guard let signature, signature.signer == .apple else { return signature }
+        if changesRoot { return CodeSignature(signer: .launchItem(applesProgram: nil), codeHash: signature.codeHash) }
         // A plist's path is as written: a link, or ".." out of a system folder. A copy of
         // Apple's binary keeps Apple's signature under any name.
         let path = URL(fileURLWithPath: program).resolvingSymlinksInPath().path
-        // Under another root folder the path names another file, whose signature was not read.
-        if !changesRoot, !ApplesProgram.isInstalled(at: path) { return signature.located(at: path) }
-        let name = URL(fileURLWithPath: path).lastPathComponent
-        let isNamed = !changesRoot && ApplesProgram.isNamed(name, path: path, signature: signature)
-        return CodeSignature(signer: .launchItem(applesProgram: isNamed ? name : nil), codeHash: signature.codeHash)
+        let located = signature.located(at: path)
+        guard located.signer == .apple else { return located }
+        return CodeSignature(signer: .launchItem(applesProgram: URL(fileURLWithPath: path).lastPathComponent), codeHash: signature.codeHash)
     }
 
     /// A signature as read, with the files and folders the reading rests on
