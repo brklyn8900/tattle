@@ -84,7 +84,8 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v8
+      # Pinned by commit: whatever a moved tag pointed to would run with this job's write token.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
           path: dist
@@ -99,7 +100,8 @@ jobs:
         run: |
           # A draft made since the version job counted, by hand or by another run, is refused.
           existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
-          if printf '%s\n' "$existing" | grep -qxF "v$VERSION"; then
+          # Not a pipe: under pipefail, grep -q leaving early could fail the writer and read as no match.
+          if grep -qxF "v$VERSION" <<<"$existing"; then
             echo "::error::a release or draft named v$VERSION exists already; delete the stale draft and run again"
             exit 1
           fi
