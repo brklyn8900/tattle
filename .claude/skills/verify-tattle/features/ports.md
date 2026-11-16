@@ -49,6 +49,8 @@ Preconditions:
   the test Mac, commit `7e9f4cb`): the run's listener on a high loopback port was not listed,
   and it opened none on all interfaces, which raises the Application Firewall's prompt. They
   rest on the unit test (`testPorts` in `ApplesProgramTests`).
+- A listener whose file is not the code it runs, with no signer, was not seen in the app
+  (2026-11-15, the test Mac); it rests on `testPortsShowNoSignerForAProcessItsFileDoesNotVouchFor`.
 - A process running as another account than its socket's creator rests on the unit test
   (`testAListenerRunsAsItsProcessNotItsSocket`): a socket-activated agent's listener on the test Mac
   (run `2026-11-08T221748`) stayed owned by launchd, and making one any other way needs root.

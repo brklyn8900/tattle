@@ -177,6 +177,10 @@ Preconditions:
 - Copies of macOS's own programs are killed at launch. Apple's programs with a team
   identifier run from anywhere, given the libraries their load paths expect: hence the
   `lib` link for `swift-frontend`.
+- A process whose file is not the code it runs proven 2026-11-15 on the test Mac (commit
+  `0d3d85e`): after Apple's binary was renamed over a running ad hoc signed program, a
+  connection it opened from a pid with none open before showed no signer, and a pid that had
+  a connection open before the swap kept `ad hoc signed`.
 - Xcode Service holds no connection, so its row in this tab rests on the unit test
   (`testAnAppAmongApplesDeveloperToolsReadsAsUnnamedCode` in `NetworkSnapshotTests`).
 - A foreign executable inside a copy of a publisher's bundle rests on the unit tests

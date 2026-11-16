@@ -220,8 +220,16 @@ Preconditions:
   `7e9f4cb`); no run folder was kept. On `main` before it the program moved over had no row
   and counted in `macOS, N processes · Apple`, and the copy's row read `Trusted, 1 process ·
   Apple`. Since Tattle checks a process's running code against its file, that program's row
-  reads `changed on disk since it started` in place of `Apple, outside macOS`: not yet seen
-  in the app, nor the app updated in place.
+  reads `changed on disk since it started` in place of `Apple, outside macOS`.
+- The running-code check proven 2026-11-15 on the test Mac, at commits `8a517c1` and again
+  `b882c18`: Apple's binary renamed over a running ad hoc signed program, and over a running
+  unsigned one, read `<name>, 1 process · changed on disk since it started`, the detail with
+  the path and no `Signed by` or `Team`. An unsigned or ad hoc signed file renamed over a
+  program reads as that file's own state, since only a file that names a signer is checked.
+  Publishers' apps left untouched read as on `main`. Not seen in the app: a publisher's binary
+  swapped in (every Developer ID binary on the test Mac reads `invalid signature` outside its
+  bundle) and an app updated in place, both resting on
+  `testProcessesShowNoSignerForAProcessItsFileDoesNotVouchFor`.
 - On the test Mac a copy of one of macOS's own programs (`/bin/sleep`, `/bin/ls`, `/usr/bin/nc`)
   is killed as it starts, though `codesign` finds its signature valid, so an Apple-signed file
   outside macOS is reached by moving the copy over a program that is already running. A

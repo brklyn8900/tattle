@@ -215,8 +215,13 @@ Preconditions:
   The copy, the link and the path out of `/usr` proven on the test Mac, run `2026-11-08T100408`
   (`d8825b4`); in run `2026-11-08T100308` (`da67eac`) they had `Runs Apple's softwareupdated`
   and `Runs Apple's SafariUpdater`. The copies read `launch item, not signed` then; that they
-  read `Apple, outside macOS`, and the agent running a copy of `/bin/sleep`, are unit-tested
-  only (`testALaunchItemRunningACopyOfApplesProgramReadsAsApplesOutsideMacOS`).
+  read `Apple, outside macOS` is unit-tested only
+  (`testALaunchItemRunningACopyOfApplesProgramReadsAsApplesOutsideMacOS`).
+- A launch agent running a copy of Apple's program proven 2026-11-15 on the test Mac (commit
+  `b882c18`): a user agent running a copy of `/bin/sleep` read `<label>, at login · not
+  running · Apple, outside macOS`, its detail `Signed by Apple, outside macOS` and `Runs
+  <copy> 600`, with no `Team` and no `Runs Apple's`; macOS killed the copy as it started.
+  Publishers' agents read as on `main`. The shield beside it was not looked at.
 - The loaded job, the plists that cannot be read and the daemon's words proven 2026-11-08 on
   the test Mac, run `2026-11-08T210232` (commit `a687b73`); copy in this Mac's
   `build/verify/runs/test-mac-2026-11-08/`. An agent and a daemon sharing a label rest on the unit test
