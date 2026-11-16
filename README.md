@@ -1,23 +1,102 @@
-# Tattle
+<p align="center">
+  <img src="Resources/AppIcon.svg" width="128" height="128" alt="Tattle's icon: an eye">
+</p>
 
-A macOS menu bar app that shows what your Mac is doing and explains it in plain language.
-It covers network connections, running processes, listening ports, and startup items. Each
-item shows who signed it and, where the knowledge base or an explanation says, who runs it
-and why it is probably there.
+<h1 align="center">Tattle</h1>
 
-Tattle is an explainer, not a firewall and not a system monitor. It makes no network calls
-of its own: no telemetry, no update check, no cloud lookups. The one way anything leaves
-your machine is the **Explain** button, which sends a single redacted item to an LLM you
-already have, through a command you configured. The [PRD](docs/PRD.md) says what
-it does, the [design](docs/design.md) how it is built, and the [ADRs](docs/adr/) why each
-decision was made.
+<p align="center">
+  A macOS menu bar app that shows what your Mac is doing and explains it in plain language.
+</p>
 
-## Status
+<p align="center">
+  <img src="docs/images/network.png" width="480"
+       alt="Tattle's panel on the Network tab: the resources line, the four tabs, two First contact connections each named by its host, and below them the connections seen before, grouped by app with how many go to the internet or this network and who signed it">
+</p>
 
-The four tabs (Network, Processes, Ports, Startup) and Explain are built. There are no
-binaries, so build from source with the steps below.
+Tattle lists your Mac's network connections, running processes, listening ports and
+startup items. For each one it shows who signed it and which app it belongs to and, where
+it knows, what it is, why it is probably there and whether you should care.
 
-A release will be ad-hoc signed, so macOS blocks its first launch. To open it:
+It is an explainer, not a firewall and not a system monitor. It makes no network calls of
+its own: no telemetry, no update check, no cloud lookups. When its built-in knowledge runs
+out, **Explain** sends that one item, redacted, to an LLM you already use, through a
+command you choose.
+
+**Status:** the four tabs and Explain work. There is no release yet, so
+[build from source](#install). What is missing is under [Not yet built](#not-yet-built).
+
+## What it shows
+
+The eye in the menu bar shows network traffic in and out. Clicking it opens a panel with a
+line for CPU, memory and network, and four tabs:
+
+- **Network**: every open connection, grouped by app. A connection is named from the
+  connection itself (the TLS server name, the QUIC handshake, the HTTP Host header), with
+  DNS replies as a fallback marked "from DNS". Connections to an address this Mac has not
+  reached before are listed first, under **First contact**.
+- **Processes**: what is running, each with its code signer (Apple, a developer's Team ID
+  and organization, or unsigned) and the app a helper belongs to.
+- **Ports**: listening TCP and UDP sockets, who owns each, and whether it is reachable from
+  your network or from this Mac only.
+- **Startup**: launch agents, launch daemons and login items: what each runs, when, and
+  who signed it. macOS's own items are counted on one Apple line.
+
+<p align="center">
+  <img src="docs/images/processes.png" width="32%"
+       alt="The Processes tab: apps and programs sorted by memory, each with its process count, signer, memory and CPU, with everything that is part of macOS on one row">
+  <img src="docs/images/ports.png" width="32%"
+       alt="The Ports tab: sockets reachable from your network, each with its port, process, protocol, binding and signer">
+  <img src="docs/images/startup.png" width="32%"
+       alt="The Startup tab: apps that open at login and items apps registered to run in the background, each with when it runs, whether it is on and who signed it">
+</p>
+
+Every item opens to a page of facts and three answers: **What is this**, **Why it is
+probably here**, and **Should I care**.
+
+<p align="center">
+  <img src="docs/images/process.png" width="360"
+       alt="WindowServer's page: signed by Apple, what it is, why it is probably here and whether to care, then its path, parent, account, start time and memory">
+</p>
+
+Some things the Mac's own traffic does not reveal. A name hidden by Encrypted Client Hello
+or sent through iCloud Private Relay is labelled "name hidden" or "relayed", not shown as
+the destination, and DNS done over HTTPS inside a browser is out of sight. A browser is one
+process, so Tattle shows every host it contacted but not which tab caused it.
+
+## Where the explanations come from
+
+1. **Facts** Tattle reads for itself: the signer, the app responsible, a port's binding, a
+   startup item's trigger.
+2. **The knowledge base**: rules that ship with the app as JSON files in
+   [`Resources/knowledge/`](Resources/knowledge/). It is small for now; corrections and
+   additions are pull requests against those files.
+3. **Your LLM**, only when you click **Explain** on an item. The answer is stored on your
+   Mac as a rule for that item, marked unconfirmed until you click **Confirm**.
+   Unconfirmed answers expire after 45 days. Two kinds of answer are shown without being
+   stored, and have no **Confirm**: one about code Tattle cannot tell from other code of
+   the same name (unnamed code, or a file it cannot read), and one about a host that went
+   out as a placeholder, since a private address is another device on another network.
+
+## Install
+
+There are no binaries yet. Build from source; you need macOS 14 or later and Xcode 26 or
+its command line tools.
+
+    git clone https://github.com/eladefrati/tattle.git
+    cd tattle
+    make install    # build, bundle and sign Tattle.app, then copy it to /Applications
+    open /Applications/Tattle.app
+
+`make app` builds `build/Tattle.app` without installing it.
+
+`make app` signs ad hoc. With an Apple Development identity in your keychain, it signs
+with that identity instead, which keeps permission grants and the packet-access broker's
+approval across rebuilds. To choose the identity, pass `SIGN_IDENTITY=<name>` to `make`.
+
+### Opening a downloaded release
+
+Releases will be ad-hoc signed, so macOS blocks a downloaded copy's first launch. To open
+it:
 
 1. Move Tattle to Applications in the Finder and open it. macOS says it was not opened;
    click Done.
@@ -27,63 +106,26 @@ A release will be ad-hoc signed, so macOS blocks its first launch. To open it:
 4. In the alert that follows, click Open Anyway again.
 5. Enter an administrator's name and password. Tattle opens.
 
-Not built yet: a mark on a new listening port or a new startup item (only an address reached
-for the first time is marked), any view of the connection history, when a startup item last
-ran, cron and `periodic` entries in the Startup tab, a LAN tab, per-page browser
-attribution, a search bar, a "started by" filter on processes, and IP block owner data (iptoasn). The
-Tracker Radar and Apple hosts knowledge files ship with no rules. Blocking is not planned.
-The PRD leaves it to a future decision of its own.
+## Permissions
 
-## Build
-
-Requires macOS 14 or later and Xcode 26 or its command line tools.
-
-    make app       # build, bundle and sign build/Tattle.app
-    make install   # copy it to /Applications
-    make test
-
-    make run       # build and open the dev copy, build/TattleDev.app
-    make stop      # quit the dev copy
-    make log       # stream both copies' logs
-
-The dev copy is a separate app, "Tattle Dev" (`io.github.eladefrati.tattle.dev`), with
-its own data in `~/Library/Application Support/Tattle Dev/` and its own permission
-grants, so `make run` never replaces or quits a release build that is running.
-
-`make app` signs ad hoc. With an Apple Development identity in your keychain, it signs
-with that identity instead, which keeps permission grants and the packet-access broker's
-approval across rebuilds. To choose the identity, pass `SIGN_IDENTITY=<name>` to `make`.
-
-## Verifying a change
-
-`make test` runs the unit tests. Behaviour in the running app is proven with the helper in
-`.claude/skills/verify-tattle/`: it launches the dev copy, drives its panel through the
-accessibility API, and keeps each run's panel text, history rows and log under
-`build/verify/runs/`.
-
-    V=.claude/skills/verify-tattle/scripts/tattle-verify
-    $V launch      # build and open the dev copy
-    $V doctor      # every line must read ok
-    $V cleanup     # stop what the run started
-
-The terminal it runs in needs Accessibility permission. Its
-[SKILL.md](.claude/skills/verify-tattle/SKILL.md) covers the other commands, and
-[features/](.claude/skills/verify-tattle/features/README.md) lists, tab by tab, what has been
-proven and how to prove it again.
-
-## Packet access
+### Packet access
 
 Connection names come from the first packets of each connection, which only root may
 read. **Allow packet access** in the Network tab installs the packet-access broker, a small
 launch daemon that opens the capture device read-only and hands it to Tattle. The broker
 answers only a process that runs as the user who installed it, carries Tattle's signature,
-and runs with the hardened runtime.
+and runs with the hardened runtime. Without it, the Network tab shows addresses instead of
+names.
 
 You install and remove the broker through the administrator password dialog, and the
 **Packet access** screen shows the exact plist first. You can also remove it from the
-Startup tab, which does not show the plist. Without the broker, the
-Network tab shows addresses instead of names. [ADR-0003](docs/adr/0003-bpf-descriptor-broker.md)
-gives the design and the reasoning.
+Startup tab, which does not show the plist.
+[ADR-0003](docs/adr/0003-bpf-descriptor-broker.md) gives the design and the reasoning.
+
+<p align="center">
+  <img src="docs/images/packet-access.png" width="480"
+       alt="The Packet access screen: capturing through the broker, what the broker does, and the launch daemon plist it installed">
+</p>
 
 With an Apple Development identity, the broker recognises Tattle by its team and bundle
 identifier, so it keeps accepting the release app and the dev copy after a rebuild. On a
@@ -95,7 +137,7 @@ another build and installs it again in one dialog.
 
 Packet access is tested on macOS 26 only.
 
-## Full Disk Access
+### Full Disk Access
 
 The Startup tab reads the login-items database, which macOS puts behind Full Disk Access.
 Without the grant, the tab lists launchd jobs only and says what is missing. To grant it,
@@ -103,44 +145,44 @@ click **Open Full Disk Access Settings** in the Startup tab and turn Tattle on. 
 else in the app needs the grant. An ad-hoc build loses it on every rebuild.
 [ADR-0002](docs/adr/0002-login-items-full-disk-access.md) explains why.
 
-## Connection history
-
-Tattle records each connection it sees in
-`~/Library/Application Support/Tattle/tattle.sqlite`: the process, its app and who signed
-them, the address and port at the other end, the name it learned, and when the connection
-opened and closed. That covers every process on the Mac, root's included. A row is deleted
-30 days after its connection ended; **History** in Settings changes that, from 1 to 365
-days. Tattle uses the record to mark an address it has not reached before; no screen lists
-it yet.
-
-The file is not encrypted, and every process you run can read it: the names the broker keeps
-from them are in it, for as long as the rows last. The same holds for `tattle.sqlite-wal` and
-`tattle.sqlite-shm` beside it, where SQLite keeps the latest changes and their index until it
-folds them into the file. So `tattle.sqlite` alone is not a complete copy of the history: copy
-all three files together, with Tattle quit. Spotlight does not index the folder, and Time
-Machine backs it up unless you exclude it.
-
 ## Explain
 
-**Explain** sends one item to an LLM through a command you choose. Nothing is sent until
-you choose a command and click **Explain** on an item.
+Nothing is sent until you choose a command and click **Explain** on an item.
 
 1. Click **Settings…** in the panel.
 2. Under **Explain with**, pick a preset: Claude Code (`claude -p`), Codex (`codex exec`),
    or Ollama (`ollama run llama3.2`). The tool must be installed and signed in.
 
-To use another tool, edit **Command** so it reads the prompt on standard input and prints
-the answer on standard output; the picker then shows **Custom**. Tattle replaces `{schema}` in the command
-with the JSON schema the answer must match. **Output contract** in Settings shows the
-schema.
+<p align="center">
+  <img src="docs/images/settings.png" width="480"
+       alt="Tattle's Settings window: the menu bar and appearance options, the Claude Code preset and its command under Explain with, and the prompt instructions">
+</p>
 
-Before sending, Tattle replaces these in the item and its facts with placeholders: your home
-path, your username, private and local IP addresses, the Mac's names, Tailscale device names,
-other accounts' folders, disk names, and a public address a port is bound to. The default
-instructions go out as written. Instructions you edit lose your home path in any case, your
-username, the Mac's names with either apostrophe, and private or local addresses unless
-spelled with hyphens; a dotted name such as `com.username.helper`, other accounts' folders, disk
-names and Tailscale names stay in them. **Last prompt sent** shows the exact text.
+To use another tool, edit **Command** so it reads the prompt on standard input and prints
+the answer on standard output; the picker then shows **Custom**. Tattle replaces `{schema}`
+in the command with the JSON schema the answer must match. **Output contract** in Settings
+shows the schema, and **Last prompt sent** shows the exact text of the last request.
+
+The command runs in your login shell, in an empty temporary folder, and is stopped after
+120 seconds or once it has written 4 MB. When it exits, Tattle kills what is left in its
+process group; a process that left the group keeps running.
+
+## Privacy
+
+Tattle makes no network call of its own and has no account, identifier or crash reporter.
+The one thing that leaves your Mac is the item you click **Explain** on, sent through the
+command you configured.
+
+Before sending, Tattle replaces these in the item and its facts with placeholders: your
+home path, your username, private and local IP addresses, the Mac's names, Tailscale device
+names, other accounts' folders, disk names, and a public address a port is bound to. The
+default instructions go out as written. Instructions you edit lose your home path in any
+case, your username, the Mac's names with either apostrophe, and private or local
+addresses unless spelled with hyphens; a dotted name such as `com.username.helper`, other
+accounts' folders, disk names and Tailscale names stay in them.
+
+<details>
+<summary>Where a name stays in</summary>
 
 A name is replaced only where Tattle can tell it from an ordinary word, so some stay:
 
@@ -164,18 +206,28 @@ A name is replaced only where Tattle can tell it from an ordinary word, so some 
   root, and only up to the first space or punctuation a name rarely holds, so
   `/Users/Other User` keeps `User`.
 
-The Claude Code preset keeps no transcript of the call and starts none of your account's
-connectors, but Claude Code adds the email address it is signed in with to the request, and
-Tattle cannot remove it.
-The command runs in your login shell, in an empty temporary folder, and is stopped after
-120 seconds or once it has written 4 MB. When it exits, Tattle kills what is left in its
-process group; a process that left the group keeps running.
+</details>
 
-Tattle stores the answer as a rule for that item, marked unconfirmed until you click
-**Confirm**. Unconfirmed answers expire after 45 days. Two kinds of answer are shown without
-being stored, and have no **Confirm**: one about code Tattle cannot tell from other code of
-the same name (unnamed code, or a file it cannot read), and one about a host that went out as
-a placeholder, since a private address is another device on another network.
+The command can add what Tattle cannot remove. The Claude Code preset keeps no transcript
+of the call and starts none of your account's connectors, but Claude Code adds the email
+address it is signed in with to the request.
+
+### Connection history
+
+Tattle records each connection it sees in
+`~/Library/Application Support/Tattle/tattle.sqlite`: the process, its app and who signed
+them, the address and port at the other end, the name it learned, and when the connection
+opened and closed. That covers every process on the Mac, root's included. A row is deleted
+30 days after its connection ended; **History** in Settings changes that, from 1 to 365
+days. Tattle uses the record to mark an address it has not reached before; no screen lists
+it yet.
+
+The file is not encrypted, and every process you run can read it: the names the broker keeps
+from them are in it, for as long as the rows last. The same holds for `tattle.sqlite-wal` and
+`tattle.sqlite-shm` beside it, where SQLite keeps the latest changes and their index until it
+folds them into the file. So `tattle.sqlite` alone is not a complete copy of the history: copy
+all three files together, with Tattle quit. Spotlight does not index the folder, and Time
+Machine backs it up unless you exclude it.
 
 ## Uninstall
 
@@ -191,10 +243,37 @@ a placeholder, since a private address is another device on another network.
 3. To remove your history, rules, and settings, delete
    `~/Library/Application Support/Tattle/`. Tattle's window positions are in
    `~/Library/Preferences/io.github.eladefrati.tattle.plist`.
-4. If you used Explain with the Claude Code preset, earlier versions of the preset left a
-   folder per call named `*tattle-explain*` in `~/.claude/projects/`, holding the transcript,
-   and in `~/Library/Caches/claude-cli-nodejs/`, holding logs. Delete those. Anything another
-   command keeps is in that tool's own folders.
+
+## Not yet built
+
+- A mark on a new listening port or a new startup item (only an address reached for the
+  first time is marked)
+- Any view of the connection history
+- When a startup item last ran
+- Cron and `periodic` entries in the Startup tab
+- A LAN tab
+- Per-page browser attribution
+- A search bar
+- A "started by" filter on processes
+- IP block owner data (iptoasn)
+
+The Tracker Radar and Apple hosts knowledge files ship with no rules. Blocking is not
+planned; the PRD leaves it to a future decision of its own. What comes next, in order, is
+in [roadmap.md](roadmap.md).
+
+## Development
+
+    make test      # unit tests
+    make run       # build and open the dev copy, build/TattleDev.app
+    make stop      # quit the dev copy
+    make log       # stream both copies' logs
+
+The dev copy is a separate app, "Tattle Dev" (`io.github.eladefrati.tattle.dev`), with its
+own data in `~/Library/Application Support/Tattle Dev/` and its own permission grants, so
+`make run` never replaces or quits a release build that is running.
+
+The [PRD](docs/PRD.md) says what Tattle does, the [design](docs/design.md) how it is
+built, and the [ADRs](docs/adr/) why each decision was made.
 
 ## License
 
