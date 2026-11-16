@@ -278,8 +278,7 @@ Machine backs it up unless you exclude it.
 - IP block owner data (iptoasn)
 
 The Tracker Radar and Apple hosts knowledge files ship with no rules. Blocking is not
-planned; the PRD leaves it to a future decision of its own. What comes next, in order, is
-in [roadmap.md](roadmap.md).
+planned; the PRD leaves it to a future decision of its own.
 
 ## Development
 
