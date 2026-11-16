@@ -298,7 +298,8 @@ final class CaptureBrokerTests: XCTestCase {
     func testBrokerAcceptsAHardenedCaller() throws {
         let hardened = try caller(.hardened)
         let broker = try runBroker(requirement: hardened.requirement)
-        XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: broker.service)))
+        let answer = try ask(hardened, service: broker.service)
+        XCTAssertTrue(Self.accepted.contains(answer), "the probe printed \(answer.debugDescription); broker log:\n\(broker.log)")
         XCTAssertTrue(broker.log.contains("cannot open a capture device on en0") || broker.log.contains("handed a capture device on en0"), broker.log)
     }
 
@@ -318,7 +319,8 @@ final class CaptureBrokerTests: XCTestCase {
         let other = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1))
         XCTAssertEqual(try ask(hardened, service: other.service), "refused", "a caller running as another user")
         let own = try runBroker(requirement: hardened.requirement)
-        XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: own.service)))
+        let answer = try ask(hardened, service: own.service)
+        XCTAssertTrue(Self.accepted.contains(answer), "the probe printed \(answer.debugDescription); broker log:\n\(own.log)")
     }
 
     /// Every caller gets its answer, however busy the Mac: a broker that closes the connection
