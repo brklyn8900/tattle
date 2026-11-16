@@ -430,8 +430,10 @@ struct DetailPage<Trailing: View, Content: View, Bar: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
+                // Clear of the way back on both sides, so the title stays centred: the text
+                // button before macOS 26 is at most 110 wide, the glass chevron 28 and a gap.
                 Text(title).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
-                    .padding(.horizontal, 110)
+                    .padding(.horizontal, PanelLook.glass ? 36 : 110)
                 HStack {
                     if #available(macOS 26.0, *) {
                         Button {
