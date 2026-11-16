@@ -178,7 +178,7 @@ Preconditions:
   identifier run from anywhere, given the libraries their load paths expect: hence the
   `lib` link for `swift-frontend`.
 - A process whose file is not the code it runs proven 2026-11-15 on the test Mac (commit
-  `0d3d85e`): after Apple's binary was renamed over a running ad hoc signed program, a
+  `65af67a`): after Apple's binary was renamed over a running ad hoc signed program, a
   connection it opened from a pid with none open before showed no signer, and a pid that had
   a connection open before the swap kept `ad hoc signed`.
 - Xcode Service holds no connection, so its row in this tab rests on the unit test
@@ -334,7 +334,7 @@ Preconditions:
   --filter CaptureFloodSimulationTests`. Each second it prints what the observer holds, the
   process's footprint, how long a block queued on the main thread waited (`lag`) and how late
   a 100 ms timer on its run loop fired (`timer`); the lines stop while the main thread is
-  held. 2026-11-15, `0955989` (nothing capped) against `4220caf` (the kinds, the pending names
+  held. 2026-11-15, `845a497` (nothing capped) against `e1a4f83` (the kinds, the pending names
   and the events on their way to the main actor capped), one run each, taken before the
   branch was rebased onto `0da26f4`, when a name's kind was still read from the database:
   - 1,000 flows a second for 330 s: outcomes and openings held 300,000 each against 4,089,
@@ -345,7 +345,7 @@ Preconditions:
     against 26 ms, the main thread caught up 68 s after the last flow against 1 s. With the
     caps 422,668 of the 600,000 events were dropped: about 3,000 flows a second were handled.
   - 100 a second for 30 s: 3,000 of each held, 8 and 7 MB, no `lag`, on both.
-  - After the rebase, at `0c7d42f`, with a name's kind read from memory, one run each: 10,000
+  - After the rebase, at `a7db41f`, with a name's kind read from memory, one run each: 10,000
     a second for 30 s held 4,063 outcomes and openings and 3,848 kinds, 11 MB, `lag` up to
     38 ms, `timer` 24 ms, 484,016 of the 600,000 events dropped, so about 1,900 flows a second
     handled; 1,000 a second for 30 s dropped none, with `lag` up to 19 ms.

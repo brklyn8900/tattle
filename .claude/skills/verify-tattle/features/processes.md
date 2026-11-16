@@ -221,7 +221,7 @@ Preconditions:
   and counted in `macOS, N processes · Apple`, and the copy's row read `Trusted, 1 process ·
   Apple`. Since Tattle checks a process's running code against its file, that program's row
   reads `changed on disk since it started` in place of `Apple, outside macOS`.
-- The running-code check proven 2026-11-15 on the test Mac, at commits `8a517c1` and again
+- The running-code check proven 2026-11-15 on the test Mac, at commits `19c6248` and again
   `2ddd3c6`: Apple's binary renamed over a running ad hoc signed program, and over a running
   unsigned one, read `<name>, 1 process · changed on disk since it started`, the detail with
   the path and no `Signed by` or `Team`. An unsigned or ad hoc signed file renamed over a
