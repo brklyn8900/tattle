@@ -113,7 +113,7 @@ private extension ProcessesList {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(column == .cpu ? ResourcesLine.perCoreHelp : "Memory the app and its helpers hold now.")
+        .help(column == .cpu ? ResourcesLine.perCoreHelp : "Memory this row's processes hold now.")
         .accessibilityLabel(column.rawValue)
         .accessibilityAddTraits(sort == column ? .isSelected : [])
     }
