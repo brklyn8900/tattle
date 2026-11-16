@@ -44,9 +44,12 @@ static const int idle_seconds = 60;
 // before it sends, so a caller still waiting by then has already given up.
 static const int close_seconds = 5;
 
-// At most this many answered connections stay open waiting for their callers to close them; past
-// it the oldest is closed at once. Without a cap a caller that never closes could hold as many
-// as it can send in close_seconds, each costing the broker its ports and memory.
+// At most this many answered connections stay open waiting for their callers to close them, in
+// each of two lists; past it the oldest of that list is closed at once. Without a cap a caller
+// that never closes could hold as many as it can send in close_seconds, each costing the broker
+// its ports and memory. The lists keep apart the connections whose caller passed the check and
+// those refused, so a flood of refused connections, which any process of any account can send,
+// closes only other refused ones; only callers the broker accepts can fill the other.
 static const int lingering_cap = 256;
 
 // An answered connection whose caller has not closed it yet, holding a reference to it. Created
@@ -207,12 +210,13 @@ static int open_bpf(const char *ifname) {
 }
 
 // The reply goes to the reply port of `request`, which belongs to the process that sent it: the
-// one just checked.
-static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
+// one just checked. Returns whether the sender passed the check.
+static bool serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
     xpc_object_t reply = xpc_dictionary_create_reply(request);
-    if (reply == NULL) return;  // sent without asking for a reply: no one to answer
+    if (reply == NULL) return false;  // sent without asking for a reply: no one to answer
     int64_t status = STATUS_REFUSED;
-    if (sender_is_allowed(peer, request, uid, requirement)) {
+    bool allowed = sender_is_allowed(peer, request, uid, requirement);
+    if (allowed) {
         const char *ifname = xpc_dictionary_get_string(request, "interface");
         if (!is_interface_name(ifname)) {
             status = STATUS_BAD_REQUEST;
@@ -234,6 +238,7 @@ static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecReq
     xpc_dictionary_set_int64(reply, "status", status);
     xpc_connection_send_message(peer, reply);
     xpc_release(reply);
+    return allowed;
 }
 
 static void usage(void) {
@@ -287,8 +292,9 @@ int main(int argc, char **argv) {
     dispatch_source_set_event_handler(idle, ^{ exit(0); });
     dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
     dispatch_resume(idle);
-    static struct lingering_list lingering;
-    start_list(&lingering, lingering_cap, queue);
+    static struct lingering_list accepted, refused;
+    start_list(&accepted, lingering_cap, queue);
+    start_list(&refused, lingering_cap, queue);
 
     xpc_connection_t listener = xpc_connection_create_mach_service(service, queue, XPC_CONNECTION_MACH_SERVICE_LISTENER);
     xpc_connection_set_event_handler(listener, ^(xpc_object_t peer) {
@@ -299,8 +305,9 @@ int main(int argc, char **argv) {
         // a new one. The connection is not closed with the answer: a close while the caller
         // waits can make it drop a reply already delivered and see the connection interrupted
         // instead. The caller closes it, which ends it here at once; a second message closes it
-        // unanswered; otherwise the list's timer closes it close_seconds after the answer, or
-        // sooner past the cap. All of it runs on `queue`, so `taken` and `answered` need no lock.
+        // unanswered; otherwise its list's timer closes it close_seconds after the answer, or
+        // sooner past that list's cap. All of it runs on `queue`, so `taken` and `answered`
+        // need no lock.
         __block bool taken = false;
         __block struct lingering *answered = NULL;
         xpc_connection_set_event_handler(peer, ^(xpc_object_t message) {
@@ -320,8 +327,8 @@ int main(int argc, char **argv) {
             if (xpc_connection_get_euid(peer) == uid) {
                 dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
             }
-            serve(peer, message, uid, requirement);
-            answered = linger(peer, &lingering);
+            bool allowed = serve(peer, message, uid, requirement);
+            answered = linger(peer, allowed ? &accepted : &refused);
         });
         xpc_connection_activate(peer);
     });

@@ -525,23 +525,68 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertEqual(broker.pid, pid, "the same broker still answers")
     }
 
-    /// Past 256 answered connections left open, the broker closes the oldest at once, so a
-    /// caller that never closes holds at most that many.
-    func testTheBrokerHoldsAtMostItsCapOfConnectionsLeftOpen() throws {
-        let cap = 256  // lingering_cap in the broker's main.c
+    /// Opens `count` connections that ask once and are left open, each answered before the next
+    /// is opened, so their order is the broker's.
+    private func openInOrder(_ count: Int, on broker: BrokerAgent, into asks: inout [OpenAsk]) {
+        for _ in 0..<count {
+            let ask = OpenAsk(broker.label)
+            asks.append(ask)
+            wait(5) { ask.answered != nil }
+        }
+    }
+
+    /// A caller that never closes holds a bounded number of connections: past a cap the broker
+    /// closes the oldest at once, so the number left open stops growing.
+    func testConnectionsLeftOpenStopGrowingAtACap() throws {
         let broker = try runBroker(requirement: nobody)
         var asks: [OpenAsk] = []
-        for _ in 0..<(cap + 44) {
-            asks.append(OpenAsk(broker.label))
-            // In order: each is answered before the next is opened, so the oldest is known.
-            wait(5) { asks.last?.answered != nil }
-        }
-        XCTAssertEqual(asks.filter { $0.answered != nil }.count, cap + 44, "every ask answered")
-        wait(2) { asks.filter { $0.closed != nil }.count >= 44 }
+        let stillOpen = { asks.filter { $0.closed == nil }.count }
+        openInOrder(600, on: broker, into: &asks)
+        usleep(200_000)  // for the closes on the way
+        let after600 = stillOpen()
+        openInOrder(400, on: broker, into: &asks)
+        usleep(200_000)
+        let after1000 = stillOpen()
+        XCTAssertEqual(asks.filter { $0.answered != nil }.count, 1000, "every ask answered")
         let began = try XCTUnwrap(asks.first?.answered)
         XCTAssertLessThan(Date().timeIntervalSince(began), CaptureBroker.requestTimeout, "measured before any close was due")
-        XCTAssertEqual(asks.prefix(44).filter { $0.closed == nil }.count, 0, "the oldest closed")
-        XCTAssertEqual(asks.dropFirst(44).filter { $0.closed != nil }.count, 0, "the newest left open")
+        XCTAssertGreaterThan(after1000, 0)
+        XCTAssertLessThan(after600, 600, "nothing closed past a cap")
+        XCTAssertEqual(after1000, after600, "the connections left open kept growing")
+        XCTAssertEqual(asks.prefix(1000 - after1000).filter { $0.closed == nil }.count, 0, "the oldest closed")
+        XCTAssertEqual(asks.suffix(after1000).filter { $0.closed != nil }.count, 0, "the newest left open")
+    }
+
+    /// Connections answered with a refusal are capped apart from those whose caller passed the
+    /// check, so a flood of refused connections left open, from any process of any account,
+    /// closes only other refused ones, never an accepted caller's while it holds its answer.
+    func testAFloodOfRefusedConnectionsLeavesAnAcceptedCallersOpen() throws {
+        let hardened = try caller(.hardened)
+        let broker = try runBroker(requirement: hardened.requirement)
+        let process = Process()
+        process.executableURL = hardened.url
+        process.arguments = [broker.label, "en0", "--hold", "4"]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        var text = ""
+        while !text.contains("\n") {
+            let data = output.fileHandleForReading.availableData
+            if data.isEmpty { break }
+            text += String(decoding: data, as: UTF8.self)
+        }
+        let answer = text.split(separator: "\n").first.map(String.init) ?? ""
+        XCTAssertTrue(Self.accepted.contains(answer), "the probe printed \(answer.debugDescription); broker log:\n\(broker.log)")
+
+        // The test runner fails the requirement: each of these is refused and left open.
+        var flood: [OpenAsk] = []
+        openInOrder(1000, on: broker, into: &flood)
+        wait(2) { flood.first?.closed != nil }
+        XCTAssertNotNil(flood.first?.closed, "the flood pushed out its own oldest")
+
+        waitForExit(process)
+        text += String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(text.split(separator: "\n").dropFirst().first, "open", "the flood closed the accepted caller's connection")
     }
 
     /// A close still due when the broker reaches its idle exit neither keeps it running nor
