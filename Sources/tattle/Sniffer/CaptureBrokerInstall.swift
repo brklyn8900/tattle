@@ -336,21 +336,13 @@ extension CaptureBroker {
         # --deep checked the broker only against the requirement the seal records beside it, which
         # with a team names no hash; the seal also records the broker's own code hash, of one
         # slice. Root runs whichever slice suits the Mac, so every slice is checked: one can
-        # match while another is foreign. Ad hoc, the sealed requirement names every slice's
-        # hash and nothing else, and is used when it is exactly that; otherwise the one hash
-        # stands, which refuses a universal broker signed by a team.
+        # match while another is foreign.
+        \(brokerRequirementFunction)
         codeResources="$stage/Tattle.app/Contents/_CodeSignature/CodeResources"
         sealed=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).cdhash")) raw -o - "$codeResources" 2>/dev/null | /usr/bin/base64 -D | /usr/bin/od -An -v -tx1 | /usr/bin/tr -d ' \\n')
-        hashes=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).requirement")) raw -o - "$codeResources" 2>/dev/null || true)
-        case "$hashes" in
-            *[![:print:]]*) hashes= ;;
-            *"H\\"$sealed\\""*) ;;
-            *) hashes= ;;
-        esac
-        if [ -z "$hashes" ] || ! /usr/bin/printf '%s\\n' "$hashes" | /usr/bin/grep -Eqx 'cdhash H"[0-9a-f]{40}"( or cdhash H"[0-9a-f]{40}")*'; then
-            hashes="cdhash H\\"$sealed\\""
-        fi
-        if [ ${#sealed} -ne 40 ] || ! /usr/bin/codesign --verify --strict -R="$hashes" "$new" 2>/dev/null; then
+        recorded=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).requirement")) raw -o - "$codeResources" 2>/dev/null || true)
+        requirement=$(broker_requirement "$sealed" "$recorded")
+        if [ ${#sealed} -ne 40 ] || ! /usr/bin/codesign --verify --strict -R="$requirement" "$new" 2>/dev/null; then
             echo 'The broker inside Tattle is not the one this build of Tattle was sealed with. Download or build Tattle again. Nothing was installed.' >&2
             exit 3
         fi
@@ -398,6 +390,28 @@ extension CaptureBroker {
         purge() {
             /usr/bin/chflags -R nouchg,nouappnd "$@" 2>/dev/null || true
             /bin/rm -rf "$@"
+        }
+        """
+
+    /// Prints the requirement every slice of the broker must meet, given the code hash the seal
+    /// records for the broker and the requirement it records beside it. Ad hoc, the recorded
+    /// requirement names each slice's hash, and it is used only when it is hash clauses alone,
+    /// on one line, naming the sealed hash: a clause besides would admit more than this build.
+    /// Otherwise the sealed hash alone, which pins a broker of one slice and refuses a
+    /// universal broker signed by a team, whose recorded requirement names no hash.
+    static let brokerRequirementFunction = """
+        broker_requirement() {
+            recorded=$2
+            case "$recorded" in
+                *[![:print:]]*) recorded= ;;
+                *"H\\"$1\\""*) ;;
+                *) recorded= ;;
+            esac
+            if [ -n "$recorded" ] && /usr/bin/printf '%s\\n' "$recorded" | /usr/bin/grep -Eqx 'cdhash H"[0-9a-f]{40}"( or cdhash H"[0-9a-f]{40}")*'; then
+                /usr/bin/printf '%s\\n' "$recorded"
+            else
+                /usr/bin/printf 'cdhash H"%s"\\n' "$1"
+            fi
         }
         """
 

@@ -403,12 +403,51 @@ final class CaptureBrokerScriptTests: XCTestCase {
         assertRefused(Self.brokerNotSealed, "a universal broker sealed with a requirement that names no hash")
     }
 
-    /// Only a requirement made of hash clauses alone is used: one clause more widens it.
-    func testRootRefusesAUniversalBrokerWhoseRequirementAddsAClause() throws {
+    /// A recorded requirement that leaves out the sealed hash is not used, so the sealed hash
+    /// alone refuses the other slice.
+    func testRootRefusesAUniversalBrokerWhoseRequirementLeavesOutItsSealedHash() throws {
         let hash = String(repeating: "ab", count: 20)
         (bundle, identity) = try makeBundle(named: "Clause.app", helperRequirement: #"designated => cdhash H"\#(hash)" or identifier "tattle-capture-broker""#,
                                             universal: true)
-        assertRefused(Self.brokerNotSealed, "a sealed requirement with a clause besides hashes")
+        assertRefused(Self.brokerNotSealed, "a sealed requirement that leaves out the sealed hash")
+    }
+
+    /// The step that chooses the broker's requirement, run on its own. No signed fixture can
+    /// reach its hash-clauses-only guard: the seal takes the hash and the requirement from one
+    /// slice, and a requirement that names its own slice's hash is circular, since the hash
+    /// covers the requirement.
+    func testTheBrokerRequirementIsTheRecordedHashesAloneOrElseTheSealedHash() throws {
+        let sealed = String(repeating: "ab", count: 20), other = String(repeating: "cd", count: 20)
+        let alone = "cdhash H\"\(sealed)\""
+        let cases: [(name: String, recorded: String, used: String)] = [
+            ("the sealed hash", alone, alone),
+            ("every slice's hash", "\(alone) or cdhash H\"\(other)\"", "\(alone) or cdhash H\"\(other)\""),
+            ("a clause besides the hashes", "\(alone) or identifier \"tattle-capture-broker\"", alone),
+            ("a clause before the hashes", "identifier \"tattle-capture-broker\" or \(alone)", alone),
+            ("a clause on a second line", "\(alone)\nor identifier \"tattle-capture-broker\"", alone),
+            ("a command after the hashes", "\(alone); /usr/bin/true", alone),
+            ("hashes that leave out the sealed one", "cdhash H\"\(other)\"", alone),
+            ("no hash, as with a team", "identifier \"tattle-capture-broker\" and anchor apple generic", alone),
+            ("upper-case hex", "cdhash H\"\(sealed.uppercased())\"", alone),
+            ("nothing recorded", "", alone),
+        ]
+        for test in cases {
+            XCTAssertEqual(try brokerRequirement(sealed: sealed, recorded: test.recorded), test.used, test.name)
+        }
+    }
+
+    /// Runs the install script's requirement step as the root shell would, with its arguments
+    /// passed as the script passes them.
+    private func brokerRequirement(sealed: String, recorded: String) throws -> String {
+        let process = Process()
+        process.executableURL = URL(filePath: "/bin/sh")
+        process.arguments = ["-c", CaptureBroker.brokerRequirementFunction + "\nbroker_requirement \"$1\" \"$2\"\n", "sh", sealed, recorded]
+        let out = Pipe()
+        process.standardOutput = out
+        try process.run()
+        XCTAssertTrue(waitForExit(process))
+        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return text.hasSuffix("\n") ? String(text.dropLast()) : text
     }
 
     func testStatusReadsAUniversalBrokerItInstalledAsThisBuilds() throws {
