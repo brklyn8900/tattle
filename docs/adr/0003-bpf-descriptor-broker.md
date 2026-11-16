@@ -57,8 +57,14 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    - **The sender runs as the user who installed the broker.** The plist records that
      uid. The broker reads the sender's uid from the connection
      (`xpc_connection_get_euid`). That uid is fixed when the connection is made. The
-     broker closes each connection after its first message, answered or not, so the
-     connection's uid is the uid of the request it answers.
+     broker answers only the first message on a connection and closes the connection on a
+     second, so the connection's uid is the uid of the request it answers. Otherwise the
+     caller closes it, or the broker does 5 seconds after its answer, the client's own
+     deadline, and at most 256 answered connections stay open, the oldest closed first. The
+     broker does not close a connection as it answers: a close while the caller waits can
+     make the caller drop a reply already delivered and see the connection interrupted.
+     Under load on an Apple silicon Mac, closing at once lost 73 answers in 32,000 asks; with
+     the caller closing, none in 20,000. On the hosted CI runner it failed 8 of 13 test runs.
    - **The sender's code satisfies the requirement recorded at install time.** With an
      Apple identity, the requirement is the app's team plus its identifier or the dev
      copy's (the same identifier with `.dev` appended, which `make run` builds). Ad hoc,
