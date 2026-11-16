@@ -66,6 +66,8 @@ jobs:
       - name: Build
         run: make release VERSION="$VERSION"
 
+      # Anyone signed in to GitHub can download a public repository's run artifacts, so the
+      # untested zip is kept one day, enough for the draft job, not the default 90.
       - uses: actions/upload-artifact@v7
         with:
           name: release
@@ -73,6 +75,7 @@ jobs:
             build/dist/Tattle-${{ env.VERSION }}.zip
             build/dist/Tattle-${{ env.VERSION }}.zip.sha256
           if-no-files-found: error
+          retention-days: 1
 
   # Can write, as the version job can. It runs nothing from the repository: it checks the zip against
   # its checksum and uploads both to a draft release.
