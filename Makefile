@@ -49,15 +49,17 @@ ifeq ($(ARCHS),)
 	swift build -c $(CONFIG) --product $(BROKER)
 	swift build -c $(CONFIG) --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK)
 else
+	@# Each architecture's products are copied beside the joined ones, so lipo gets known,
+	@# quoted paths; the assignment stops the build if the bin path cannot be read.
 	@set -e; for a in $(ARCHS); do \
 	  swift build -c $(CONFIG) --arch $$a --product $(BROKER); \
 	  swift build -c $(CONFIG) --arch $$a --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK); \
+	  bin=$$(swift build -c $(CONFIG) --arch $$a --show-bin-path); \
+	  mkdir -p "$(BINDIR)/$$a"; \
+	  cp "$$bin/$(BROKER)" "$$bin/$(APP)" "$(BINDIR)/$$a/"; \
 	done; \
-	mkdir -p "$(BINDIR)"; \
 	for p in $(BROKER) $(APP); do \
-	  set --; \
-	  for a in $(ARCHS); do set -- "$$@" "$$(swift build -c $(CONFIG) --arch $$a --show-bin-path)/$$p"; done; \
-	  lipo -create -output "$(BINDIR)/$$p" "$$@"; \
+	  lipo -create -output "$(BINDIR)/$$p" $(foreach a,$(ARCHS),"$(BINDIR)/$(a)/$$p"); \
 	done
 endif
 	rm -rf $(APPDIR)
@@ -122,7 +124,7 @@ release:
 	@echo "$(VERSION)" | grep -qE '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$$' \
 	  || { echo "error: give the version as VERSION=YYYY.MM.DD.N" >&2; exit 1; }
 	rm -rf $(DISTDIR)
-	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app ARCHS="arm64 x86_64" SIGN_IDENTITY=- VERSION=$(VERSION)
+	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=- VERSION=$(VERSION)
 	@# A build on a person's Mac leaves their home folder's path in the binaries, and signing
 	@# with an identity leaves its certificate's name: neither ships. Only the path of GitHub's
 	@# runner account, where releases are built, is expected; a release built elsewhere fails.
