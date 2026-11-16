@@ -21,51 +21,68 @@ defaults:
 concurrency: release
 
 jobs:
-  build:
-    runs-on: macos-latest
+  # Can write only because no lesser token sees drafts, which the numbering must count. It has
+  # no checkout and runs no code from the repository and no third-party action: gh alone.
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      # The build runs the dependencies' code, so the checkout keeps no credentials.
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
       - name: Version
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          # YYYY.MM.DD.N from today's date in UTC, one past the highest N among the releases and
-          # tags. A read-only token may not see drafts; the draft job refuses a version a draft
-          # already has. Either list failing to read fails the step.
-          releases=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')
-          tags=$(git ls-remote --tags origin | sed 's|.*refs/tags/||')
+          # YYYY.MM.DD.N from today's date in UTC, one past the highest N among the releases,
+          # drafts included, and the tags. Either list failing to read fails the step.
+          releases=$(gh api "repos/$REPOSITORY/releases" --paginate --jq '.[].tag_name')
+          tags=$(gh api "repos/$REPOSITORY/tags" --paginate --jq '.[].name')
           prefix="v$(date -u +%Y.%m.%d)."
           last=$(printf '%s\n%s\n' "$releases" "$tags" | awk -v p="$prefix" 'index($0, p) == 1 { n = substr($0, length(p) + 1)
               if (n ~ /^[0-9]+$/ && n + 0 > max) max = n + 0 } END { print max + 0 }')
           echo "version=${prefix#v}$((last + 1))" >> "$GITHUB_OUTPUT"
 
+  build:
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      # The version goes into the app's Info.plist and the files' names: its shape is checked
+      # before anything uses it.
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$ ]] \
+            || { echo "::error::not a version of the form YYYY.MM.DD.N: $VERSION"; exit 1; }
+
+      # The build runs the dependencies' code, so the checkout keeps no credentials.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Build
-        run: make release VERSION=${{ steps.version.outputs.version }}
+        run: make release VERSION="$VERSION"
 
       - uses: actions/upload-artifact@v7
         with:
           name: release
           path: |
-            build/dist/Tattle-${{ steps.version.outputs.version }}.zip
-            build/dist/Tattle-${{ steps.version.outputs.version }}.zip.sha256
+            build/dist/Tattle-${{ env.VERSION }}.zip
+            build/dist/Tattle-${{ env.VERSION }}.zip.sha256
           if-no-files-found: error
 
-  # The only job that can write. It runs nothing from the repository: it checks the zip against
+  # Can write, as the version job can. It runs nothing from the repository: it checks the zip against
   # its checksum and uploads both to a draft release.
   draft:
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      VERSION: ${{ needs.build.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -80,7 +97,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # This token sees drafts, which the build job's may not.
+          # A draft made since the version job counted, by hand or by another run, is refused.
           existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
           if printf '%s\n' "$existing" | grep -qxF "v$VERSION"; then
             echo "::error::a release or draft named v$VERSION exists already; delete the stale draft and run again"
