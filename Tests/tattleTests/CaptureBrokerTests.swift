@@ -454,8 +454,9 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertTrue(CaptureBroker.isRegistered(agent.service))
     }
 
-    /// The broker closes a connection after its first message, answered or not, so the uid it
-    /// takes from the connection is that of the one request it answers.
+    /// The broker answers only a connection's first message and closes the connection on a
+    /// second, unanswered, so the uid it takes from the connection is that of the one request
+    /// it answers.
     func testBrokerClosesAConnectionAfterItsFirstMessage() throws {
         let broker = try runBroker(requirement: nobody)
         let connection = xpc_connection_create_mach_service(broker.label, nil, 0)

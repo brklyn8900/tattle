@@ -2,8 +2,8 @@
 // BPF device read-only, binds it to the requested interface, and hands the descriptor back in
 // the reply to that request. It answers only a sender that runs as the user who installed it,
 // whose code satisfies the requirement given on its command line, and that no other process of
-// its user can steer, judged from the request's own audit token. It parses nothing and keeps
-// nothing between requests.
+// its user can steer, judged from the request's own audit token. It parses nothing, and between
+// requests keeps only the connections it has answered and not yet closed.
 //
 //   tattle-capture-broker --requirement <code requirement> --uid <uid> --service <name>
 //       Serves the Mach service launchd holds under <name> and exits after a minute idle;
