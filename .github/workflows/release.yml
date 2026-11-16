@@ -8,46 +8,90 @@ on:
     branches: [build/release]
   workflow_dispatch:
 
+# Read only, unless a job says otherwise.
 permissions:
-  contents: write
+  contents: read
+
+# bash -eo pipefail: a failed command anywhere in a pipeline fails its step.
+defaults:
+  run:
+    shell: bash
 
 # Two runs at once could pick the same version.
 concurrency: release
 
 jobs:
-  release:
+  build:
     runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
+      # The build runs the dependencies' code, so the checkout keeps no credentials.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Version
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # YYYY.MM.DD.N from today's date in UTC. Drafts and tags both count, so every
-          # build gets a number of its own.
+          # YYYY.MM.DD.N from today's date in UTC, one past the highest N among the releases and
+          # tags. A read-only token may not see drafts; the draft job refuses a version a draft
+          # already has. Either list failing to read fails the step.
+          releases=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')
+          tags=$(git ls-remote --tags origin | sed 's|.*refs/tags/||')
           prefix="v$(date -u +%Y.%m.%d)."
-          last=$( { gh release list --limit 1000 --json tagName --jq '.[].tagName'
-                    git ls-remote --tags origin | sed 's|.*refs/tags/||'; } \
-            | awk -v p="$prefix" 'index($0, p) == 1 { n = substr($0, length(p) + 1)
-                if (n ~ /^[0-9]+$/ && n + 0 > max) max = n + 0 } END { print max + 0 }')
+          last=$(printf '%s\n%s\n' "$releases" "$tags" | awk -v p="$prefix" 'index($0, p) == 1 { n = substr($0, length(p) + 1)
+              if (n ~ /^[0-9]+$/ && n + 0 > max) max = n + 0 } END { print max + 0 }')
           echo "version=${prefix#v}$((last + 1))" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: make release VERSION=${{ steps.version.outputs.version }}
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: |
+            build/dist/Tattle-${{ steps.version.outputs.version }}.zip
+            build/dist/Tattle-${{ steps.version.outputs.version }}.zip.sha256
+          if-no-files-found: error
+
+  # The only job that can write. It runs nothing from the repository: it checks the zip against
+  # its checksum and uploads both to a draft release.
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: dist
+
+      - name: Check the checksum
+        working-directory: dist
+        run: sha256sum --check --strict "Tattle-$VERSION.zip.sha256"
+
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Tattle $VERSION" --notes "" \
-            "build/dist/Tattle-$VERSION.zip" "build/dist/Tattle-$VERSION.zip.sha256"
+          # This token sees drafts, which the build job's may not.
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
+          if printf '%s\n' "$existing" | grep -qxF "v$VERSION"; then
+            echo "::error::a release or draft named v$VERSION exists already; delete the stale draft and run again"
+            exit 1
+          fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+            --title "Tattle $VERSION" --notes "" "dist/Tattle-$VERSION.zip" "dist/Tattle-$VERSION.zip.sha256"
           {
             echo "Draft v$VERSION from $GITHUB_SHA"
             echo
             echo '```'
-            cat "build/dist/Tattle-$VERSION.zip.sha256"
+            cat "dist/Tattle-$VERSION.zip.sha256"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
