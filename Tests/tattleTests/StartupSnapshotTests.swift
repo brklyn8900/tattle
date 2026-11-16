@@ -167,6 +167,7 @@ final class StartupSnapshotTests: XCTestCase {
             XCTAssertEqual(item.signature?.isVouchedFor, false, "the grey slashed shield")
             XCTAssertEqual(item.facts.first { $0.name == "Signed by" }?.value, "Apple, outside macOS")
             XCTAssertFalse(item.facts.contains { $0.name == "Runs Apple's" })
+            XCTAssertEqual(item.facts.first { $0.name == "Team" }?.value, "APPLE12345", "the copy's team, as Processes shows it")
             let identity = try XCTUnwrap(item.identity, item.name)
             XCTAssertTrue(identity.text.hasPrefix("command:"), "not Apple's identity: \(identity.text)")
             XCTAssertTrue(identity.text.hasSuffix(":abc"), "the copy's code")
