@@ -22,8 +22,9 @@ its own: no telemetry, no update check, no cloud lookups. When its built-in know
 out, **Explain** sends that one item, redacted, to an LLM you already use, through a
 command you choose.
 
-**Status:** the four tabs and Explain work. There is no release yet, so
-[build from source](#install). What is missing is under [Not yet built](#not-yet-built).
+**Status:** the four tabs and Explain work. [Download a release](#download) or
+[build from source](#build-from-source). What is missing is under
+[Not yet built](#not-yet-built).
 
 ## What it shows
 
@@ -79,8 +80,36 @@ process, so Tattle shows every host it contacted but not which tab caused it.
 
 ## Install
 
-There are no binaries yet. Build from source; you need macOS 14 or later and Xcode 26 or
-its command line tools.
+Tattle needs macOS 14 or later, on Apple silicon or Intel.
+
+### Download
+
+1. From the [latest release](https://github.com/eladefrati/tattle/releases/latest),
+   download `Tattle-<version>.zip` and `Tattle-<version>.zip.sha256`.
+2. Check the zip. In Terminal, in the folder that holds both files:
+
+       shasum -a 256 -c Tattle-<version>.zip.sha256
+
+   It prints `Tattle-<version>.zip: OK`. If it prints anything else, the zip is not the one
+   released: delete it.
+3. Open the zip to unzip Tattle, then open it as below.
+
+### Opening a downloaded release
+
+Releases are signed ad hoc, so macOS blocks a downloaded copy's first launch. To open
+it:
+
+1. Move Tattle to Applications in the Finder and open it. macOS says it was not opened;
+   click Done.
+2. Open System Settings, Privacy & Security, and scroll down to Security.
+3. Click Open Anyway beside the message about Tattle. The button stays for about an hour
+   after the blocked launch.
+4. In the alert that follows, click Open Anyway again.
+5. Enter an administrator's name and password. Tattle opens.
+
+### Build from source
+
+You need Xcode 26 or its command line tools.
 
     git clone https://github.com/eladefrati/tattle.git
     cd tattle
@@ -92,19 +121,6 @@ its command line tools.
 `make app` signs ad hoc. With an Apple Development identity in your keychain, it signs
 with that identity instead, which keeps permission grants and the packet-access broker's
 approval across rebuilds. To choose the identity, pass `SIGN_IDENTITY=<name>` to `make`.
-
-### Opening a downloaded release
-
-Releases will be ad-hoc signed, so macOS blocks a downloaded copy's first launch. To open
-it:
-
-1. Move Tattle to Applications in the Finder and open it. macOS says it was not opened;
-   click Done.
-2. Open System Settings, Privacy & Security, and scroll down to Security.
-3. Click Open Anyway beside the message about Tattle. The button stays for about an hour
-   after the blocked launch.
-4. In the alert that follows, click Open Anyway again.
-5. Enter an administrator's name and password. Tattle opens.
 
 ## Permissions
 
