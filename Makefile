@@ -4,10 +4,18 @@ APP_ID        := io.github.eladefrati.tattle
 DEV_ID        := $(APP_ID).dev
 CONFIG        ?= release
 BUILD         := build
-# The architectures make app builds, joined into one universal binary; empty builds this
-# Mac's own only, as a plain swift build does.
-ARCHS         ?=
-BINDIR        := $(if $(ARCHS),.build/universal/$(CONFIG),.build/$(CONFIG))
+# The architectures make app builds, joined into one universal binary (empty builds this Mac's
+# own only, as a plain swift build does), and the version it stamps into the app. Both are
+# taken from the command line only, as make release passes them: make reads every
+# environment variable as a variable, and one exported under either name must not change
+# what make app or make run builds.
+ifneq ($(origin ARCHS),command line)
+override ARCHS :=
+endif
+ifneq ($(origin VERSION),command line)
+override VERSION :=
+endif
+BINDIR       := $(if $(ARCHS),.build/universal/$(CONFIG),.build/$(CONFIG))
 BIN           := $(BINDIR)/$(APP)
 # What make app bundles: the release app unless dev-app overrides all three.
 APPDIR        := $(BUILD)/Tattle.app
@@ -41,14 +49,15 @@ ifeq ($(ARCHS),)
 	swift build -c $(CONFIG) --product $(BROKER)
 	swift build -c $(CONFIG) --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK)
 else
-	@set -e; dirs=; for a in $(ARCHS); do \
+	@set -e; for a in $(ARCHS); do \
 	  swift build -c $(CONFIG) --arch $$a --product $(BROKER); \
 	  swift build -c $(CONFIG) --arch $$a --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK); \
-	  dirs="$$dirs $$(swift build -c $(CONFIG) --arch $$a --show-bin-path)"; \
 	done; \
-	mkdir -p $(BINDIR); \
+	mkdir -p "$(BINDIR)"; \
 	for p in $(BROKER) $(APP); do \
-	  lipo -create -output $(BINDIR)/$$p $$(for d in $$dirs; do echo $$d/$$p; done); \
+	  set --; \
+	  for a in $(ARCHS); do set -- "$$@" "$$(swift build -c $(CONFIG) --arch $$a --show-bin-path)/$$p"; done; \
+	  lipo -create -output "$(BINDIR)/$$p" "$$@"; \
 	done
 endif
 	rm -rf $(APPDIR)
@@ -72,9 +81,12 @@ endif
 	fi
 	@# The broker refuses a caller another process could steer (ADR-0003); fail here instead.
 	@# The runtime brings library validation, which ad hoc admits only system libraries.
-	@# Each check runs on every architecture in the binary: each slice is signed on its own.
+	@# Each check runs on every architecture in the binary: each slice is signed on its own. A
+	@# binary whose architectures cannot be read fails, or the checks would run on none.
 	@for f in $(APPDIR)/Contents/MacOS/$(APP) $(APPDIR)/Contents/MacOS/$(BROKER); do \
-	  for a in $$(lipo -archs $$f); do \
+	  archs=$$(lipo -archs $$f) && [ -n "$$archs" ] \
+	    || { echo "error: cannot read the architectures of $$f" >&2; exit 1; }; \
+	  for a in $$archs; do \
 	    codesign --display --verbose --arch $$a $$f 2>&1 | grep -q 'flags=.*runtime' \
 	      || { echo "error: $$f ($$a) is not signed with the hardened runtime" >&2; exit 1; }; \
 	    ! codesign --display --entitlements - --arch $$a $$f 2>/dev/null | grep -q get-task-allow \
@@ -83,7 +95,9 @@ endif
 	      || { echo "error: $$f ($$a) links a library outside the system, which library validation refuses ad hoc" >&2; exit 1; }; \
 	  done; \
 	done
-	@for a in $$(lipo -archs $(APPDIR)/Contents/MacOS/$(APP)); do \
+	@archs=$$(lipo -archs $(APPDIR)/Contents/MacOS/$(APP)) && [ -n "$$archs" ] \
+	  || { echo "error: cannot read the architectures of $(APPDIR)/Contents/MacOS/$(APP)" >&2; exit 1; }; \
+	for a in $$archs; do \
 	  otool -arch $$a -l $(APPDIR)/Contents/MacOS/$(APP) | grep -A4 LC_MAIN | grep -q "stacksize $$(printf %d $(APP_STACK))" \
 	    || { echo "error: $(APPDIR)/Contents/MacOS/$(APP) ($$a) does not fix its main thread's stack size" >&2; exit 1; }; \
 	done
