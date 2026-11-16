@@ -304,7 +304,8 @@ int main(int argc, char **argv) {
         __block bool taken = false;
         __block struct lingering *answered = NULL;
         xpc_connection_set_event_handler(peer, ^(xpc_object_t message) {
-            if (xpc_get_type(message) == XPC_TYPE_ERROR) {
+            // Invalidation is a connection's last event; any other error leaves it open and listed.
+            if (message == XPC_ERROR_CONNECTION_INVALID) {
                 if (answered != NULL) forget(answered);
                 answered = NULL;
                 return;
