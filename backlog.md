@@ -147,7 +147,10 @@
 - On a hosted CI runner a broker test now and then reads `transport 54` (connection reset)
   where it expects `refused`: a different test in each of three runs out of five
   (`testBrokerRefusesCallersAnotherProcessCouldSteer`, `testBrokerAnswersOnlyTheInstallingUser`,
-  `testBrokerRefusesOtherCallersAndBadInterfaces`), none in the other two (2026-11-11). Not
+  `testBrokerRefusesOtherCallersAndBadInterfaces`), none in the other two (2026-11-11). A run
+  can fail two at once: the CI run of `850d836` failed
+  `testBrokerAnswersOnlyTheInstallingUser` and `testBrokerRefusesCallersAnotherProcessCouldSteer`,
+  and its rerun `testBrokerRefusesOtherCallersAndBadInterfaces` alone (2026-11-16). Not
   seen on either Mac. Unknown whether the broker closes before its refusal is delivered or
   the runner resets the connection (`CaptureBrokerTests.swift`).
 - A shared arrival-order helper is not wanted now. `ArrivalOrder`, private to `FlowNamer.swift`,
