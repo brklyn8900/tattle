@@ -7,10 +7,13 @@ struct ResourcesLine: View {
     var body: some View {
         if #available(macOS 26.0, *) {
             // From macOS 26 the four readings lie on the glass itself, the numerals first.
+            // Four columns of one width. The numerals keep one size, so they share a baseline
+            // and the two meters a line; a memory total too wide for its column ("of 128 GB" beside
+            // "101.9") is written shorter ("/128 GB") and shrinks, the numeral never does.
             HStack(alignment: .top, spacing: 14) {
                 stat("CPU", sample.cpu.formatted(.percent.precision(.fractionLength(0))), share: sample.cpu)
                     .help(Self.allCoresHelp)
-                stat("Memory", memory.used, memory.total, share: memoryShare)
+                stat("Memory", memory.used, memory.total, shortUnit: memoryShortTotal, share: memoryShare)
                 stat("In", rate(sample.bytesInPerSecond).value, rate(sample.bytesInPerSecond).unit, symbol: "arrow.down")
                 stat("Out", rate(sample.bytesOutPerSecond).value, rate(sample.bytesOutPerSecond).unit, symbol: "arrow.up")
             }
@@ -28,7 +31,7 @@ struct ResourcesLine: View {
     static let perCoreHelp = "Share of one core. 100% is one core fully used; this Mac has \(cores)."
 
     /// One reading: what it is, its number, and a meter when it is a share of a whole.
-    private func stat(_ label: String, _ value: String, _ unit: String = "", share: Double? = nil, symbol: String? = nil) -> some View {
+    private func stat(_ label: String, _ value: String, _ unit: String = "", shortUnit: String? = nil, share: Double? = nil, symbol: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 3) {
                 if let symbol {
@@ -42,12 +45,17 @@ struct ResourcesLine: View {
                 Text(value)
                     .font(.system(size: 20, weight: .medium, design: .rounded))
                     .monospacedDigit()
+                    .fixedSize()
                 if !unit.isEmpty {
-                    Text(unit).font(.system(size: 11)).foregroundStyle(.secondary)
+                    ViewThatFits(in: .horizontal) {
+                        Text(unit)
+                        Text(shortUnit ?? unit).minimumScaleFactor(0.7)
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                 }
             }
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
             if let share {
                 GeometryReader { geometry in
                     Capsule().fill(.primary.opacity(0.12))
@@ -94,6 +102,12 @@ struct ResourcesLine: View {
         let used = (Double(sample.memory.used) / gigabyte).formatted(.number.precision(.fractionLength(1)))
         let total = (Double(sample.memory.total) / gigabyte).formatted(.number.precision(.fractionLength(0...1)))
         return (used, "of \(total) GB")
+    }
+
+    /// The total written short, "/128 GB", for a column too narrow for "of 128 GB".
+    private var memoryShortTotal: String {
+        let total = (Double(sample.memory.total) / 1_073_741_824.0).formatted(.number.precision(.fractionLength(0...1)))
+        return "/\(total) GB"
     }
 
     /// The number and its unit, apart: "1.2" and "MB/s".
