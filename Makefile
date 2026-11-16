@@ -4,7 +4,11 @@ APP_ID        := io.github.eladefrati.tattle
 DEV_ID        := $(APP_ID).dev
 CONFIG        ?= release
 BUILD         := build
-BIN           := .build/$(CONFIG)/$(APP)
+# The architectures make app builds, joined into one universal binary; empty builds this
+# Mac's own only, as a plain swift build does.
+ARCHS         ?=
+BINDIR        := $(if $(ARCHS),.build/universal/$(CONFIG),.build/$(CONFIG))
+BIN           := $(BINDIR)/$(APP)
 # What make app bundles: the release app unless dev-app overrides all three.
 APPDIR        := $(BUILD)/Tattle.app
 BUNDLE_ID     := $(APP_ID)
@@ -20,8 +24,10 @@ SIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning | awk -F'"' '/
 # app's own link carries it: ld refuses it for the test bundle, which links the app's code too,
 # and a plain swift build links the app again without it.
 APP_STACK     := 0x800000
+# make release builds here, so it never replaces a release build running from build/Tattle.app.
+DISTDIR       := $(BUILD)/dist
 
-.PHONY: build test app dev-app icon install run stop log clean
+.PHONY: build test app dev-app release icon install run stop log clean
 
 build:
 	swift build -c $(CONFIG)
@@ -31,15 +37,29 @@ test:
 
 # Each product on its own: `build` would link the app without its stack size first.
 app:
+ifeq ($(ARCHS),)
 	swift build -c $(CONFIG) --product $(BROKER)
 	swift build -c $(CONFIG) --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK)
+else
+	@set -e; dirs=; for a in $(ARCHS); do \
+	  swift build -c $(CONFIG) --arch $$a --product $(BROKER); \
+	  swift build -c $(CONFIG) --arch $$a --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK); \
+	  dirs="$$dirs $$(swift build -c $(CONFIG) --arch $$a --show-bin-path)"; \
+	done; \
+	mkdir -p $(BINDIR); \
+	for p in $(BROKER) $(APP); do \
+	  lipo -create -output $(BINDIR)/$$p $$(for d in $$dirs; do echo $$d/$$p; done); \
+	done
+endif
 	rm -rf $(APPDIR)
 	mkdir -p $(APPDIR)/Contents/MacOS $(APPDIR)/Contents/Resources
 	cp $(BIN) $(APPDIR)/Contents/MacOS/$(APP)
-	cp .build/$(CONFIG)/$(BROKER) $(APPDIR)/Contents/MacOS/$(BROKER)
+	cp $(BINDIR)/$(BROKER) $(APPDIR)/Contents/MacOS/$(BROKER)
 	cp Resources/Info.plist $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(BUNDLE_NAME)" $(APPDIR)/Contents/Info.plist
+	$(if $(VERSION),plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(APPDIR)/Contents/Info.plist)
+	$(if $(VERSION),plutil -replace CFBundleVersion -string "$(VERSION)" $(APPDIR)/Contents/Info.plist)
 	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
 	cp Resources/AppIcon.icns $(APPDIR)/Contents/Resources/AppIcon.icns
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
@@ -52,20 +72,41 @@ app:
 	fi
 	@# The broker refuses a caller another process could steer (ADR-0003); fail here instead.
 	@# The runtime brings library validation, which ad hoc admits only system libraries.
+	@# Each check runs on every architecture in the binary: each slice is signed on its own.
 	@for f in $(APPDIR)/Contents/MacOS/$(APP) $(APPDIR)/Contents/MacOS/$(BROKER); do \
-	  codesign --display --verbose $$f 2>&1 | grep -q 'flags=.*runtime' \
-	    || { echo "error: $$f is not signed with the hardened runtime" >&2; exit 1; }; \
-	  ! codesign --display --entitlements - $$f 2>/dev/null | grep -q get-task-allow \
-	    || { echo "error: $$f carries get-task-allow" >&2; exit 1; }; \
-	  ! otool -L $$f | tail -n +2 | grep -qvE '^[[:space:]]+(/usr/lib/|/System/Library/)' \
-	    || { echo "error: $$f links a library outside the system, which library validation refuses ad hoc" >&2; exit 1; }; \
+	  for a in $$(lipo -archs $$f); do \
+	    codesign --display --verbose --arch $$a $$f 2>&1 | grep -q 'flags=.*runtime' \
+	      || { echo "error: $$f ($$a) is not signed with the hardened runtime" >&2; exit 1; }; \
+	    ! codesign --display --entitlements - --arch $$a $$f 2>/dev/null | grep -q get-task-allow \
+	      || { echo "error: $$f ($$a) carries get-task-allow" >&2; exit 1; }; \
+	    ! otool -arch $$a -L $$f | tail -n +2 | grep -qvE '^[[:space:]]+(/usr/lib/|/System/Library/)' \
+	      || { echo "error: $$f ($$a) links a library outside the system, which library validation refuses ad hoc" >&2; exit 1; }; \
+	  done; \
 	done
-	@otool -l $(APPDIR)/Contents/MacOS/$(APP) | grep -A4 LC_MAIN | grep -q "stacksize $$(printf %d $(APP_STACK))" \
-	  || { echo "error: $(APPDIR)/Contents/MacOS/$(APP) does not fix its main thread's stack size" >&2; exit 1; }
+	@for a in $$(lipo -archs $(APPDIR)/Contents/MacOS/$(APP)); do \
+	  otool -arch $$a -l $(APPDIR)/Contents/MacOS/$(APP) | grep -A4 LC_MAIN | grep -q "stacksize $$(printf %d $(APP_STACK))" \
+	    || { echo "error: $(APPDIR)/Contents/MacOS/$(APP) ($$a) does not fix its main thread's stack size" >&2; exit 1; }; \
+	done
 	@codesign -dv $(APPDIR) 2>&1 | grep -E '^(Authority|TeamIdentifier)' || true
 
 dev-app:
 	$(MAKE) app APPDIR=$(DEVDIR) BUNDLE_ID=$(DEV_ID) BUNDLE_NAME="Tattle Dev"
+
+# What a release ships: the app for Apple silicon and Intel, signed ad hoc and stamped with
+# VERSION (YYYY.MM.DD.N), zipped with ditto so the bundle and its signature survive, and the
+# zip's SHA-256 checksum.
+release:
+	@echo "$(VERSION)" | grep -qE '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$$' \
+	  || { echo "error: give the version as VERSION=YYYY.MM.DD.N" >&2; exit 1; }
+	rm -rf $(DISTDIR)
+	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app ARCHS="arm64 x86_64" SIGN_IDENTITY=- VERSION=$(VERSION)
+	cd $(DISTDIR) && ditto -c -k --sequesterRsrc --keepParent Tattle.app Tattle-$(VERSION).zip
+	@# The zip must give back an app whose signature still holds.
+	mkdir $(DISTDIR)/unzipped
+	ditto -x -k $(DISTDIR)/Tattle-$(VERSION).zip $(DISTDIR)/unzipped
+	codesign --verify --strict --deep $(DISTDIR)/unzipped/Tattle.app
+	rm -rf $(DISTDIR)/unzipped
+	cd $(DISTDIR) && shasum -a 256 Tattle-$(VERSION).zip > Tattle-$(VERSION).zip.sha256
 
 # Redraws Resources/AppIcon.icns from Resources/AppIcon.svg; run it after the drawing changes.
 icon:
