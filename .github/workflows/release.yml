@@ -1,0 +1,84 @@
+name: Release
+
+# Builds the release zip and its checksum and uploads them to a draft release. A draft makes
+# no tag: GitHub tags the commit the zip was built from when the draft is published.
+# A push to build/release runs it, since a manual run needs this file on the default branch.
+on:
+  push:
+    branches: [build/release]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two runs at once could pick the same version.
+concurrency: release
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # YYYY.MM.DD.N from today's date in UTC. Drafts and tags both count, so every
+          # build gets a number of its own.
+          prefix="v$(date -u +%Y.%m.%d)."
+          last=$( { gh release list --limit 1000 --json tagName --jq '.[].tagName'
+                    git ls-remote --tags origin | sed 's|.*refs/tags/||'; } \
+            | awk -v p="$prefix" 'index($0, p) == 1 { n = substr($0, length(p) + 1)
+                if (n ~ /^[0-9]+$/ && n + 0 > max) max = n + 0 } END { print max + 0 }')
+          echo "version=${prefix#v}$((last + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: make release VERSION=${{ steps.version.outputs.version }}
+
+      - name: Check the app names no account, identity or team
+        run: |
+          app=build/dist/Tattle.app
+          fail=0
+          for f in "$app/Contents/MacOS/tattle" "$app/Contents/MacOS/tattle-capture-broker"; do
+            archs=$(lipo -archs "$f")
+            for need in arm64 x86_64; do
+              case " $archs " in *" $need "*) ;; *) echo "::error::$f has no $need slice"; fail=1 ;; esac
+            done
+            for a in $archs; do
+              info=$(codesign --display --verbose=2 --arch "$a" "$f" 2>&1)
+              echo "$info" | grep -qx 'Signature=adhoc' \
+                || { echo "::error::$f ($a) is not signed ad hoc"; fail=1; }
+              echo "$info" | grep -qx 'TeamIdentifier=not set' \
+                || { echo "::error::$f ($a) names a team"; fail=1; }
+              if echo "$info" | grep -q '^Authority='; then
+                echo "::error::$f ($a) names a signing authority"; fail=1
+              fi
+            done
+          done
+          # A build path under another account's home folder, which a build on a person's Mac
+          # leaves in the binaries. The runner's own home folder is expected.
+          others=$(grep -rahoE '/Users/[A-Za-z0-9._-]+' "$app" | sort -u | grep -vxF -e "$HOME" -e /Users/Shared || true)
+          if [ -n "$others" ]; then echo "::error::the app holds another account's path: $others"; fail=1; fi
+          # A development certificate's name. The app's own code holds the bare prefix, which
+          # it reads signatures by.
+          if grep -rlaE 'Apple Development: [^[:cntrl:]]' "$app"; then
+            echo "::error::the files above hold a development certificate's name"; fail=1
+          fi
+          exit $fail
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Tattle $VERSION" --notes "" \
+            "build/dist/Tattle-$VERSION.zip" "build/dist/Tattle-$VERSION.zip.sha256"
+          {
+            echo "Draft v$VERSION from $GITHUB_SHA"
+            echo
+            echo '```'
+            cat "build/dist/Tattle-$VERSION.zip.sha256"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
