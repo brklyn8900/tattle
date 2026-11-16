@@ -133,6 +133,10 @@ answers only a process that runs as the user who installed it, carries Tattle's 
 and runs with the hardened runtime. Without it, the Network tab shows addresses instead of
 names.
 
+The control is at the bottom of the panel on the Network tab: an orange dot and **Allow
+packet access** until it is on, then a green dot and **Packet access on**; clicking it opens
+the **Packet access** screen.
+
 You install and remove the broker through the administrator password dialog, and the
 **Packet access** screen shows the exact plist first. You can also remove it from the
 Startup tab, which does not show the plist.
