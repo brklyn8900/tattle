@@ -533,8 +533,10 @@ final class CaptureBrokerTests: XCTestCase {
         wait(5, every: 1_000) { left.answered != nil && closed.answered != nil }
         let answered = try XCTUnwrap(left.answered, "the broker answered")
         xpc_connection_cancel(closed.connection)
+        var lastAnswer = Date()
         for _ in 0..<3 {
             let held = try holding(hardened, service: broker.service, seconds: 30)
+            lastAnswer = Date()
             XCTAssertEqual(held.answer, "refused", "the probe was answered before it was killed")
             kill(held.process.processIdentifier, SIGKILL)
             waitForExit(held.process)
@@ -546,7 +548,9 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertGreaterThan(after, CaptureBroker.requestTimeout - 1, "closed while the caller could still be waiting")
         XCTAssertLessThan(after, CaptureBroker.requestTimeout + 2)
 
-        usleep(1_000_000)  // past the closes the other connections would have had
+        // Past the last close the killed probes' connections would have had.
+        let due = lastAnswer.addingTimeInterval(CaptureBroker.requestTimeout + 1)
+        if due > Date() { usleep(useconds_t(due.timeIntervalSinceNow * 1_000_000)) }
         XCTAssertEqual(try ask(hardened, service: broker.service), "refused", broker.log)
         XCTAssertEqual(broker.pid, pid, "the same broker still answers")
     }
