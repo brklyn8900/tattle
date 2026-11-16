@@ -112,7 +112,7 @@ struct PanelView: View {
                 let selected = item == tab
                 let fresh = item == .network ? state.panelNetworkSnapshot?.newCount ?? 0 : 0
                 Button {
-                    withAnimation(.snappy(duration: 0.3, extraBounce: 0.12)) { tab = item }
+                    tab = item
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: item.symbol)
@@ -150,6 +150,9 @@ struct PanelView: View {
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
+        // Only the capsule animates the change, so the pill slides while the list and the
+        // footer switch at once.
+        .animation(.snappy(duration: 0.3, extraBounce: 0.12), value: tab)
         .padding(4)
         .glassEffect(.regular.interactive(), in: .capsule)
     }
