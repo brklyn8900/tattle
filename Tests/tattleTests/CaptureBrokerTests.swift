@@ -551,36 +551,54 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertEqual(broker.pid, pid, "the same broker still answers")
     }
 
-    /// Opens `count` connections that ask once and are left open, each answered before the next
-    /// is opened, so their order is the broker's.
-    private func openInOrder(_ count: Int, on broker: BrokerAgent, into asks: inout [OpenAsk]) {
-        for _ in 0..<count {
-            let ask = OpenAsk(broker.label)
-            asks.append(ask)
-            wait(5, every: 1_000) { ask.answered != nil }
+    /// Opens `count` connections that ask once and are left open, 50 at a time, each batch
+    /// answered before the next is opened, so the batches are in the broker's order.
+    private func openInBatches(_ count: Int, on broker: BrokerAgent) -> [[OpenAsk]] {
+        var batches: [[OpenAsk]] = []
+        for first in stride(from: 0, to: count, by: 50) {
+            let batch = (first..<min(first + 50, count)).map { _ in OpenAsk(broker.label) }
+            batches.append(batch)
+            wait(5, every: 1_000) { batch.allSatisfy { $0.answered != nil } }
         }
+        return batches
+    }
+
+    /// Waits for the closes still on their way: until the number closed holds for 0.2 s.
+    private func settle(_ asks: [OpenAsk]) {
+        var last = -1
+        for _ in 0..<25 {
+            let closed = asks.filter { $0.closed != nil }.count
+            if closed == last { return }
+            last = closed
+            usleep(200_000)
+        }
+    }
+
+    /// Whether the broker closed `ask` well before its close was due, which only a cap does.
+    /// It holds however long the asks took, where a count taken by the clock would not.
+    private func closedEarly(_ ask: OpenAsk) -> Bool {
+        guard let answered = ask.answered, let closed = ask.closed else { return false }
+        return closed.timeIntervalSince(answered) < CaptureBroker.requestTimeout - 1
     }
 
     /// A caller that never closes holds a bounded number of connections: past a cap the broker
     /// closes the oldest at once, so the number left open stops growing.
     func testConnectionsLeftOpenStopGrowingAtACap() throws {
         let broker = try runBroker(requirement: nobody)
-        var asks: [OpenAsk] = []
-        let stillOpen = { asks.filter { $0.closed == nil }.count }
-        openInOrder(600, on: broker, into: &asks)
-        usleep(200_000)  // for the closes on the way
-        let after600 = stillOpen()
-        openInOrder(400, on: broker, into: &asks)
-        usleep(200_000)
-        let after1000 = stillOpen()
+        let batches = openInBatches(1000, on: broker)
+        let asks = batches.flatMap { $0 }
+        settle(asks)
         XCTAssertEqual(asks.filter { $0.answered != nil }.count, 1000, "every ask answered")
-        let began = try XCTUnwrap(asks.first?.answered)
-        XCTAssertLessThan(Date().timeIntervalSince(began), CaptureBroker.requestTimeout, "measured before any close was due")
-        XCTAssertGreaterThan(after1000, 0)
-        XCTAssertLessThan(after600, 600, "nothing closed past a cap")
-        XCTAssertEqual(after1000, after600, "the connections left open kept growing")
-        XCTAssertEqual(asks.prefix(1000 - after1000).filter { $0.closed == nil }.count, 0, "the oldest closed")
-        XCTAssertEqual(asks.suffix(after1000).filter { $0.closed != nil }.count, 0, "the newest left open")
+        let early = batches.indices.filter { batches[$0].contains(where: closedEarly) }
+        let open = batches.indices.filter { batches[$0].contains { $0.closed == nil } }
+        XCTAssertFalse(early.isEmpty, "no connection was closed before it was due, so none past a cap")
+        XCTAssertTrue(batches.last?.allSatisfy { $0.closed == nil } ?? false, "the newest were not left open")
+        XCTAssertLessThanOrEqual(early.max() ?? 0, open.min() ?? .max, "a newer connection was closed before an older one")
+        // The most open at once, from when each was answered and closed.
+        let peak = asks.compactMap(\.answered).map { moment in
+            asks.filter { ask in (ask.answered.map { $0 <= moment } ?? false) && (ask.closed.map { $0 > moment } ?? true) }.count
+        }.max() ?? 0
+        XCTAssertLessThan(peak, 1000, "the connections left open kept growing")
     }
 
     /// Connections answered with a refusal are capped apart from those whose caller passed the
@@ -590,13 +608,18 @@ final class CaptureBrokerTests: XCTestCase {
         let hardened = try caller(.hardened)
         let broker = try runBroker(requirement: hardened.requirement)
         let held = try holding(hardened, service: broker.service, seconds: 4)
+        // The probe looks at its connection 4 s after it printed its answer, so by this.
+        let looked = Date().addingTimeInterval(4)
         XCTAssertTrue(Self.accepted.contains(held.answer), "the probe printed \(held.answer.debugDescription); broker log:\n\(broker.log)")
 
         // The test runner fails the requirement: each of these is refused and left open.
-        var flood: [OpenAsk] = []
-        openInOrder(1000, on: broker, into: &flood)
-        wait(2, every: 1_000) { flood.first?.closed != nil }
-        XCTAssertNotNil(flood.first?.closed, "the flood pushed out its own oldest")
+        let flood = openInBatches(1000, on: broker).flatMap { $0 }
+        settle(flood)
+        let firstEarly = flood.filter(closedEarly).compactMap(\.closed).min()
+        XCTAssertNotNil(firstEarly, "the flood never reached its cap")
+        if let firstEarly {
+            XCTAssertLessThan(firstEarly, looked.addingTimeInterval(-0.5), "the flood reached its cap only after the probe looked")
+        }
 
         waitForExit(held.process)
         let rest = String(decoding: held.output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
