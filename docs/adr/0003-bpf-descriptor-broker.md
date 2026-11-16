@@ -62,7 +62,8 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    - **The sender's code satisfies the requirement recorded at install time.** With an
      Apple identity, the requirement is the app's team plus its identifier or the dev
      copy's (the same identifier with `.dev` appended, which `make run` builds). Ad hoc,
-     it is the build's code hash. The running code must still match its file.
+     it is the code hash of the build's slice that installed it: each slice of a universal
+     build has its own. The running code must still match its file.
    - **No other process of that user can steer the sender.** The kernel reports the
      sender valid, running under the hardened runtime, and not debugged. Its code carries
      no get-task-allow and no entitlement that re-enables dyld environment variables or
@@ -107,19 +108,33 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    refuses to install from a build the broker would refuse.
 
    The script the dialog runs carries everything root needs in its own text: the plist,
-   the installing uid, and the code hash of the running build. The app confirms that hash
-   against the code the kernel loaded, not against the file on disk. The dialog's shell
+   the installing uid, and the code hash and architecture of the running slice. The app
+   confirms that hash against the code the kernel loaded, not against the file on disk. The
+   architecture is the one the app was compiled for, never read at run time, and only
+   `arm64` or `x86_64` reaches the script. The dialog's shell
    gets a fixed environment, not Tattle's.
 
    Root reads nothing that a process of the user can write without verifying it first.
    The script:
    1. Copies the app bundle into a directory only root can enter.
    2. Refuses the copy if it holds links or special files.
-   3. Checks the copy against the code hash with `codesign --deep`.
-   4. Checks the copy's broker against the code hash that the copy's sealed
-      `CodeResources` records for it. With a team, `--deep` alone is not enough, because
-      it checks nested code only against the requirement recorded beside it, and with a
-      team that requirement names no hash.
+   3. Checks the copy's running slice against the code hash with `codesign --deep -a`.
+      That slice's signature pins the seal, `CodeResources`. The other slices of the main
+      executable are not checked: root never runs it, and the plist names the running
+      slice alone.
+   4. Checks every slice of the copy's broker against the code hashes the seal records for
+      it. With a team, `--deep` alone is not enough, because it checks nested code only
+      against the requirement recorded beside it, and with a team that requirement names no
+      hash; with `-a` it also checks only the running slice. Ad hoc, the recorded
+      requirement names each slice's hash and nothing else, and is used when it is exactly
+      that. Otherwise the one hash the seal records stands, which pins a broker of one slice
+      and refuses a universal broker signed by a team.
+
+      Every slice is checked because root runs whichever slice suits the Mac, and one
+      matching slice says nothing about another. Checked on 2026-11-15 on the test Mac: two
+      files with the same x86_64 slice, one beside its own arm64e slice and one beside
+      another program's, each signed ad hoc. Against the first file's requirement, the
+      second passed a check of its x86_64 slice and failed a check of every slice.
    5. Stops the old broker and waits for it to exit.
    6. Replaces the broker's files: the helper from the copy, and the plist from the
       script's own text.
@@ -147,7 +162,10 @@ as root.
   - an app replaced before the user first opened it, which is the user installing
     someone else's app
 - What "Tattle's signature" means depends on how the build is signed. Ad hoc, it means
-  this exact build. With an Apple identity, it means any binary the team signed with
+  this exact build's slice that installed the broker. A universal build run under Rosetta
+  runs its other slice, which the broker reads as another build: the Packet access screen
+  asks to install again, and the same holds back from Rosetta to native (reasoned from the
+  requirement, not run). With an Apple identity, it means any binary the team signed with
   Tattle's identifier or the dev copy's, older builds included. So on a Mac that holds the
   signing key, any process of the user can obtain a descriptor: it signs a hardened program
   of its own with that identity, and the broker accepts it. On the development Mac that
@@ -161,9 +179,15 @@ as root.
   every process on the Mac, root's daemons included, for the retention period (PRD, Privacy
   and retention). Every process of the user can read it, and so can learn from it what the
   broker would refuse it. That is accepted; the history stays unencrypted.
-- Install pins the exact running build, and through its seal the exact bundled broker, in
-  both signing modes, so swapping the bundle or the broker inside it during the dialog,
-  for an altered build or an older signed one, installs nothing.
+- Install pins the running slice of the exact running build, and through its seal every
+  slice of the exact bundled broker, in both signing modes, so swapping the bundle or the
+  broker inside it during the dialog, for an altered build or an older signed one, installs
+  nothing. A broker with one of its sealed slices beside a foreign one installs nothing
+  either. A broker cut down to one of its sealed slices installs: it is the build's own code.
+- A universal build signed with a team cannot install the broker: the seal pins only one of
+  its broker's slices by hash, and its requirement would admit any slice the team signed,
+  run as root. No such build is made: `make app` builds one architecture unless given both, and
+  `make release` signs ad hoc.
 - Install has root parse the user's bundle (`ditto`, `codesign --verify`) before the
   verdict. The alternative was running its broker unchecked.
 - The broker must be installed again when its code or its plist changes, and for another
