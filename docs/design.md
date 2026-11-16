@@ -97,7 +97,7 @@ The commands, and why each flag is there, are `ShellProvider.presets` in
 The only privileged piece is packet access for the sniffer. `/dev/bpf*` stays root-only. A
 descriptor broker, a small root launch daemon written in C, opens one BPF device read-only
 on a request over XPC, binds it to the requested interface, returns the descriptor in the
-reply, and keeps nothing. It answers only a sender that runs as the installing user,
+reply, and keeps no descriptor. It answers only a sender that runs as the installing user,
 carries Tattle's signature, and cannot be steered by another process of that user. The
 checks, and how install verifies the build before root runs it, are in
 [ADR-0003](adr/0003-bpf-descriptor-broker.md). Installing and removing it goes through the

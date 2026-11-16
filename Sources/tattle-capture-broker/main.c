@@ -2,8 +2,8 @@
 // BPF device read-only, binds it to the requested interface, and hands the descriptor back in
 // the reply to that request. It answers only a sender that runs as the user who installed it,
 // whose code satisfies the requirement given on its command line, and that no other process of
-// its user can steer, judged from the request's own audit token. It parses nothing and keeps
-// nothing between requests.
+// its user can steer, judged from the request's own audit token. It parses nothing, and between
+// requests keeps only the connections it has answered and not yet closed.
 //
 //   tattle-capture-broker --requirement <code requirement> --uid <uid> --service <name>
 //       Serves the Mach service launchd holds under <name> and exits after a minute idle;
@@ -38,6 +38,107 @@ enum {
 };
 
 static const int idle_seconds = 60;
+
+// How long an answered connection may stay open when its caller does not close it: the client's
+// own deadline for an answer (TATTLE_BROKER_TIMEOUT_MS in packet_capture.h), which starts
+// before it sends, so a caller still waiting by then has already given up.
+static const int close_seconds = 5;
+
+// At most this many answered connections stay open waiting for their callers to close them, in
+// each of two lists; past it the oldest of that list is closed at once. Without a cap a caller
+// that never closes could hold as many as it can send in close_seconds, each costing the broker
+// its ports and memory. The lists keep apart the connections whose caller passed the check and
+// those refused, so a flood of refused connections, which any process of any account can send,
+// closes only other refused ones; only callers the broker accepts can fill the other.
+static const int lingering_cap = 256;
+
+// An answered connection whose caller has not closed it yet, holding a reference to it. Created
+// when the answer is sent and freed at the connection's last event; listed until it is closed
+// or that event comes. Used only on the main queue, so it needs no lock.
+struct lingering {
+    xpc_connection_t peer;
+    dispatch_time_t due;
+    struct lingering_list *list;
+    struct lingering *older, *newer;
+    bool listed;
+};
+
+// Answered connections still open, oldest first. Each is due close_seconds after its answer, so
+// the oldest is always the next due, and one timer, set to its time, serves the whole list. The
+// timer does not touch the idle timer, so it neither keeps the broker running nor starts it.
+struct lingering_list {
+    struct lingering *oldest, *newest;
+    int count, cap;
+    dispatch_source_t timer;
+};
+
+static void arm(struct lingering_list *list) {
+    dispatch_source_set_timer(list->timer, list->oldest ? list->oldest->due : DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, NSEC_PER_SEC / 10);
+}
+
+static void unlist(struct lingering *l) {
+    if (!l->listed) return;
+    struct lingering_list *list = l->list;
+    bool was_oldest = list->oldest == l;
+    if (l->older) l->older->newer = l->newer; else list->oldest = l->newer;
+    if (l->newer) l->newer->older = l->older; else list->newest = l->older;
+    l->older = l->newer = NULL;
+    l->listed = false;
+    list->count--;
+    if (was_oldest) arm(list);
+}
+
+// Closes a connection its caller has left open: it is due, past the cap, or sent a second
+// message. The connection's last event, which follows, frees it.
+static void close_lingering(struct lingering *l) {
+    if (!l->listed) return;
+    unlist(l);
+    xpc_connection_cancel(l->peer);
+}
+
+// The list's timer: closes every connection due, then waits for the next.
+static void close_due(struct lingering_list *list) {
+    dispatch_time_t now = dispatch_time(DISPATCH_TIME_NOW, 0);
+    while (list->oldest != NULL && list->oldest->due <= now) close_lingering(list->oldest);
+    arm(list);
+}
+
+static void start_list(struct lingering_list *list, int cap, dispatch_queue_t queue) {
+    list->cap = cap;
+    list->timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+    dispatch_source_set_event_handler(list->timer, ^{ close_due(list); });
+    arm(list);
+    dispatch_resume(list->timer);
+}
+
+// Lists `peer`, just answered, as the newest of `list`.
+static struct lingering *linger(xpc_connection_t peer, struct lingering_list *list) {
+    struct lingering *l = calloc(1, sizeof *l);
+    if (l == NULL) {
+        xpc_connection_cancel(peer);
+        return NULL;
+    }
+    l->peer = peer;
+    xpc_retain(peer);
+    l->due = dispatch_time(DISPATCH_TIME_NOW, close_seconds * NSEC_PER_SEC);
+    l->list = list;
+    l->older = list->newest;
+    if (list->newest) list->newest->newer = l; else list->oldest = l;
+    list->newest = l;
+    l->listed = true;
+    list->count++;
+    if (list->oldest == l) arm(list);
+    while (list->count > list->cap) close_lingering(list->oldest);
+    return l;
+}
+
+// The connection's last event, whoever closed it: takes it off its list, so nothing closes it
+// again, and frees what linger made.
+static void forget(struct lingering *l) {
+    unlist(l);
+    xpc_release(l->peer);
+    free(l);
+}
 
 // Whether `request`'s sender runs as `uid`, satisfies `requirement`, and cannot be steered by
 // another process of its user (code_policy.h). The code is the request's own sender: Security
@@ -109,12 +210,13 @@ static int open_bpf(const char *ifname) {
 }
 
 // The reply goes to the reply port of `request`, which belongs to the process that sent it: the
-// one just checked.
-static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
+// one just checked. Returns whether the sender passed the check.
+static bool serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecRequirementRef requirement) {
     xpc_object_t reply = xpc_dictionary_create_reply(request);
-    if (reply == NULL) return;  // sent without asking for a reply: no one to answer
+    if (reply == NULL) return false;  // sent without asking for a reply: no one to answer
     int64_t status = STATUS_REFUSED;
-    if (sender_is_allowed(peer, request, uid, requirement)) {
+    bool allowed = sender_is_allowed(peer, request, uid, requirement);
+    if (allowed) {
         const char *ifname = xpc_dictionary_get_string(request, "interface");
         if (!is_interface_name(ifname)) {
             status = STATUS_BAD_REQUEST;
@@ -136,6 +238,7 @@ static void serve(xpc_connection_t peer, xpc_object_t request, uid_t uid, SecReq
     xpc_dictionary_set_int64(reply, "status", status);
     xpc_connection_send_message(peer, reply);
     xpc_release(reply);
+    return allowed;
 }
 
 static void usage(void) {
@@ -189,22 +292,43 @@ int main(int argc, char **argv) {
     dispatch_source_set_event_handler(idle, ^{ exit(0); });
     dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
     dispatch_resume(idle);
+    static struct lingering_list accepted, refused;
+    start_list(&accepted, lingering_cap, queue);
+    start_list(&refused, lingering_cap, queue);
 
     xpc_connection_t listener = xpc_connection_create_mach_service(service, queue, XPC_CONNECTION_MACH_SERVICE_LISTENER);
     xpc_connection_set_event_handler(listener, ^(xpc_object_t peer) {
         if (xpc_get_type(peer) != XPC_TYPE_CONNECTION) return;
         xpc_connection_set_target_queue(peer, queue);
+        // One message per connection, answered or not, so the uid the connection reports,
+        // fixed when it was made, is that of the request answered; a client asking again gets
+        // a new one. The connection is not closed with the answer: a close while the caller
+        // waits can make it drop a reply already delivered and see the connection interrupted
+        // instead. The caller closes it, which ends it here at once; a second message closes it
+        // unanswered; otherwise its list's timer closes it close_seconds after the answer, or
+        // sooner past that list's cap. All of it runs on `queue`, so `taken` and `answered`
+        // need no lock.
+        __block bool taken = false;
+        __block struct lingering *answered = NULL;
         xpc_connection_set_event_handler(peer, ^(xpc_object_t message) {
+            // Invalidation is a connection's last event; any other error leaves it open and listed.
+            if (message == XPC_ERROR_CONNECTION_INVALID) {
+                if (answered != NULL) forget(answered);
+                answered = NULL;
+                return;
+            }
             if (xpc_get_type(message) != XPC_TYPE_DICTIONARY) return;
+            if (taken) {
+                if (answered != NULL) close_lingering(answered);
+                return;
+            }
+            taken = true;
             // Another account's messages must not keep a root process running.
             if (xpc_connection_get_euid(peer) == uid) {
                 dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
             }
-            serve(peer, message, uid, requirement);
-            // One message per connection, answered or not, so the uid the connection reports,
-            // fixed when it was made, is that of the request answered; a client asking again
-            // gets a new one.
-            xpc_connection_cancel(peer);
+            bool allowed = serve(peer, message, uid, requirement);
+            answered = linger(peer, allowed ? &accepted : &refused);
         });
         xpc_connection_activate(peer);
     });

@@ -1,4 +1,5 @@
 import CPacketCapture
+import os
 import Security
 import XCTest
 import XPC
@@ -297,7 +298,8 @@ final class CaptureBrokerTests: XCTestCase {
     func testBrokerAcceptsAHardenedCaller() throws {
         let hardened = try caller(.hardened)
         let broker = try runBroker(requirement: hardened.requirement)
-        XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: broker.service)))
+        let answer = try ask(hardened, service: broker.service)
+        XCTAssertTrue(Self.accepted.contains(answer), "the probe printed \(answer.debugDescription); broker log:\n\(broker.log)")
         XCTAssertTrue(broker.log.contains("cannot open a capture device on en0") || broker.log.contains("handed a capture device on en0"), broker.log)
     }
 
@@ -317,7 +319,43 @@ final class CaptureBrokerTests: XCTestCase {
         let other = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1))
         XCTAssertEqual(try ask(hardened, service: other.service), "refused", "a caller running as another user")
         let own = try runBroker(requirement: hardened.requirement)
-        XCTAssertTrue(Self.accepted.contains(try ask(hardened, service: own.service)))
+        let answer = try ask(hardened, service: own.service)
+        XCTAssertTrue(Self.accepted.contains(answer), "the probe printed \(answer.debugDescription); broker log:\n\(own.log)")
+    }
+
+    /// Every caller gets its answer, however busy the Mac: a broker that closes the connection
+    /// while its caller waits can make the caller drop a reply already delivered. Opt-in, since
+    /// the loss shows only under load and takes thousands of asks to see: `TATTLE_BROKER_ASKS`
+    /// gives how many (4000 take about half a minute), asked 16 at a time beside two busy
+    /// threads per core.
+    func testEveryCallerGetsItsAnswerUnderLoad() throws {
+        guard let asks = Int(ProcessInfo.processInfo.environment["TATTLE_BROKER_ASKS"] ?? "") else {
+            throw XCTSkip("set TATTLE_BROKER_ASKS to the number of asks")
+        }
+        let hardened = try caller(.hardened)
+        let busy = OSAllocatedUnfairLock(initialState: true)
+        for _ in 0..<(2 * ProcessInfo.processInfo.activeProcessorCount) {
+            Thread { while busy.withLock({ $0 }) {} }.start()
+        }
+        defer { busy.withLock { $0 = false } }
+
+        let began = Date()
+        var answers: [String: Int] = [:]
+        // A broker for another account refuses at once, the answer most often lost. Its idle exit,
+        // which these asks do not put off, would lose requests of its own, so each broker takes
+        // 2000 asks, well inside its minute, and must have run once.
+        for chunk in stride(from: 0, to: asks, by: 2000) {
+            let broker = try runBroker(requirement: hardened.requirement, uid: String(getuid() + 1))
+            for first in stride(from: chunk, to: min(chunk + 2000, asks), by: 16) {
+                let batch = try (first..<min(first + 16, chunk + 2000, asks)).map { _ in try start(hardened, service: broker.service) }
+                for started in batch { answers[answer(started), default: 0] += 1 }
+                if (first + 16) % 1000 < 16 {
+                    print("\(Date().formatted(date: .omitted, time: .standard)) +\(Int(Date().timeIntervalSince(began)))s asked \(min(first + 16, asks)) of \(asks): \(answers)")
+                }
+            }
+            XCTAssertEqual(broker.runs, 1, "the broker exited during its asks, which loses requests the close does not")
+        }
+        XCTAssertEqual(answers, ["refused": asks], "lost answers read as transport 54")
     }
 
     /// A plist without a usable uid, an older one for instance, must not start a broker that
@@ -416,8 +454,9 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertTrue(CaptureBroker.isRegistered(agent.service))
     }
 
-    /// The broker closes a connection after its first message, answered or not, so the uid it
-    /// takes from the connection is that of the one request it answers.
+    /// The broker answers only a connection's first message and closes the connection on a
+    /// second, unanswered, so the uid it takes from the connection is that of the one request
+    /// it answers.
     func testBrokerClosesAConnectionAfterItsFirstMessage() throws {
         let broker = try runBroker(requirement: nobody)
         let connection = xpc_connection_create_mach_service(broker.label, nil, 0)
@@ -429,6 +468,192 @@ final class CaptureBrokerTests: XCTestCase {
         xpc_connection_send_message(connection, message)
         let reply = xpc_connection_send_message_with_reply_sync(connection, message)
         XCTAssertTrue(xpc_get_type(reply) == XPC_TYPE_ERROR, "a second message on the connection was answered: \(String(describing: reply))")
+    }
+
+    /// A connection of this process that asks once and is left open, with when its reply came
+    /// and when the broker closed it.
+    final class OpenAsk: @unchecked Sendable {
+        let connection: xpc_connection_t
+        private let state = OSAllocatedUnfairLock<(answered: Date?, closed: Date?)>(initialState: (nil, nil))
+        var answered: Date? { state.withLock { $0.answered } }
+        var closed: Date? { state.withLock { $0.closed } }
+
+        init(_ service: String) {
+            connection = xpc_connection_create_mach_service(service, nil, 0)
+            let state = state
+            xpc_connection_set_event_handler(connection) { event in
+                if event === XPC_ERROR_CONNECTION_INTERRUPTED { state.withLock { $0.closed = $0.closed ?? Date() } }
+            }
+            xpc_connection_activate(connection)
+            let message = xpc_dictionary_create_empty()
+            xpc_dictionary_set_string(message, "interface", "en0")
+            xpc_connection_send_message_with_reply(connection, message, nil) { reply in
+                if xpc_get_type(reply) == XPC_TYPE_DICTIONARY { state.withLock { $0.answered = Date() } }
+            }
+        }
+
+        deinit { xpc_connection_cancel(connection) }
+    }
+
+    /// Waits until `condition` holds or `seconds` pass, looking every `interval`; a condition
+    /// that starts launchctl keeps the default.
+    private func wait(_ seconds: TimeInterval, every interval: useconds_t = 20_000, until condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !condition() && Date() < deadline { usleep(interval) }
+    }
+
+    /// Starts a probe that asks once and holds its connection open, and returns it once it has
+    /// printed its answer, or once it has ended without one: it ends itself 10 s after `seconds`.
+    private func holding(_ caller: Caller, service: CaptureBroker.Service, seconds: Int) throws -> (process: Process, output: Pipe, answer: String) {
+        let process = Process()
+        process.executableURL = caller.url
+        process.arguments = [service.name, "en0", "--hold", String(seconds)]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        var text = ""
+        while !text.contains("\n") {
+            let data = output.fileHandleForReading.availableData
+            if data.isEmpty { break }
+            text += String(decoding: data, as: UTF8.self)
+        }
+        return (process, output, text.split(separator: "\n").first.map(String.init) ?? "")
+    }
+
+    /// The broker answers and leaves the closing to the caller, so a close cannot overtake the
+    /// reply; a caller that keeps the connection open has it closed after the client's own
+    /// deadline (`requestTimeout`, the broker's close_seconds). Answered connections gone before
+    /// then, closed by their caller or with their caller killed, leave the broker running and
+    /// answering once their closes would have been due.
+    func testTheBrokerClosesAConnectionLeftOpenAndOutlivesThoseGoneFirst() throws {
+        let hardened = try caller(.hardened)
+        let broker = try runBroker(requirement: nobody)
+        let left = OpenAsk(broker.label)
+        let closed = OpenAsk(broker.label)
+        wait(5, every: 1_000) { left.answered != nil && closed.answered != nil }
+        let answered = try XCTUnwrap(left.answered, "the broker answered")
+        xpc_connection_cancel(closed.connection)
+        var lastAnswer = Date()
+        for _ in 0..<3 {
+            let held = try holding(hardened, service: broker.service, seconds: 30)
+            lastAnswer = Date()
+            XCTAssertEqual(held.answer, "refused", "the probe was answered before it was killed")
+            kill(held.process.processIdentifier, SIGKILL)
+            waitForExit(held.process)
+        }
+        let pid = try XCTUnwrap(broker.pid, "launchd started the broker")
+
+        wait(CaptureBroker.requestTimeout + 3, every: 1_000) { left.closed != nil }
+        let after = try XCTUnwrap(left.closed, "the broker closed the connection left open").timeIntervalSince(answered)
+        XCTAssertGreaterThan(after, CaptureBroker.requestTimeout - 1, "closed while the caller could still be waiting")
+        XCTAssertLessThan(after, CaptureBroker.requestTimeout + 2)
+
+        // Past the last close the killed probes' connections would have had.
+        let due = lastAnswer.addingTimeInterval(CaptureBroker.requestTimeout + 1)
+        if due > Date() { usleep(useconds_t(due.timeIntervalSinceNow * 1_000_000)) }
+        XCTAssertEqual(try ask(hardened, service: broker.service), "refused", broker.log)
+        XCTAssertEqual(broker.pid, pid, "the same broker still answers")
+    }
+
+    /// Opens `count` connections that ask once and are left open, 50 at a time, each batch
+    /// answered before the next is opened, so the batches are in the broker's order.
+    private func openInBatches(_ count: Int, on broker: BrokerAgent) -> [[OpenAsk]] {
+        var batches: [[OpenAsk]] = []
+        for first in stride(from: 0, to: count, by: 50) {
+            let batch = (first..<min(first + 50, count)).map { _ in OpenAsk(broker.label) }
+            batches.append(batch)
+            wait(5, every: 1_000) { batch.allSatisfy { $0.answered != nil } }
+        }
+        return batches
+    }
+
+    /// Waits for the closes still on their way: until the number closed holds for 0.2 s.
+    private func settle(_ asks: [OpenAsk]) {
+        var last = -1
+        for _ in 0..<25 {
+            let closed = asks.filter { $0.closed != nil }.count
+            if closed == last { return }
+            last = closed
+            usleep(200_000)
+        }
+    }
+
+    /// Whether the broker closed `ask` well before its close was due, which only a cap does.
+    /// It holds however long the asks took, where a count taken by the clock would not.
+    private func closedEarly(_ ask: OpenAsk) -> Bool {
+        guard let answered = ask.answered, let closed = ask.closed else { return false }
+        return closed.timeIntervalSince(answered) < CaptureBroker.requestTimeout - 1
+    }
+
+    /// A caller that never closes holds a bounded number of connections: past a cap the broker
+    /// closes the oldest at once, so the number left open stops growing.
+    func testConnectionsLeftOpenStopGrowingAtACap() throws {
+        let broker = try runBroker(requirement: nobody)
+        let batches = openInBatches(1000, on: broker)
+        let asks = batches.flatMap { $0 }
+        settle(asks)
+        XCTAssertEqual(asks.filter { $0.answered != nil }.count, 1000, "every ask answered")
+        let early = batches.indices.filter { batches[$0].contains(where: closedEarly) }
+        let open = batches.indices.filter { batches[$0].contains { $0.closed == nil } }
+        XCTAssertFalse(early.isEmpty, "no connection was closed before it was due, so none past a cap")
+        XCTAssertTrue(batches.last?.allSatisfy { $0.closed == nil } ?? false, "the newest were not left open")
+        XCTAssertLessThanOrEqual(early.max() ?? 0, open.min() ?? .max, "a newer connection was closed before an older one")
+        // The most open at once, from when each was answered and closed.
+        let peak = asks.compactMap(\.answered).map { moment in
+            asks.filter { ask in (ask.answered.map { $0 <= moment } ?? false) && (ask.closed.map { $0 > moment } ?? true) }.count
+        }.max() ?? 0
+        XCTAssertLessThan(peak, 1000, "the connections left open kept growing")
+    }
+
+    /// Connections answered with a refusal are capped apart from those whose caller passed the
+    /// check, so a flood of refused connections left open, from any process of any account,
+    /// closes only other refused ones, never an accepted caller's while it holds its answer.
+    func testAFloodOfRefusedConnectionsLeavesAnAcceptedCallersOpen() throws {
+        let hardened = try caller(.hardened)
+        let broker = try runBroker(requirement: hardened.requirement)
+        let held = try holding(hardened, service: broker.service, seconds: 4)
+        // The probe looks at its connection 4 s after it printed its answer, so by this.
+        let looked = Date().addingTimeInterval(4)
+        XCTAssertTrue(Self.accepted.contains(held.answer), "the probe printed \(held.answer.debugDescription); broker log:\n\(broker.log)")
+
+        // The test runner fails the requirement: each of these is refused and left open.
+        let flood = openInBatches(1000, on: broker).flatMap { $0 }
+        settle(flood)
+        let firstEarly = flood.filter(closedEarly).compactMap(\.closed).min()
+        XCTAssertNotNil(firstEarly, "the flood never reached its cap")
+        if let firstEarly {
+            XCTAssertLessThan(firstEarly, looked.addingTimeInterval(-0.5), "the flood reached its cap only after the probe looked")
+        }
+
+        waitForExit(held.process)
+        let rest = String(decoding: held.output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(rest.trimmingCharacters(in: .whitespacesAndNewlines), "open", "the flood closed the accepted caller's connection")
+    }
+
+    /// A close still due when the broker reaches its idle exit neither keeps it running nor
+    /// starts it again. Opt-in, since the idle exit is a minute away: set TATTLE_BROKER_IDLE.
+    func testACloseStillDueNeitherKeepsTheBrokerRunningNorStartsIt() throws {
+        guard ProcessInfo.processInfo.environment["TATTLE_BROKER_IDLE"] != nil else {
+            throw XCTSkip("set TATTLE_BROKER_IDLE to wait out the broker's idle exit")
+        }
+        // A broker for another account: this process's asks do not put its idle exit off,
+        // which comes a minute after launchd starts it.
+        let broker = try runBroker(requirement: nobody, uid: String(getuid() + 1))
+        let first = OpenAsk(broker.label)
+        wait(5) { first.answered != nil }
+        let started = try XCTUnwrap(first.answered, "the broker answered")
+        XCTAssertEqual(broker.runs, 1)
+        usleep(useconds_t((57 - Date().timeIntervalSince(started)) * 1_000_000))
+        let late = OpenAsk(broker.label)  // its close is due after the idle exit
+        wait(5) { late.answered != nil }
+        XCTAssertNotNil(late.answered)
+
+        wait(10) { broker.pid == nil }
+        XCTAssertNil(broker.pid, "the broker still runs")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 62, "the broker outlived its idle exit")
+        usleep(10_000_000)
+        XCTAssertNil(broker.pid, "something started the broker again")
+        XCTAssertEqual(broker.runs, 1)
     }
 
     /// A request is judged by the process that sent it, not by what its pid runs when the

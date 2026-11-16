@@ -263,8 +263,8 @@ final class RedactorTests: XCTestCase {
 }
 
 /// Every input the two adversarial reviews of the redaction raised, with what it must read, so
-/// nothing fixed comes back. A row that looks wrong is a gap the README or backlog.md names, or
-/// a placeholder a login spells: no leak. Changing one is a decision.
+/// nothing fixed comes back. A row that looks wrong is a gap the README names, or a placeholder
+/// a login spells: no leak. Changing one is a decision.
 final class RedactionReviewTableTests: XCTestCase {
     private func user(_ login: String, mac: [String] = [], disks: [String] = []) -> Redactor {
         Redactor(home: "/Users/\(login)", username: login, machineNames: mac, volumeNames: disks)

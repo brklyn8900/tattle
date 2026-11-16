@@ -43,11 +43,12 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 1. `/dev/bpf*` stays root-only. The BPF daemon installer of build order step 5 becomes a
    descriptor broker, not a ChmodBPF-style daemon. The broker is a small root launch
    daemon. On a request over XPC, it opens one BPF device read-only, binds it to the
-   requested interface, returns the descriptor in the reply to that request, and keeps
-   nothing. launchd holds its Mach service in the system domain, where only root can
+   requested interface, returns the descriptor in the reply to that request, and keeps no
+   descriptor. launchd holds its Mach service in the system domain, where only root can
    register a name. launchd starts the broker on the first request, and starts it again
-   after it exits a minute idle. The broker is written in C, does no parsing, and holds no
-   state between requests.
+   after it exits a minute idle. The broker is written in C and does no parsing. Between
+   requests it holds only the connections it has answered and not yet closed, each until
+   the close described in 2.
 2. The broker answers a request only when three conditions hold for the process that sent
    it. It never judges the sender from a pid. It judges the sender's code from the
    request's own audit token (`SecCodeCreateWithXPCMessage`). The token names the sending
@@ -57,8 +58,16 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    - **The sender runs as the user who installed the broker.** The plist records that
      uid. The broker reads the sender's uid from the connection
      (`xpc_connection_get_euid`). That uid is fixed when the connection is made. The
-     broker closes each connection after its first message, answered or not, so the
-     connection's uid is the uid of the request it answers.
+     broker answers only the first message on a connection and closes the connection on a
+     second, so the connection's uid is the uid of the request it answers. Otherwise the
+     caller closes it, or the broker does 5 seconds after its answer, the client's own
+     deadline. At most 256 answered connections stay open among those whose caller passed
+     the checks and 256 among those refused, the oldest of each closed first, so a flood of
+     refused connections, which any process can send, closes only refused ones. The
+     broker does not close a connection as it answers: a close while the caller waits can
+     make the caller drop a reply already delivered and see the connection interrupted.
+     Under load on an Apple silicon Mac, closing at once lost 73 answers in 32,000 asks; with
+     the caller closing, none in 20,000. On the hosted CI runner it failed 8 of 13 test runs.
    - **The sender's code satisfies the requirement recorded at install time.** With an
      Apple identity, the requirement is the app's team plus its identifier or the dev
      copy's (the same identifier with `.dev` appended, which `make run` builds). Ad hoc,

@@ -3,7 +3,7 @@
 // exactly the kind of caller the broker refuses, so the daemon tests copy this program, sign
 // the copy the way the case needs, and run it.
 //
-//   tattle-broker-probe <service> <interface> [--delay <seconds>] [--exception-ports]
+//   tattle-broker-probe <service> <interface> [--delay <seconds>] [--hold <seconds>] [--exception-ports]
 //
 // <service> is a test agent's Mach service in the user's launchd domain. --delay waits before
 // asking, so a test can replace the file on disk after launch. Prints
@@ -11,6 +11,9 @@
 // "accepted" means a descriptor this process could prepare and filter, so it appears only
 // where the capture devices are readable; with root-only devices an accepted caller prints
 // "open-failed 13".
+// --hold <seconds> asks once on a connection of its own, prints the answer at once, keeps the
+// connection open that long without closing it, then prints "closed" if the broker closed it
+// meanwhile, "open" if not. It ends itself 10 seconds after <seconds> without an answer.
 // --exception-ports adds three lines: "dropped-at-launch <n>", how many inherited task exception
 // ports the launch drop removed; "exception-ports <n>", how many the probe still held when its own
 // code started, for types that hand over its live task; and "corpse-ports <n>", how many it held
@@ -82,6 +85,35 @@ static void report(int fd, int status, int err) {
     case 3: printf("open-failed %d\n", err); break;
     default: printf("transport %d\n", err); break;
     }
+}
+
+static int ask_and_hold(const char *service, const char *ifname, unsigned seconds) {
+    alarm(seconds + 10);  // never outlive a broker that does not answer
+    dispatch_queue_t queue = dispatch_queue_create("hold", NULL);
+    __block bool closed = false;  // read and set on `queue` only
+    xpc_connection_t connection = xpc_connection_create_mach_service(service, queue, 0);
+    xpc_connection_set_event_handler(connection, ^(xpc_object_t event) {
+        if (event == XPC_ERROR_CONNECTION_INTERRUPTED) closed = true;
+    });
+    xpc_connection_activate(connection);
+    xpc_object_t request = xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(request, "interface", ifname);
+    xpc_object_t reply = xpc_connection_send_message_with_reply_sync(connection, request);
+    int status = -1, err = 0, fd = -1;
+    if (xpc_get_type(reply) == XPC_TYPE_DICTIONARY) {
+        status = (int)xpc_dictionary_get_int64(reply, "status");
+        if (status == 0) fd = xpc_dictionary_dup_fd(reply, "descriptor");
+        else if (status == 3) err = (int)xpc_dictionary_get_int64(reply, "errno");
+    } else {
+        err = reply == XPC_ERROR_CONNECTION_INTERRUPTED ? ECONNRESET : ECONNREFUSED;
+    }
+    report(fd, status, err);
+    fflush(stdout);
+    sleep(seconds);
+    __block bool was_closed = false;
+    dispatch_sync(queue, ^{ was_closed = closed; });
+    printf("%s\n", was_closed ? "closed" : "open");
+    return 0;
 }
 
 // The barrier runs once the request has left this process, so the exec cannot overtake it.
@@ -193,23 +225,25 @@ int main(int argc, char **argv) {
         pause();
         return 0;
     }
-    unsigned delay = 0;
+    unsigned delay = 0, hold = 0;
     bool show_ports = false;
     bool usable = argc >= 3;
     for (int i = 3; usable && i < argc; i++) {
         if (strcmp(argv[i], "--send-then-exec") == 0 && i + 1 < argc) return send_then_exec(argv[1], argv[2], &argv[i + 1]);
         if (strcmp(argv[i], "--delay") == 0 && i + 1 < argc) delay = (unsigned)atoi(argv[++i]);
+        else if (strcmp(argv[i], "--hold") == 0 && i + 1 < argc) hold = (unsigned)atoi(argv[++i]);
         else if (strcmp(argv[i], "--exception-ports") == 0) show_ports = true;
         else usable = false;
     }
     if (!usable) {
-        fprintf(stderr, "usage: tattle-broker-probe <service> <interface> [--delay <seconds>] [--exception-ports]\n"
+        fprintf(stderr, "usage: tattle-broker-probe <service> <interface> [--delay <seconds>] [--hold <seconds>] [--exception-ports]\n"
                         "       tattle-broker-probe <service> <interface> --send-then-exec <program> [<argument>...]\n"
                         "       tattle-broker-probe --hold-corpse <program> [<argument>...]\n"
                         "       tattle-broker-probe --wait\n");
         return 2;
     }
     if (delay > 0) sleep(delay);
+    if (hold > 0) return ask_and_hold(argv[1], argv[2], hold);
     int status = 0, err = 0;
     int fd = tattle_broker_request(argv[1], 0, argv[2], &status, &err);
     report(fd, status, err);

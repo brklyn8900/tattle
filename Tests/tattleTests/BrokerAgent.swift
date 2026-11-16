@@ -83,6 +83,13 @@ struct BrokerAgent {
         LaunchctlState.parseServices(Self.run(["print", Self.domain]).output)?[label]?.pid
     }
 
+    /// How many times launchd has started the program, from its job's own listing.
+    var runs: Int? {
+        Self.run(["print", "\(Self.domain)/\(label)"]).output.split(separator: "\n")
+            .first { $0.trimmingCharacters(in: .whitespaces).hasPrefix("runs = ") }
+            .flatMap { Int($0.split(separator: "=").last?.trimmingCharacters(in: .whitespaces) ?? "") }
+    }
+
     /// Boots out agents left by runs that are gone, once per run: their label carries their pid.
     private static func sweepOnce() {
         guard !swept else { return }

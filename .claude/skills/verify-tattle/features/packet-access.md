@@ -68,7 +68,7 @@ Preconditions:
   Install, remove first.
 - After `pa-startup-remove` the broker's row under "Allowed in the background" stays until
   the Startup tab's `Refresh`: macOS rewrites its background-items file about a minute
-  after the removal, later than the tab's own refresh (backlog).
+  after the removal, later than the tab's own refresh.
 - The broker probe reaches the installed daemon with its own service name: a lookup from
   the user's session falls through to the system domain when no agent of that name runs.
   `tattle-broker-probe io.github.eladefrati.tattle.capture-broker en0`; sign copies as in
