@@ -78,8 +78,7 @@ struct PanelView: View {
         .font(.system(size: 13))
         .foregroundStyle(PanelColor.text)
         .frame(width: 480, height: 636)
-        // A wash of the window's own colour keeps text legible over whatever is behind the glass.
-        .background(PanelLook.glass ? Color(nsColor: .windowBackgroundColor).opacity(0.42) : PanelColor.panel)
+        .background(PanelColor.background)
         .background(WindowOnScreenReader { state.panelIsShowing = $0 })
     }
 
@@ -371,6 +370,6 @@ struct StartupFailureView: View {
         .foregroundStyle(PanelColor.text)
         .padding(16)
         .frame(width: 480)
-        .background(PanelColor.panel)
+        .background(PanelColor.background)
     }
 }

@@ -14,6 +14,9 @@ enum PanelLook {
 /// The panel's colours, each with its light and dark value.
 enum PanelColor {
     static let panel = dynamic(light: rgb(0xF3F3F5), dark: rgb(0x232326))
+    /// What the panel's pages lie on. On glass, a wash of the window's own colour keeps text
+    /// legible over whatever is behind it; before that, the panel's own colour.
+    static let background = PanelLook.glass ? Color(nsColor: .windowBackgroundColor).opacity(0.42) : panel
     // On glass, text and fills come from the system's own label colours, which stay legible
     // over whatever shows through.
     static let card = PanelLook.glass ? Color.primary.opacity(0.05) : dynamic(light: rgb(0xFFFFFF), dark: rgb(0x2E2E32))
