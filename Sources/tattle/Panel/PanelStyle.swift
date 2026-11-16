@@ -411,7 +411,6 @@ struct DetailPage<Trailing: View, Content: View, Bar: View>: View {
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .help(back)
                         .accessibilityLabel("Back")
                     } else {
                         Button {
