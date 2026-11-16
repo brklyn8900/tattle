@@ -109,6 +109,30 @@ struct NavRow<Content: View>: View {
     @State private var hovered = false
 
     var body: some View {
+        if PanelLook.glass {
+            glassBody
+        } else {
+            Button {
+                router.push(route)
+            } label: {
+                HStack(spacing: 10) {
+                    content
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(PanelColor.sub)
+                        .accessibilityHidden(true)
+                }
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// On glass the pointer lights the row up and brings out its arrow; only this look tracks
+    /// the pointer.
+    private var glassBody: some View {
         Button {
             router.push(route)
         } label: {
@@ -117,13 +141,13 @@ struct NavRow<Content: View>: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(PanelColor.sub)
-                    .opacity(PanelLook.glass && !hovered ? 0 : 1)
+                    .opacity(hovered ? 1 : 0)
                     .accessibilityHidden(true)
             }
             .padding(.leading, 10)
             .padding(.trailing, 8)
             .background {
-                if PanelLook.glass, hovered {
+                if hovered {
                     RoundedRectangle(cornerRadius: 8, style: .continuous).fill(PanelColor.fill)
                 }
             }
@@ -192,19 +216,28 @@ struct IconTile: View {
         Group {
             if let icon = Self.icon(path) {
                 Image(nsImage: icon).resizable().interpolation(.high)
-            } else {
+            } else if PanelLook.glass {
+                // A neutral tile with the letter in capitals, or Apple's logo for the macOS row.
                 RoundedRectangle(cornerRadius: size / 4, style: .continuous)
-                    .fill(PanelLook.glass ? PanelColor.fill : Self.tint(name))
+                    .fill(PanelColor.fill)
                     .overlay {
-                        if PanelLook.glass, name == "macOS" {
+                        if name == "macOS" {
                             Image(systemName: "apple.logo")
                                 .font(.system(size: size / 2, weight: .medium))
                                 .foregroundStyle(PanelColor.sub)
                         } else {
                             Text(name.prefix(1).uppercased())
-                                .font(.system(size: size / 2, weight: .semibold, design: PanelLook.glass ? .rounded : .default))
-                                .foregroundStyle(PanelLook.glass ? PanelColor.sub : .white)
+                                .font(.system(size: size / 2, weight: .semibold, design: .rounded))
+                                .foregroundStyle(PanelColor.sub)
                         }
+                    }
+            } else {
+                RoundedRectangle(cornerRadius: size / 4, style: .continuous)
+                    .fill(Self.tint(name))
+                    .overlay {
+                        Text(name.prefix(1))
+                            .font(.system(size: size / 2, weight: .semibold))
+                            .foregroundStyle(.white)
                     }
             }
         }
