@@ -49,40 +49,67 @@ static const int close_seconds = 5;
 // as it can send in close_seconds, each costing the broker its ports and memory.
 static const int lingering_cap = 256;
 
-// An answered connection whose caller has not closed it yet. Created when the answer is sent,
-// freed at the connection's last event. Used only on the main queue, so it needs no lock.
+// An answered connection whose caller has not closed it yet, holding a reference to it. Created
+// when the answer is sent and freed at the connection's last event; listed until it is closed
+// or that event comes. Used only on the main queue, so it needs no lock.
 struct lingering {
     xpc_connection_t peer;
-    dispatch_source_t backstop;
+    dispatch_time_t due;
+    struct lingering_list *list;
     struct lingering *older, *newer;
     bool listed;
 };
 
-static struct lingering *oldest_lingering, *newest_lingering;
-static int lingering_count;
+// Answered connections still open, oldest first. Each is due close_seconds after its answer, so
+// the oldest is always the next due, and one timer, set to its time, serves the whole list. The
+// timer does not touch the idle timer, so it neither keeps the broker running nor starts it.
+struct lingering_list {
+    struct lingering *oldest, *newest;
+    int count, cap;
+    dispatch_source_t timer;
+};
+
+static void arm(struct lingering_list *list) {
+    dispatch_source_set_timer(list->timer, list->oldest ? list->oldest->due : DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, NSEC_PER_SEC / 10);
+}
 
 static void unlist(struct lingering *l) {
     if (!l->listed) return;
-    if (l->older) l->older->newer = l->newer; else oldest_lingering = l->newer;
-    if (l->newer) l->newer->older = l->older; else newest_lingering = l->older;
+    struct lingering_list *list = l->list;
+    bool was_oldest = list->oldest == l;
+    if (l->older) l->older->newer = l->newer; else list->oldest = l->newer;
+    if (l->newer) l->newer->older = l->older; else list->newest = l->older;
     l->older = l->newer = NULL;
     l->listed = false;
-    lingering_count--;
+    list->count--;
+    if (was_oldest) arm(list);
 }
 
-// Closes a connection the caller has left open: its backstop fired, or it is the oldest past the
-// cap. The connection's last event, which follows, frees it.
+// Closes a connection its caller has left open: it is due, past the cap, or sent a second
+// message. The connection's last event, which follows, frees it.
 static void close_lingering(struct lingering *l) {
     if (!l->listed) return;
     unlist(l);
-    dispatch_source_cancel(l->backstop);
     xpc_connection_cancel(l->peer);
 }
 
-// Lists `peer`, just answered, and starts its backstop. The backstop holds its own reference to
-// the connection, given back when it is stopped. It does not touch the idle timer, so it neither
-// keeps the broker running nor starts it.
-static struct lingering *linger(xpc_connection_t peer, dispatch_queue_t queue) {
+// The list's timer: closes every connection due, then waits for the next.
+static void close_due(struct lingering_list *list) {
+    dispatch_time_t now = dispatch_time(DISPATCH_TIME_NOW, 0);
+    while (list->oldest != NULL && list->oldest->due <= now) close_lingering(list->oldest);
+    arm(list);
+}
+
+static void start_list(struct lingering_list *list, int cap, dispatch_queue_t queue) {
+    list->cap = cap;
+    list->timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+    dispatch_source_set_event_handler(list->timer, ^{ close_due(list); });
+    arm(list);
+    dispatch_resume(list->timer);
+}
+
+// Lists `peer`, just answered, as the newest of `list`.
+static struct lingering *linger(xpc_connection_t peer, struct lingering_list *list) {
     struct lingering *l = calloc(1, sizeof *l);
     if (l == NULL) {
         xpc_connection_cancel(peer);
@@ -90,28 +117,23 @@ static struct lingering *linger(xpc_connection_t peer, dispatch_queue_t queue) {
     }
     l->peer = peer;
     xpc_retain(peer);
-    l->backstop = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
-    dispatch_source_set_event_handler(l->backstop, ^{ close_lingering(l); });
-    dispatch_source_set_cancel_handler(l->backstop, ^{ xpc_release(peer); });
-    dispatch_source_set_timer(l->backstop, dispatch_time(DISPATCH_TIME_NOW, close_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC / 10);
-    dispatch_resume(l->backstop);
-    l->older = newest_lingering;
-    if (newest_lingering) newest_lingering->newer = l; else oldest_lingering = l;
-    newest_lingering = l;
+    l->due = dispatch_time(DISPATCH_TIME_NOW, close_seconds * NSEC_PER_SEC);
+    l->list = list;
+    l->older = list->newest;
+    if (list->newest) list->newest->newer = l; else list->oldest = l;
+    list->newest = l;
     l->listed = true;
-    lingering_count++;
-    while (lingering_count > lingering_cap) close_lingering(oldest_lingering);
+    list->count++;
+    if (list->oldest == l) arm(list);
+    while (list->count > list->cap) close_lingering(list->oldest);
     return l;
 }
 
-// The connection's last event, whoever closed it: stops the backstop if it has not fired, so it
-// never fires on a connection gone, and frees what linger made.
+// The connection's last event, whoever closed it: takes it off its list, so nothing closes it
+// again, and frees what linger made.
 static void forget(struct lingering *l) {
-    if (l->listed) {
-        unlist(l);
-        dispatch_source_cancel(l->backstop);
-    }
-    dispatch_release(l->backstop);
+    unlist(l);
+    xpc_release(l->peer);
     free(l);
 }
 
@@ -265,6 +287,8 @@ int main(int argc, char **argv) {
     dispatch_source_set_event_handler(idle, ^{ exit(0); });
     dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
     dispatch_resume(idle);
+    static struct lingering_list lingering;
+    start_list(&lingering, lingering_cap, queue);
 
     xpc_connection_t listener = xpc_connection_create_mach_service(service, queue, XPC_CONNECTION_MACH_SERVICE_LISTENER);
     xpc_connection_set_event_handler(listener, ^(xpc_object_t peer) {
@@ -275,8 +299,8 @@ int main(int argc, char **argv) {
         // a new one. The connection is not closed with the answer: a close while the caller
         // waits can make it drop a reply already delivered and see the connection interrupted
         // instead. The caller closes it, which ends it here at once; a second message closes it
-        // unanswered; otherwise its backstop closes it close_seconds after the answer, or sooner
-        // past lingering_cap. All of it runs on `queue`, so `taken` and `answered` need no lock.
+        // unanswered; otherwise the list's timer closes it close_seconds after the answer, or
+        // sooner past the cap. All of it runs on `queue`, so `taken` and `answered` need no lock.
         __block bool taken = false;
         __block struct lingering *answered = NULL;
         xpc_connection_set_event_handler(peer, ^(xpc_object_t message) {
@@ -287,7 +311,7 @@ int main(int argc, char **argv) {
             }
             if (xpc_get_type(message) != XPC_TYPE_DICTIONARY) return;
             if (taken) {
-                xpc_connection_cancel(peer);
+                if (answered != NULL) close_lingering(answered);
                 return;
             }
             taken = true;
@@ -296,7 +320,7 @@ int main(int argc, char **argv) {
                 dispatch_source_set_timer(idle, dispatch_time(DISPATCH_TIME_NOW, idle_seconds * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
             }
             serve(peer, message, uid, requirement);
-            answered = linger(peer, queue);
+            answered = linger(peer, &lingering);
         });
         xpc_connection_activate(peer);
     });
