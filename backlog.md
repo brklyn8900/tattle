@@ -158,12 +158,6 @@
 - The locked-file install's sentence reaches the Packet access panel inside osascript's
   wrapper (`0:4474: execution error: ... (3)`): show the sentence alone
   (`CaptureBrokerInstall.swift`).
-- The broker install refuses a universal build. `codesign --verify` checks every slice, and
-  the install script asks each file for one slice's code hash: the app's running one, and
-  the broker's hash the seal records, which is its first slice's. On a `make release` build
-  both checks fail, run by hand as the user (the test Mac, 2026-11-15), so `Allow packet access` would stop
-  at "Tattle on disk is not the Tattle that is running." The seal's `requirement` for an
-  ad-hoc universal broker names every slice's hash (`CaptureBrokerInstall.swift`).
 
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
 and (d) are done)

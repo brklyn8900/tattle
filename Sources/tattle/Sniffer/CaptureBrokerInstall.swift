@@ -36,15 +36,40 @@ extension CaptureBroker {
 
     // MARK: Identity
 
+    /// An architecture as codesign names it. Its name goes into a command root runs, so only
+    /// the two Tattle is built for exist.
+    struct Architecture: Equatable, Sendable {
+        let name: String
+
+        init?(_ name: String) {
+            guard ["arm64", "x86_64"].contains(name) else { return nil }
+            self.name = name
+        }
+
+        /// The slice this code was compiled into, which is the slice that runs.
+        static let running: Architecture = {
+            #if arch(arm64)
+            Architecture("arm64")!
+            #elseif arch(x86_64)
+            Architecture("x86_64")!
+            #else
+            #error("Tattle is built for arm64 and x86_64 only")
+            #endif
+        }()
+    }
+
     /// This build of Tattle, as its signature names it. Every field is checked on the way in,
     /// so the requirements built from it compile and a crafted identifier or team cannot end
     /// the quoted string and add a clause.
     struct BuildIdentity: Equatable, Sendable {
-        /// Code directory hash of the main executable.
+        /// Code directory hash of the main executable's running slice: each slice of a
+        /// universal build has its own.
         let cdhash: Data
         let identifier: String
         /// The Apple team when signed with an Apple identity; nil ad hoc.
         let team: String?
+        /// The slice `cdhash` belongs to. Never taken from a caller.
+        let architecture = Architecture.running
 
         /// Nil unless `cdhash` is 20 bytes, `identifier` is 1 to 255 of letters, digits, '.'
         /// and '-', and `team` is absent or 10 uppercase letters and digits.
@@ -61,7 +86,8 @@ extension CaptureBroker {
         /// What the broker checks callers against (ADR-0003). With a team: the team and the
         /// identifier, which survive rebuilds and certificate renewal, admitting the release
         /// app and its dev copy alike. Both builds produce the same text, so neither reads the
-        /// other's install as stale. Ad hoc: this build.
+        /// other's install as stale. Ad hoc: this build's running slice, so a universal build run
+        /// under Rosetta is another build to the broker.
         var callerRequirement: String {
             if let team {
                 let release = identifier.hasSuffix(Self.devSuffix) && identifier.count > Self.devSuffix.count
@@ -297,16 +323,34 @@ extension CaptureBroker {
             exit 3
         fi
         /usr/sbin/chown -R \(shell(layout.owner)) "$stage"
-        if ! /usr/bin/codesign --verify --strict --deep \(shell("-R=\(identity.buildRequirement)")) "$stage/Tattle.app" 2>/dev/null; then
+        # codesign checks every slice unless told one, and each slice has its own hash. The
+        # running slice's pins the seal; root never runs the main executable, and the plist
+        # names that slice alone, so another slice beside it gains nothing. With -a, --deep checks
+        # the broker at that slice only; the check after this one covers every slice.
+        if ! /usr/bin/codesign --verify --strict --deep -a \(shell(identity.architecture.name)) \(shell("-R=\(identity.buildRequirement)")) "$stage/Tattle.app" 2>/dev/null; then
             echo 'Tattle on disk is not the Tattle that is running. Quit Tattle, open it again, and try again. Nothing was installed.' >&2
             exit 3
         fi
         new="$stage/Tattle.app/\(helperInBundle)"
         /bin/test -f "$new"
         # --deep checked the broker only against the requirement the seal records beside it, which
-        # with a team names no hash; the seal also records the broker's own code hash.
-        sealed=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).cdhash")) raw -o - "$stage/Tattle.app/Contents/_CodeSignature/CodeResources" 2>/dev/null | /usr/bin/base64 -D | /usr/bin/od -An -v -tx1 | /usr/bin/tr -d ' \\n')
-        if [ ${#sealed} -ne 40 ] || ! /usr/bin/codesign --verify --strict -R="cdhash H\\"$sealed\\"" "$new" 2>/dev/null; then
+        # with a team names no hash; the seal also records the broker's own code hash, of one
+        # slice. Root runs whichever slice suits the Mac, so every slice is checked: one can
+        # match while another is foreign. Ad hoc, the sealed requirement names every slice's
+        # hash and nothing else, and is used when it is exactly that; otherwise the one hash
+        # stands, which refuses a universal broker signed by a team.
+        codeResources="$stage/Tattle.app/Contents/_CodeSignature/CodeResources"
+        sealed=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).cdhash")) raw -o - "$codeResources" 2>/dev/null | /usr/bin/base64 -D | /usr/bin/od -An -v -tx1 | /usr/bin/tr -d ' \\n')
+        hashes=$(/usr/bin/plutil -extract \(shell("files2.\(helperInBundle.dropFirst("Contents/".count)).requirement")) raw -o - "$codeResources" 2>/dev/null || true)
+        case "$hashes" in
+            *[![:print:]]*) hashes= ;;
+            *"H\\"$sealed\\""*) ;;
+            *) hashes= ;;
+        esac
+        if [ -z "$hashes" ] || ! /usr/bin/printf '%s\\n' "$hashes" | /usr/bin/grep -Eqx 'cdhash H"[0-9a-f]{40}"( or cdhash H"[0-9a-f]{40}")*'; then
+            hashes="cdhash H\\"$sealed\\""
+        fi
+        if [ ${#sealed} -ne 40 ] || ! /usr/bin/codesign --verify --strict -R="$hashes" "$new" 2>/dev/null; then
             echo 'The broker inside Tattle is not the one this build of Tattle was sealed with. Download or build Tattle again. Nothing was installed.' >&2
             exit 3
         fi

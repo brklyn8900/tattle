@@ -46,6 +46,27 @@ final class CaptureBrokerTests: XCTestCase {
         XCTAssertNil(CaptureBroker.BuildIdentity(cdhash: hash, identifier: "", team: nil), "no identifier")
     }
 
+    /// The running architecture is placed into a command root runs (`codesign -a`): only the
+    /// word compiled into this build reaches the script, and any other word is refused before a
+    /// script is built.
+    func testOnlyTheCompiledArchitectureReachesTheScript() throws {
+        #if arch(x86_64)
+        let compiled = "x86_64"
+        #else
+        let compiled = "arm64"
+        #endif
+        XCTAssertEqual(CaptureBroker.Architecture.running.name, compiled)
+        let identity = try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: Data(count: 20), identifier: "x", team: nil))
+        XCTAssertEqual(identity.architecture, .running, "an identity takes no architecture from its caller")
+        let script = CaptureBroker.installScript(identity: identity, bundle: URL(filePath: "/Applications/Tattle.app"), uid: 501)
+        XCTAssertTrue(script.contains("--deep -a '\(compiled)' '-R=\(identity.buildRequirement)'"))
+        for word in ["arm64", "x86_64"] { XCTAssertEqual(CaptureBroker.Architecture(word)?.name, word) }
+        for word in ["", "-R=anchor apple", "--all-architectures", "arm 64", "arm64 ", "x86_64\"", "x86_64'", "arm64;true", "arm64\n",
+                     "ARM64", "arm64e", "i386", "x86-64"] {
+            XCTAssertNil(CaptureBroker.Architecture(word), "accepted \(word.debugDescription)")
+        }
+    }
+
     func testPlistRecordsTheInstallingUser() throws {
         let plist = CaptureBroker.plist(requirement: "cdhash H\"00\"", uid: 501)
         let parsed = try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any]

@@ -55,14 +55,19 @@ final class CaptureBrokerScriptTests: XCTestCase {
 
     /// Builds and signs, ad hoc with the hardened runtime, a bundle holding a copy of the probe as
     /// its main executable and the built broker as its helper. A quote and a space in the name
-    /// exercise the script's quoting.
-    private func makeBundle(named name: String, helperRequirement: String? = nil) throws -> (URL, CaptureBroker.BuildIdentity) {
+    /// exercise the script's quoting. `universal` puts another architecture's slice beside each.
+    private func makeBundle(named name: String, helperRequirement: String? = nil, universal: Bool = false) throws -> (URL, CaptureBroker.BuildIdentity) {
         let fm = FileManager.default
         let app = root.appending(path: name)
         let macOS = app.appending(path: "Contents/MacOS")
         try fm.createDirectory(at: macOS, withIntermediateDirectories: true)
         try fm.copyItem(at: products.appending(path: "tattle-broker-probe"), to: macOS.appending(path: "tattle"))
         try fm.copyItem(at: products.appending(path: "tattle-capture-broker"), to: macOS.appending(path: "tattle-capture-broker"))
+        if universal {
+            for executable in ["tattle", "tattle-capture-broker"] {
+                try join([macOS.appending(path: executable), try otherSlice()], at: macOS.appending(path: executable))
+            }
+        }
         let info: [String: Any] = ["CFBundleExecutable": "tattle", "CFBundleIdentifier": "io.github.eladefrati.tattle.fixture", "CFBundlePackageType": "APPL"]
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: app.appending(path: "Contents/Info.plist"))
         let helperOptions = helperRequirement.map { ["--identifier", "tattle-capture-broker", "-r=\($0)"] } ?? []
@@ -71,6 +76,50 @@ final class CaptureBrokerScriptTests: XCTestCase {
         return (app, try XCTUnwrap(CaptureBroker.BuildIdentity(cdhash: try cdhash(app), identifier: "io.github.eladefrati.tattle.fixture", team: nil)))
     }
 
+    #if arch(x86_64)
+    private static let nativeArchitecture = "x86_64"
+    /// Apple's programs carry x86_64 and arm64e.
+    private static let otherArchitecture = "arm64e"
+    #else
+    private static let nativeArchitecture = "arm64"
+    private static let otherArchitecture = "x86_64"
+    #endif
+
+    /// The other architecture's slice of one of Apple's programs: what a universal build carries
+    /// beside the slice that runs here. It is only signed and checked, never run.
+    private func otherSlice(of program: String = "/usr/bin/true") throws -> URL {
+        try slice(Self.otherArchitecture, of: URL(filePath: program))
+    }
+
+    private func slice(_ architecture: String, of url: URL) throws -> URL {
+        let out = root.appending(path: "slice-\(UUID().uuidString)")
+        try run(["/usr/bin/lipo", "-thin", architecture, url.path, "-output", out.path])
+        return out
+    }
+
+    /// Joins thin files into one universal file at `url`, replacing what is there.
+    private func join(_ slices: [URL], at url: URL) throws {
+        let joined = root.appending(path: "joined-\(UUID().uuidString)")
+        try run(["/usr/bin/lipo", "-create"] + slices.map(\.path) + ["-output", joined.path])
+        try? FileManager.default.removeItem(at: url)
+        try FileManager.default.moveItem(at: joined, to: url)
+    }
+
+    private func signAdHoc(_ url: URL, identifier: String? = nil) throws {
+        try run(["/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-"] + (identifier.map { ["--identifier", $0] } ?? []) + [url.path])
+    }
+
+    /// The identifier `url` is signed with: the linker signs with one of its own, which a later
+    /// ad-hoc signing keeps.
+    private func identifier(_ url: URL) throws -> String {
+        var code: SecStaticCode?
+        XCTAssertEqual(SecStaticCodeCreateWithPath(url as CFURL, [], &code), errSecSuccess)
+        var info: CFDictionary?
+        XCTAssertEqual(SecCodeCopySigningInformation(try XCTUnwrap(code), [], &info), errSecSuccess)
+        return try XCTUnwrap((info as? [String: Any])?[kSecCodeInfoIdentifier as String] as? String)
+    }
+
+    /// The code hash of the slice that runs here.
     private func cdhash(_ url: URL) throws -> Data {
         var code: SecStaticCode?
         XCTAssertEqual(SecStaticCodeCreateWithPath(url as CFURL, [], &code), errSecSuccess)
@@ -257,6 +306,116 @@ final class CaptureBrokerScriptTests: XCTestCase {
         (bundle, identity) = try makeBundle(named: "Team.app", helperRequirement: #"designated => identifier "tattle-capture-broker""#)
         try install()
         XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))
+    }
+
+    // MARK: Universal builds
+
+    /// codesign checks every slice unless told one, and each slice has its own code hash: the
+    /// install asked every slice for the running one's hash and refused every universal build.
+    func testAUniversalAdHocBuildInstalls() throws {
+        (bundle, identity) = try makeBundle(named: "Universal.app", universal: true)
+        let shown = try install()
+        XCTAssertEqual(shown, expectedPlist)
+        XCTAssertEqual(contents(layout.helperPath), contents(bundledHelper.path))
+        XCTAssertEqual(contents(layout.plistPath), Data(expectedPlist.utf8))
+        XCTAssertEqual(leftoverStages, [])
+    }
+
+    /// Root runs whichever slice suits the Mac, so one slice that matches proves nothing about
+    /// the other: every slice of the broker must be one the seal names. `--deep` with `-a`
+    /// checks the broker at the running slice only, so a foreign running slice is refused there
+    /// and a foreign other slice by the check of every slice.
+    func testRootRefusesAUniversalBrokerWithAForeignSlice() throws {
+        (bundle, identity) = try makeBundle(named: "Universal.app", universal: true)
+        let signedAs = try identifier(bundledHelper)
+        let nativeKept = root.appending(path: "native-kept")
+        try join([try slice(Self.nativeArchitecture, of: bundledHelper), try otherSlice(of: "/usr/bin/false")], at: nativeKept)
+        try signAdHoc(nativeKept, identifier: signedAs)
+        XCTAssertEqual(try cdhash(nativeKept), try cdhash(bundledHelper), "the slice that runs here is the sealed one")
+        let otherKept = root.appending(path: "other-kept")
+        try join([products.appending(path: "tattle-broker-probe"), try slice(Self.otherArchitecture, of: bundledHelper)], at: otherKept)
+        try signAdHoc(otherKept, identifier: signedAs)
+        for (impostor, sentence) in [(nativeKept, Self.brokerNotSealed), (otherKept, Self.appNotRunning)] {
+            assertRefused(sentence, impostor.lastPathComponent) {
+                try FileManager.default.removeItem(at: self.bundledHelper)
+                try FileManager.default.copyItem(at: impostor, to: self.bundledHelper)
+            }
+        }
+    }
+
+    private static let appNotRunning = "Tattle on disk is not the Tattle that is running."
+    private static let brokerNotSealed = "The broker inside Tattle is not the one this build of Tattle was sealed with."
+
+    /// Install refuses with `sentence`, after `during` ran in the dialog, and leaves nothing.
+    private func assertRefused(_ sentence: String, _ message: String, file: StaticString = #filePath, line: UInt = #line,
+                               during: @escaping () throws -> Void = {}) {
+        XCTAssertThrowsError(try install { _ in try during() }, message, file: file, line: line) { error in
+            guard case .failed(let text) = error as? CaptureBroker.InstallError else { return XCTFail("\(error)", file: file, line: line) }
+            XCTAssertTrue(text.hasPrefix(sentence), "\(message): \(text)", file: file, line: line)
+        }
+        assertNothingInstalled(message, file: file, line: line)
+    }
+
+    /// The main executable is checked at the slice that is running, which pins the seal.
+    func testRootRefusesAUniversalBuildWhoseRunningSliceOrSealChanged() throws {
+        (bundle, identity) = try makeBundle(named: "Universal.app", universal: true)
+        let main = bundle.appending(path: "Contents/MacOS/tattle")
+        assertRefused(Self.appNotRunning, "another running slice") {
+            try self.join([try self.slice(Self.nativeArchitecture, of: self.bundledHelper), try self.slice(Self.otherArchitecture, of: main)], at: main)
+            try self.signAdHoc(self.bundle)
+        }
+
+        (bundle, identity) = try makeBundle(named: "Universal Info.app", universal: true)
+        assertRefused(Self.appNotRunning, "a changed sealed file") {
+            let info: [String: Any] = ["CFBundleExecutable": "tattle", "CFBundleIdentifier": "io.github.eladefrati.tattle.fixture",
+                                       "CFBundlePackageType": "APPL", "CFBundleName": "Changed"]
+            try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: self.bundle.appending(path: "Contents/Info.plist"))
+        }
+    }
+
+    /// Accepted: root never runs the main executable, and the plist names only the running
+    /// slice's hash, so a foreign slice beside it gains nothing.
+    func testAForeignSliceBesideTheRunningOneInTheAppStillInstalls() throws {
+        (bundle, identity) = try makeBundle(named: "Universal.app", universal: true)
+        let main = bundle.appending(path: "Contents/MacOS/tattle")
+        try join([try slice(Self.nativeArchitecture, of: main), try otherSlice(of: "/usr/bin/false")], at: main)
+        try signAdHoc(bundle)
+        XCTAssertEqual(try cdhash(bundle), identity.cdhash, "the running slice is unchanged")
+        try install()
+        XCTAssertEqual(contents(layout.plistPath), Data(expectedPlist.utf8))
+    }
+
+    /// Accepted: a broker cut down to one of its sealed slices is still this build's own code.
+    func testABrokerCutToOneOfItsSealedSlicesInstalls() throws {
+        (bundle, identity) = try makeBundle(named: "Universal.app", universal: true)
+        let thin = try slice(Self.nativeArchitecture, of: bundledHelper)
+        try install { _ in
+            try FileManager.default.removeItem(at: self.bundledHelper)
+            try FileManager.default.copyItem(at: thin, to: self.bundledHelper)
+        }
+        XCTAssertEqual(contents(layout.helperPath), contents(thin.path))
+    }
+
+    /// With a team the seal's requirement names no hash, and its one hash pins one slice only,
+    /// so a team-signed universal broker would let any slice the team signed run as root.
+    func testRootRefusesAUniversalBrokerWhoseRequirementNamesNoHash() throws {
+        (bundle, identity) = try makeBundle(named: "Team Universal.app", helperRequirement: #"designated => identifier "tattle-capture-broker""#, universal: true)
+        assertRefused(Self.brokerNotSealed, "a universal broker sealed with a requirement that names no hash")
+    }
+
+    /// Only a requirement made of hash clauses alone is used: one clause more widens it.
+    func testRootRefusesAUniversalBrokerWhoseRequirementAddsAClause() throws {
+        let hash = String(repeating: "ab", count: 20)
+        (bundle, identity) = try makeBundle(named: "Clause.app", helperRequirement: #"designated => cdhash H"\#(hash)" or identifier "tattle-capture-broker""#,
+                                            universal: true)
+        assertRefused(Self.brokerNotSealed, "a sealed requirement with a clause besides hashes")
+    }
+
+    func testStatusReadsAUniversalBrokerItInstalledAsThisBuilds() throws {
+        (bundle, identity) = try makeBundle(named: "Universal.app", universal: true)
+        try install()
+        _ = try BrokerAgent(self, label: layout.service.name, arguments: ["/usr/bin/true"])
+        XCTAssertEqual(status().installation, .current)
     }
 
     // MARK: Status
