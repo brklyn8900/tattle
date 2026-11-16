@@ -46,8 +46,9 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
    requested interface, returns the descriptor in the reply to that request, and keeps
    nothing. launchd holds its Mach service in the system domain, where only root can
    register a name. launchd starts the broker on the first request, and starts it again
-   after it exits a minute idle. The broker is written in C, does no parsing, and holds no
-   state between requests.
+   after it exits a minute idle. The broker is written in C and does no parsing. Between
+   requests it holds only the connections it has answered and not yet closed, each until
+   the close described in 2.
 2. The broker answers a request only when three conditions hold for the process that sent
    it. It never judges the sender from a pid. It judges the sender's code from the
    request's own audit token (`SecCodeCreateWithXPCMessage`). The token names the sending
@@ -60,7 +61,9 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
      broker answers only the first message on a connection and closes the connection on a
      second, so the connection's uid is the uid of the request it answers. Otherwise the
      caller closes it, or the broker does 5 seconds after its answer, the client's own
-     deadline, and at most 256 answered connections stay open, the oldest closed first. The
+     deadline. At most 256 answered connections stay open among those whose caller passed
+     the checks and 256 among those refused, the oldest of each closed first, so a flood of
+     refused connections, which any process can send, closes only refused ones. The
      broker does not close a connection as it answers: a close while the caller waits can
      make the caller drop a reply already delivered and see the connection interrupted.
      Under load on an Apple silicon Mac, closing at once lost 73 answers in 32,000 asks; with
