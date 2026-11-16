@@ -120,9 +120,18 @@ Preconditions:
   reads `Apple`. With `RootDirectory` in the plist (`/bin/ls /`, not loaded) the row reads
   the same and the detail has no `Runs Apple's`: the path does not say which file runs.
   A copy of `/bin/ls` named `softwareupdated`, run directly, through `/usr/bin/nohup` and by
-  a path out of `/usr` (`/usr/..<dir>/softwareupdated`), not loaded: the row reads the same,
-  with no `Runs Apple's`. A link to `/bin/ls` named `SafariUpdater`: `Runs Apple's ls`.
-  Afterwards `launchctl bootout` the two loaded agents and delete the plists.
+  a path out of `/usr` (`/usr/..<dir>/softwareupdated`), not loaded: the row reads `Apple,
+  outside macOS`, as Processes reads the file; the detail has the grey slashed shield beside
+  `Signed by Apple, outside macOS` and no `Runs Apple's`. A link to `/bin/ls` named
+  `SafariUpdater`: `Runs Apple's ls`. Afterwards `launchctl bootout` the two loaded agents and
+  delete the plists.
+- **A launch agent running a copy of Apple's program.** In `~/Library/LaunchAgents/`, no
+  `sudo`: a plist running a copy of `/bin/sleep` in a folder of the home directory
+  (`~/tattle-verify/sleep 600`). Its row, under `Your agents`, reads `Apple, outside macOS`,
+  not `launch item, not signed`; the detail has the grey slashed shield beside `Signed by
+  Apple, outside macOS`, no `Team` and no `Runs Apple's`. Loaded or not, it reads the same:
+  the row is the plist's and the file's, not the process's. Afterwards `launchctl bootout` it
+  if loaded, and delete the plist and the folder.
 - **xcrun.** On the test Mac, not loaded: `<dir>/lldb /bin/ls -b -s <dir>/cmds`, where `lldb` is a
   symlink to `/usr/bin/xcrun`, and `/usr/bin/xcrun ls`: `unnamed code`. `/usr/bin/xcrun swift
   <dir>/a.swift`: `script, not signed`. Delete the plists and the folder afterwards.
@@ -205,7 +214,9 @@ Preconditions:
   `Runs Apple's ls`.
   The copy, the link and the path out of `/usr` proven on the test Mac, run `2026-11-08T100408`
   (`d8825b4`); in run `2026-11-08T100308` (`da67eac`) they had `Runs Apple's softwareupdated`
-  and `Runs Apple's SafariUpdater`.
+  and `Runs Apple's SafariUpdater`. The copies read `launch item, not signed` then; that they
+  read `Apple, outside macOS`, and the agent running a copy of `/bin/sleep`, are unit-tested
+  only (`testALaunchItemRunningACopyOfApplesProgramReadsAsApplesOutsideMacOS`).
 - The loaded job, the plists that cannot be read and the daemon's words proven 2026-11-08 on
   the test Mac, run `2026-11-08T210232` (commit `a687b73`); copy in this Mac's
   `build/verify/runs/test-mac-2026-11-08/`. An agent and a daemon sharing a label rest on the unit test
