@@ -429,6 +429,9 @@ final class CaptureBrokerScriptTests: XCTestCase {
             ("hashes that leave out the sealed one", "cdhash H\"\(other)\"", alone),
             ("no hash, as with a team", "identifier \"tattle-capture-broker\" and anchor apple generic", alone),
             ("upper-case hex", "cdhash H\"\(sealed.uppercased())\"", alone),
+            ("an upper-case hash beside the sealed one", "\(alone) or cdhash H\"\(other.uppercased())\"", alone),
+            ("a short hash beside the sealed one", "\(alone) or cdhash H\"cd\"", alone),
+            ("a long hash beside the sealed one", "\(alone) or cdhash H\"\(other)cd\"", alone),
             ("nothing recorded", "", alone),
         ]
         for test in cases {
