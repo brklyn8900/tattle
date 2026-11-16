@@ -35,28 +35,45 @@ private struct ProcessesList: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PanelLook.glass ? 6 : 12) {
+                if PanelLook.glass {
+                    // The columns' titles sort, as in Activity Monitor; what a row is moves to
+                    // the count's tooltip.
+                    HStack(spacing: 0) {
                         Text("\(snapshot.groups.count) apps and programs, \(snapshot.items.count) processes")
-                            .fontWeight(.semibold)
                             .accessibilityAddTraits(.isHeader)
-                        Text("Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
-                            .font(PanelFont.small)
-                            .foregroundStyle(PanelColor.sub)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .help("Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
+                        Spacer(minLength: 0)
+                        sortTitle(.memory).frame(width: 64, alignment: .trailing)
+                        sortTitle(.cpu).frame(width: 44, alignment: .trailing)
                     }
-                    Spacer(minLength: 0)
-                    Picker("Sort by", selection: $sort) {
-                        ForEach(ProcessSnapshot.Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 10)
+                    .padding(.trailing, 25)
+                } else {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(snapshot.groups.count) apps and programs, \(snapshot.items.count) processes")
+                                .fontWeight(.semibold)
+                                .accessibilityAddTraits(.isHeader)
+                            Text("Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
+                                .font(PanelFont.small)
+                                .foregroundStyle(PanelColor.sub)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Picker("Sort by", selection: $sort) {
+                            ForEach(ProcessSnapshot.Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .frame(width: 120)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .frame(width: 120)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
                 }
-                .padding(.horizontal, 4)
-                .padding(.top, 2)
                 // A reading that failed leaves the last one on screen.
                 if let error = state.processes.error {
                     Text("The processes could not be read, so this list is from \(snapshot.takenAt.formatted(date: .omitted, time: .standard)). \(error)")
@@ -72,6 +89,28 @@ private struct ProcessesList: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
         }
+    }
+}
+
+private extension ProcessesList {
+    /// A column's title: pressing it sorts by that column, and the arrow marks the one in use.
+    func sortTitle(_ column: ProcessSnapshot.Sort) -> some View {
+        Button {
+            sort = column
+        } label: {
+            HStack(spacing: 2) {
+                Text(column.rawValue)
+                if sort == column {
+                    Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold)).accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(sort == column ? .primary : .secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(column == .cpu ? ResourcesLine.perCoreHelp : "Memory the app and its helpers hold now.")
+        .accessibilityLabel(column.rawValue)
+        .accessibilityAddTraits(sort == column ? .isSelected : [])
     }
 }
 

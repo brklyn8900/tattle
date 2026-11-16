@@ -25,7 +25,7 @@ private struct ConnectionsList: View {
                 .font(PanelFont.small)
                 .foregroundStyle(PanelColor.sub)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 12 + PanelLook.titleInset)
                 .padding(.bottom, 10)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {

@@ -56,6 +56,7 @@ struct PanelView: View {
     let state: AppState
     @State private var tab = Tab.network
     @State private var router = PanelRouter()
+    @Namespace private var tabSelection
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -70,13 +71,15 @@ struct PanelView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if PanelLook.glass { RowLine().padding(.horizontal, 12) }
             footer
         }
         .environment(router)
         .font(.system(size: 13))
         .foregroundStyle(PanelColor.text)
         .frame(width: 480, height: 636)
-        .background(PanelColor.panel)
+        // A wash of the window's own colour keeps text legible over whatever is behind the glass.
+        .background(PanelLook.glass ? Color(nsColor: .windowBackgroundColor).opacity(0.42) : PanelColor.panel)
         .background(WindowOnScreenReader { state.panelIsShowing = $0 })
     }
 
@@ -84,11 +87,13 @@ struct PanelView: View {
         VStack(spacing: 0) {
             ResourcesLine(sample: state.panelSample)
                 .padding(.horizontal, 12)
-                .padding(.top, 12)
-            tabs
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
+                .padding(.top, PanelLook.glass ? 16 : 12)
+            Group {
+                if #available(macOS 26.0, *) { glassTabs } else { tabs }
+            }
+            .padding(.horizontal, PanelLook.glass ? 16 : 12)
+            .padding(.top, PanelLook.glass ? 14 : 10)
+            .padding(.bottom, PanelLook.glass ? 12 : 8)
             switch tab {
             case .network: NetworkTab(state: state)
             case .processes: ProcessesTab(state: state)
@@ -98,6 +103,58 @@ struct PanelView: View {
         }
     }
 
+    /// The tabs from macOS 26: one glass capsule holding the four, the selected one a raised
+    /// pill that slides to wherever it is picked.
+    @available(macOS 26.0, *)
+    private var glassTabs: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases) { item in
+                let selected = item == tab
+                let fresh = item == .network ? state.panelNetworkSnapshot?.newCount ?? 0 : 0
+                Button {
+                    withAnimation(.snappy(duration: 0.3, extraBounce: 0.12)) { tab = item }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .accessibilityHidden(true)
+                        Text(item.rawValue).fontWeight(selected ? .semibold : .medium)
+                        if fresh > 0 {
+                            Text(String(fresh))
+                                .font(.system(size: 10.5, weight: .bold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 4)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .foregroundStyle(.white)
+                                .background(PanelColor.newDot, in: Capsule())
+                        }
+                    }
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(selected ? .primary : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 30)
+                    .background {
+                        if selected {
+                            Capsule()
+                                .fill(.primary.opacity(0.13))
+                                .overlay { Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.5) }
+                                .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
+                                .matchedGeometryEffect(id: "selection", in: tabSelection)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.rawValue)
+                .accessibilityValue(fresh > 0 ? "\(fresh) first contact" : "")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    /// The tabs before macOS 26.
     private var tabs: some View {
         HStack(spacing: 2) {
             ForEach(Array(Tab.allCases.enumerated()), id: \.element) { index, item in
