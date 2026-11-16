@@ -135,8 +135,8 @@ Preconditions:
   translocated path (`.../AppTranslocation/...`), after a quit and reopen too. From there
   `Allow packet access` installed the broker, the log read `capturing on en0 ... through the
   broker`, a request to example.com was named (`http`), and `Remove` took the daemon and its
-  plist away. No run folder: the panel was driven outside a `$V` run. Not tried: a move by
-  hand in the Finder.
+  plist away. No run folder: the panel was driven outside a `$V` run. A move by hand in the
+  Finder: the record of 2026-11-16 below.
 - Install and Remove from the view, 2026-11-15 on the test Mac: an ad-hoc release build of
   `482f034`, the user typing the password in each dialog (`osascript wants to make changes.`).
   Install: the view showed the plist it would write, with this build's `cdhash` and `--uid
@@ -155,5 +155,21 @@ Preconditions:
   no plist and no helper is left. Since `801fdd4` the script refuses a Finder-locked copy
   before `chown`, in a sentence of its own; that needs the test Mac's password and rests on
   `testALockedFileFailsOneInstallAndWedgesNone` (2026-11-15).
+- A downloaded release by hand, 2026-11-16 on the test Mac (macOS 26.7.1, Intel): the draft
+  `v2026.11.16.1`, universal and ad hoc, built by the release workflow from `850d836`. The
+  user downloaded it in Chrome (zip quarantined, its SHA-256 the draft's checksum), unzipped
+  it and moved it to Applications by hand in the Finder, and opened it through Open Anyway
+  and an administrator's password. It ran from `/Applications/Tattle.app/Contents/MacOS/tattle`,
+  not translocated: a move by hand ends translocation, where the scripted move of 2026-11-11
+  did not. The running code's hash was the x86_64 slice's. `Allow packet access`, pressed by
+  the user with the password: the plist and the helper root's, the daemon running,
+  `/dev/bpf*` still root-only, the plist's requirement `cdhash H"<x86_64 slice>"` with
+  `--uid 502`, equal to the running app's hash, and the helper the bundled universal broker
+  byte for byte. The log read `installing the packet-access broker from <private>`,
+  `packet-access broker installed`, `capturing on en0, link type 1, through the broker`.
+  Names in Network confirmed by the user. Remove not run: the user kept the release and its
+  broker installed. No run folder. The same zip worked by hand on an Apple silicon Mac
+  (download, Open Anyway, the four tabs, packet access, names), as the user reported; not
+  observed.
 - Not proven: Cancel, `Install for this account`, and a second account
   against the installed daemon (to run on the test Mac).
