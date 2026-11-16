@@ -503,7 +503,7 @@ final class CaptureBrokerTests: XCTestCase {
     }
 
     /// Starts a probe that asks once and holds its connection open, and returns it once it has
-    /// printed its answer.
+    /// printed its answer, or once it has ended without one: it ends itself 10 s after `seconds`.
     private func holding(_ caller: Caller, service: CaptureBroker.Service, seconds: Int) throws -> (process: Process, output: Pipe, answer: String) {
         let process = Process()
         process.executableURL = caller.url

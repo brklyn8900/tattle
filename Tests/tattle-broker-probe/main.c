@@ -13,7 +13,7 @@
 // "open-failed 13".
 // --hold <seconds> asks once on a connection of its own, prints the answer at once, keeps the
 // connection open that long without closing it, then prints "closed" if the broker closed it
-// meanwhile, "open" if not.
+// meanwhile, "open" if not. It ends itself 10 seconds after <seconds> without an answer.
 // --exception-ports adds three lines: "dropped-at-launch <n>", how many inherited task exception
 // ports the launch drop removed; "exception-ports <n>", how many the probe still held when its own
 // code started, for types that hand over its live task; and "corpse-ports <n>", how many it held
@@ -88,6 +88,7 @@ static void report(int fd, int status, int err) {
 }
 
 static int ask_and_hold(const char *service, const char *ifname, unsigned seconds) {
+    alarm(seconds + 10);  // never outlive a broker that does not answer
     dispatch_queue_t queue = dispatch_queue_create("hold", NULL);
     __block bool closed = false;  // read and set on `queue` only
     xpc_connection_t connection = xpc_connection_create_mach_service(service, queue, 0);
