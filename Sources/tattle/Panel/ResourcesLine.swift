@@ -67,8 +67,8 @@ struct ResourcesLine: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        // Read as the flat line reads: "Memory, 11.2 of 16 GB".
-        .accessibilityElement(children: .ignore)
+        // One static text, as the flat line's cells are, with the full unit: "Memory, 11.2 of 16 GB".
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label), \(value)\(unit.isEmpty ? "" : " " + unit)")
     }
 

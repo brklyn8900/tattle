@@ -115,6 +115,9 @@ private extension ProcessesList {
         .buttonStyle(.plain)
         .help(column == .cpu ? ResourcesLine.perCoreHelp : "Memory this row's processes hold now.")
         .accessibilityLabel(column.rawValue)
+        // The value is what the accessibility tree's text shows, so the list's sort can be read
+        // there as well as from the selected state.
+        .accessibilityValue(sort == column ? "sorted" : "")
         .accessibilityAddTraits(sort == column ? .isSelected : [])
     }
 }
