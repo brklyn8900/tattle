@@ -10,6 +10,9 @@
   contact. Today the answer follows the rule's risk alone, so an unsigned program reaching a
   low-risk host reads "Probably not." Such facts are noisy: every build from source is
   unsigned or ad-hoc signed, and every new address is a first contact (raised 2026-11-11).
+- Decide whether the panel or the PRD changes: the PRD's Network section says the UI states
+  that a browser's connections cannot be tied to the page that caused them, and no text in the
+  app says so (raised 2026-11-15).
 - One naming step shared by Network and Processes: Network lists processes without their
   signatures, then names each owner again.
 - Confirmed program answers from before identities stay as dead rows: they have no identity,
