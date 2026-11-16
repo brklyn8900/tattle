@@ -376,3 +376,17 @@ Preconditions:
 - A CNAME read only inside its RDATA cannot be seen in the panel: it rests on
   `testDNSReadsACNAMETargetOnlyInsideItsRecord` and `testDNSDropsOnlyACNAMEThatRunsPastItsRecord`
   (2026-11-15).
+- The namer's own addresses as the capture interface's alone, and the caps behind it, proven
+  2026-11-15 on the test Mac with the broker, dev copy at `acb1836`: doctor read every check
+  `ok`, capture through the broker. `connect named` read example.com from the HTTP request,
+  `outbound`; `connect garbage` read `none:not-handshake`; `connect silent` read
+  `none:timeout`, with its `no name for` log line. After an ordinary lookup of github.com, a
+  nameless connection to it read github.com from DNS, and the list said `3 named, 1 from DNS`:
+  the resolver's real reply is read under the interface-only rule. The log had `capturing on`
+  once and none of the lines the run must not show. The resolvers there were 100.100.100.100,
+  then 192.168.1.1, so a router at `fe80::1` was not seen in the app; it rests on
+  `testARouterAtLoopbacksLinkLocalAddressNamesAFlowByDNS`. A frame another host sends under
+  this Mac's address, a hardware-address change and a move between networks rest on unit
+  tests (`testAFrameFromAnotherHostUnderThisMacsAddressIsNotReadAsSent`,
+  `testTheFirstFrameFromANewHardwareAddressOpensItsFlow`,
+  `testTheNamerFollowsTheInterfacesAddresses`), and a flood on the simulation above.
