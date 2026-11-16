@@ -287,7 +287,7 @@ struct PanelButtonStyle: ButtonStyle {
                 .padding(.horizontal, 12)
                 .frame(height: max(height, 26))
                 .foregroundStyle(foreground)
-                .glassEffect(kind == .plain ? .regular.interactive() : .regular.tint(background).interactive(), in: .capsule)
+                .glassEffect(kind == .plain ? .regular.interactive(isEnabled) : .regular.tint(background).interactive(isEnabled), in: .capsule)
                 .opacity(isEnabled ? 1 : 0.45)
         } else {
             flatBody(configuration)
