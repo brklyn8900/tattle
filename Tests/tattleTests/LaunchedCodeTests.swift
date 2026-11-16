@@ -551,12 +551,13 @@ final class LaunchedCodeTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/bin/ls"))
         let climbing = "/usr/.." + copy.path
 
-        let unnamed = CodeSignature.Signer.launchItem(applesProgram: nil)
-        XCTAssertEqual(signer(copy.path, [], apple: [copy.path]), unnamed, "a copy keeps Apple's signature under any name")
-        XCTAssertEqual(signer("/usr/bin/nohup", [copy.path], apple: [copy.path]), unnamed, "nor does a name in the arguments say more")
-        XCTAssertEqual(signer(linkToCopy.path, [], apple: [linkToCopy.path]), unnamed, "a link to a copy is the copy")
-        XCTAssertEqual(signer(climbing, [], apple: [climbing]), unnamed, "a path that climbs out of /usr is not in it")
-        XCTAssertEqual(signer("/usr/local/bin/tool", [], apple: ["/usr/local/bin/tool"]), unnamed, "/usr/local is not macOS's")
+        // A copy keeps Apple's signature under any name, and reads as Processes reads it.
+        let elsewhere = CodeSignature.Signer.appleElsewhere
+        XCTAssertEqual(signer(copy.path, [], apple: [copy.path]), elsewhere, "a copy is not named for its name")
+        XCTAssertEqual(signer("/usr/bin/nohup", [copy.path], apple: [copy.path]), elsewhere, "nor does a name in the arguments say more")
+        XCTAssertEqual(signer(linkToCopy.path, [], apple: [linkToCopy.path]), elsewhere, "a link to a copy is the copy")
+        XCTAssertEqual(signer(climbing, [], apple: [climbing]), elsewhere, "a path that climbs out of /usr is not in it")
+        XCTAssertEqual(signer("/usr/local/bin/tool", [], apple: ["/usr/local/bin/tool"]), elsewhere, "/usr/local is not macOS's")
         XCTAssertEqual(signer(link.path, [], apple: [link.path]), .launchItem(applesProgram: "ls"), "a link to Apple's program runs that program")
     }
 
@@ -574,7 +575,7 @@ final class LaunchedCodeTests: XCTestCase {
         }
         let identifiers = [server.path: "com.apple.lldb-rpc-server", other.path: "com.apple.Other"]
         XCTAssertEqual(signer(server.path, [], identifiers: identifiers), .unnamed)
-        XCTAssertEqual(signer(other.path, [], identifiers: identifiers), .launchItem(applesProgram: nil), "an app without a developer folder is not an Xcode")
+        XCTAssertEqual(signer(other.path, [], identifiers: identifiers), .appleElsewhere, "an app without a developer folder is not an Xcode")
         let apple = CodeSignature(signer: .apple, identifier: "com.apple.dt.Xcode")
         XCTAssertTrue(LaunchedCode.Identity(path: folder.appending(path: "Renamed.app").path, signature: apple).isDeveloperTool, "the Xcode itself, by its bundle")
         XCTAssertFalse(LaunchedCode.Identity(path: folder.appending(path: "Other.app").path, signature: apple).isDeveloperTool)

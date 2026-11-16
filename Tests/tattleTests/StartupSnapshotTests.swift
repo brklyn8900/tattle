@@ -151,6 +151,36 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertFalse(item.facts.contains { $0.name == "Runs Apple's" }, "the path does not say which file runs")
     }
 
+    /// A copy of one of Apple's programs is signed, by Apple, and reads as Processes reads it:
+    /// not part of macOS, with no shield of Apple's vouching, and known to the rules by the
+    /// item's command line and the copy's code, not as Apple's program.
+    func testALaunchItemRunningACopyOfApplesProgramReadsAsApplesOutsideMacOS() throws {
+        let copy = "/Users/username/bin/sleep"
+        let signed = CodeSignature(signer: .apple, identifier: "com.apple.sleep", teamIdentifier: "APPLE12345", codeHash: "abc")
+        let snapshot = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [job("local.sleeper", program: copy)], appleCount: 0, unreadable: []),
+            loginItems: [login("1.agent", name: "registered", kind: .agent, executable: copy)], state: LaunchctlState(),
+            signature: { $0 == copy ? signed : nil })
+        for item in snapshot.items {
+            XCTAssertEqual(item.signature?.signer, .appleElsewhere, item.name)
+            XCTAssertEqual(item.signature?.summary, "Apple, outside macOS")
+            XCTAssertEqual(item.signature?.isVouchedFor, false, "the grey slashed shield")
+            XCTAssertEqual(item.facts.first { $0.name == "Signed by" }?.value, "Apple, outside macOS")
+            XCTAssertFalse(item.facts.contains { $0.name == "Runs Apple's" })
+            let identity = try XCTUnwrap(item.identity, item.name)
+            XCTAssertTrue(identity.text.hasPrefix("command:"), "not Apple's identity: \(identity.text)")
+            XCTAssertTrue(identity.text.hasSuffix(":abc"), "the copy's code")
+        }
+        XCTAssertEqual(snapshot.items.count, 2)
+
+        var rooted = job("local.rooted", program: copy)
+        rooted.rootDirectory = "/x"
+        let chrooted = StartupSnapshot.build(
+            launchd: LaunchdReader.Result(items: [rooted], appleCount: 0, unreadable: []),
+            loginItems: [], state: LaunchctlState(), signature: { _ in signed })
+        XCTAssertEqual(chrooted.items.first?.signature?.signer, .launchItem(applesProgram: nil), "the path does not say which file runs")
+    }
+
     func testARegisteredItemAmongApplesDeveloperToolsReadsAsUnnamedCode() {
         let xcode = "/Applications/Xcode.app/Contents/Developer"
         let tools = "/Library/Developer/CommandLineTools"

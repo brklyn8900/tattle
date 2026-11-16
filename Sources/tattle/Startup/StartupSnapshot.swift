@@ -118,9 +118,12 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     /// What tells this item's code from another's of its label (`CodeIdentity`): its
     /// publisher's signature, else its command line. `signature` is of the code the line
     /// reaches, and `program` its first word, which can be a wrapper: only a team says whose
-    /// code it is whichever file that is. Nil when the line does not say where its code is.
+    /// code it is whichever file that is. Apple's team on a copy outside macOS says only who
+    /// made the file, so the line and the copy's code are the identity. Nil when the line
+    /// does not say where its code is.
     var identity: CodeIdentity? {
-        if signature?.teamIdentifier != nil, let published = CodeIdentity.of(signature, path: program) { return published }
+        if signature?.teamIdentifier != nil, signature?.signer != .appleElsewhere,
+           let published = CodeIdentity.of(signature, path: program) { return published }
         guard let runs else { return nil }
         switch codeVersion {
         case .line: return CodeIdentity.command(runs)
