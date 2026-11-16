@@ -43,8 +43,8 @@ PRD's "no paid account" non-goal is what rules it out, not a technical limit.
 1. `/dev/bpf*` stays root-only. The BPF daemon installer of build order step 5 becomes a
    descriptor broker, not a ChmodBPF-style daemon. The broker is a small root launch
    daemon. On a request over XPC, it opens one BPF device read-only, binds it to the
-   requested interface, returns the descriptor in the reply to that request, and keeps
-   nothing. launchd holds its Mach service in the system domain, where only root can
+   requested interface, returns the descriptor in the reply to that request, and keeps no
+   descriptor. launchd holds its Mach service in the system domain, where only root can
    register a name. launchd starts the broker on the first request, and starts it again
    after it exits a minute idle. The broker is written in C and does no parsing. Between
    requests it holds only the connections it has answered and not yet closed, each until
