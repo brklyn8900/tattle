@@ -152,6 +152,13 @@
   a sort. `PendingNames`' cap drops its oldest quarter by a sort of dated entries, about once
   per thousand new flows, a different shape from that eviction one entry at a time. Share it
   only if that sort shows up in a profile (`PendingNames.newest` in `ConnectionName.swift`).
+- Startup reads a launch item that runs a copy of one of Apple's programs outside macOS's
+  folders as `launch item, not signed`, where Processes reads the same file as `Apple, outside
+  macOS`. The file is signed, so the text is wrong: reword it to match
+  (`CodeSignature.launchItem`).
+- The locked-file install's sentence reaches the Packet access panel inside osascript's
+  wrapper (`0:4474: execution error: ... (3)`): show the sentence alone
+  (`CaptureBrokerInstall.swift`).
 
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
 and (d) are done)
