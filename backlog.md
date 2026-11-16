@@ -158,6 +158,20 @@
 - The locked-file install's sentence reaches the Packet access panel inside osascript's
   wrapper (`0:4474: execution error: ... (3)`): show the sentence alone
   (`CaptureBrokerInstall.swift`).
+- A universal build signed with a team is refused only by the root script, after the
+  administrator password, with "The broker inside Tattle is not the one this build of Tattle
+  was sealed with. Download or build Tattle again", which rebuilding the same way never
+  fixes. The app knows its team and could count its own slices, and refuse before the dialog
+  with the real reason. No such build is made: `make app` builds one architecture unless
+  given both (`CaptureBrokerInstall.swift`).
+- A broker whose running slice is foreign, beside its genuine other slice, is refused by the
+  check of the app ("Tattle on disk is not the Tattle that is running"), since `--deep -a`
+  checks the nested broker at the running slice; the broker is what changed. A test pins that
+  sentence (`CaptureBrokerInstall.swift`, `CaptureBrokerScriptTests.swift`).
+- `BuildIdentity.architecture` is always the calling process's compiled architecture, also
+  when `confirmed(_:)` reads another process's code: a process running its other slice would
+  pair that slice's hash with the wrong architecture, and its install script would fail.
+  Only `running()` reaches it in the app (`CaptureBrokerInstall.swift`).
 
 **Backlog** (letters from the reflect review of 2026-10-22, cited in commit messages; (a)
 and (d) are done)
