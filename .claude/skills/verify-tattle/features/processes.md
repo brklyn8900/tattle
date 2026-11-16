@@ -169,60 +169,60 @@ Preconditions:
 - The list refreshes every 3 s; wait for labels, not fixed sleeps.
 - Proven 2026-10-25, run `2026-10-25T224119`; `Force Quit` not exercised.
 - macOS row and script started by launchd proven 2026-11-07 on the test Mac, run
-  `2026-11-07T180918` (commit `5fa2a4f`); run `2026-11-07T175830` is the same journeys on
-  `12bc8c6`, before the fix (637 rows, a macOS row of 10). Copies in this Mac's
+  `2026-11-07T180918` (commit `2e8cf87`); run `2026-11-07T175830` is the same journeys on
+  `504145c`, before the fix (637 rows, a macOS row of 10). Copies in this Mac's
   `build/verify/runs/test-mac-2026-11-07/`.
 - Standard input, Python and a script's own signer proven 2026-11-07 on the test Mac, run
-  `2026-11-07T195705` (commit `16404e9`). Run `2026-11-07T195527` is the same journeys on
-  `d0a363d`, before them: no `sh` row, its two processes counted in `macOS` (547, against
+  `2026-11-07T195705` (commit `9b989de`). Run `2026-11-07T195527` is the same journeys on
+  `c22b821`, before them: no `sh` row, its two processes counted in `macOS` (547, against
   545 after), and the zsh group and the Python detail `Signed by Apple`.
-- The Python row proven 2026-11-07 on the test Mac, run `2026-11-07T212351` (commit `048af62`);
-  in run `2026-11-07T195705` (`16404e9`) it was the framework app's row, `Python, 1
+- The Python row proven 2026-11-07 on the test Mac, run `2026-11-07T212351` (commit `3f57cb9`);
+  in run `2026-11-07T195705` (`9b989de`) it was the framework app's row, `Python, 1
   process · Apple`.
 - Swift, a package by its folder and the interpreter's team proven 2026-11-07 on the test Mac,
-  run `2026-11-07T224519` (commit `a68ec31`). Run `2026-11-07T224338` is the same journeys
-  on `9ff9cb2`, before them: no swift row (its process counted in `macOS`, 553 against 552
+  run `2026-11-07T224519` (commit `6ba465f`). Run `2026-11-07T224338` is the same journeys
+  on `ca9c9bd`, before them: no swift row (its process counted in `macOS`, 553 against 552
   after), the node row named `.`, and node's team as `Team`.
 - The Python row with Xcode as the developer folder proven 2026-11-07 on the development Mac, run
-  `2026-11-07T224359` (commit `a68ec31`); in run `2026-11-07T224701` (`9ff9cb2`) it was a
+  `2026-11-07T224359` (commit `6ba465f`); in run `2026-11-07T224701` (`ca9c9bd`) it was a
   member of `Xcode, 7 processes · App Store`, its detail `Part of Xcode`.
 - The Tk window proven 2026-11-07 on the development Mac, run `2026-11-07T235514` (commit
-  `3ed5587`); in run `2026-11-07T235435` (`6844a78`) it was the row `Python, 1 process ·
+  `01c81a3`); in run `2026-11-07T235435` (`e63b36d`) it was the row `Python, 1 process ·
   Apple`, its detail `Part of Python`.
 - The frontend with `-interpret` after its script and the swift-frontend tool proven
-  2026-11-07 on the test Mac, run `2026-11-07T235929` (commit `3ed5587`). Run `2026-11-07T235754`
-  is the same journeys on `6844a78`: no `loop.swift` row (its process counted in `macOS`),
+  2026-11-07 on the test Mac, run `2026-11-07T235929` (commit `01c81a3`). Run `2026-11-07T235754`
+  is the same journeys on `e63b36d`: no `loop.swift` row (its process counted in `macOS`),
   and the digester a row of its own, `Swift, 1 process · swift-frontend script`.
 - The compile job proven 2026-11-08 on the test Mac, its row, run `2026-11-08T011100` (commit
-  `60fda3a`); in run `2026-11-08T010801` (`0a26037`) it read `swift-frontend, 1 process ·
+  `7a5c92a`); in run `2026-11-08T010801` (`bf96992`) it read `swift-frontend, 1 process ·
   swift-frontend script`. Through Xcode's toolchain on the development Mac, row and detail, run
-  `2026-11-08T010935` (`60fda3a`); in run `2026-11-08T010824` (`0a26037`) it had no row of
+  `2026-11-08T010935` (`7a5c92a`); in run `2026-11-08T010824` (`bf96992`) it had no row of
   its own. Inline code and Python's `-c` as `unnamed code` are unit-tested only.
 - The copy of clang proven 2026-11-08 on the test Mac, its row, run `2026-11-08T014224` (commit
-  `0c9dd17`); in run `2026-11-08T013916` (`13b0b70`) it had no row of its own. Its detail
+  `2ef6051`); in run `2026-11-08T013916` (`3890265`) it had no row of its own. Its detail
   was not saved. Xcode Service's row proven 2026-11-08 on the development Mac, run
-  `2026-11-08T013950` (`0c9dd17`); in run `2026-11-08T013910` (`e852491`) it read `Xcode
+  `2026-11-08T013950` (`2ef6051`); in run `2026-11-08T013910` (`6f16a79`) it read `Xcode
   Service, 1 process · Apple`, its detail already `Signed by unnamed code`.
 - Standard input and the Apple-signed Xcode proven 2026-11-08 on the test Mac, run
-  `2026-11-08T090736` (commit `f82f06d`); in run `2026-11-08T090623` (`14501b9`) the row was
+  `2026-11-08T090736` (commit `86fac7c`); in run `2026-11-08T090623` (`21d3d3a`) the row was
   `Xcode, 7 processes · Apple`, Python among its members, and no `Python` row.
 - Quit on an app with a helper and another account's process proven 2026-11-08 on the test Mac,
-  run `2026-11-08T210232` (commit `a687b73`); copy in this Mac's
+  run `2026-11-08T210232` (commit `353c9b6`); copy in this Mac's
   `build/verify/runs/test-mac-2026-11-08/`. Two copies of an app and a program whose worker has the lower pid rest on unit tests in
   `ProcessSnapshotTests`.
-- Quit on an app with no window proven 2026-11-08 on the test Mac, run `2026-11-08T221748` (commit `b28f3cb`); copy in the development Mac's
+- Quit on an app with no window proven 2026-11-08 on the test Mac, run `2026-11-08T221748` (commit `1e7f3b8`); copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-08/`.
 - Quit with an older run of the app's binary proven 2026-11-08 on the test Mac, run
-  `2026-11-08T232714` (commit `13807fc`); copy in the development Mac's
+  `2026-11-08T232714` (commit `ace1ec6`); copy in the development Mac's
   `build/verify/runs/test-mac-2026-11-08/`.
 - The Apple binary moved over a running program, Safari, the file in a copy of Calculator, the
   ad hoc signed app and both changed files proven 2026-11-15 on the test Mac (commit
-  `7e9f4cb`); no run folder was kept. On `main` before it the program moved over had no row
+  `482f034`); no run folder was kept. On `main` before it the program moved over had no row
   and counted in `macOS, N processes · Apple`, and the copy's row read `Trusted, 1 process ·
   Apple`. Since Tattle checks a process's running code against its file, that program's row
   reads `changed on disk since it started` in place of `Apple, outside macOS`.
 - The running-code check proven 2026-11-15 on the test Mac, at commits `8a517c1` and again
-  `b882c18`: Apple's binary renamed over a running ad hoc signed program, and over a running
+  `2ddd3c6`: Apple's binary renamed over a running ad hoc signed program, and over a running
   unsigned one, read `<name>, 1 process · changed on disk since it started`, the detail with
   the path and no `Signed by` or `Team`. An unsigned or ad hoc signed file renamed over a
   program reads as that file's own state, since only a file that names a signer is checked.

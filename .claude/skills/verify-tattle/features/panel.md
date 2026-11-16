@@ -52,12 +52,12 @@ Preconditions:
 
 ## Gotchas
 
-- Proven 2026-11-09. On the development Mac, commit `a454612`: the reopening journeys in run
+- Proven 2026-11-09. On the development Mac, commit `cfe9a63`: the reopening journeys in run
   `2026-11-09T131240`, and `pv-stop` in six closed traces (Ports and Processes, three runs). On
-  the test Mac, commit `78ffbdd`, runs `2026-11-09T161254` and `2026-11-09T162043`: every path below,
+  the test Mac, commit `a6cf0e0`, runs `2026-11-09T161254` and `2026-11-09T162043`: every path below,
   `pv-stop` closed on a Processes or Ports detail and on Network's root and a detail, the menu
   bar label moving while closed, and an Explain answered while closed or reopened mid-answer
-  (one prompt each, the answer shown). On the test Mac, commit `b944d76`, run `2026-11-09T164024`:
+  (one prompt each, the answer shown). On the test Mac, commit `3ff2933`, run `2026-11-09T164024`:
   `pv-baseline` by a timeline of the accessibility tree and a 30-second `pv-stop` trace closed on
   Processes. Copies in this Mac's `build/verify/runs/test-mac-2026-11-09/`.
 - Key status does not follow the panel: another app activated without a click (`open -a Finder`)
@@ -78,7 +78,7 @@ Preconditions:
 - The first click on the eye while the Settings window is open does not open the panel; the
   next one does. Seen on `main` too.
 - The redesigned panel, seen 2026-11-12 on the development Mac in the dev copy, runs
-  `2026-11-12T105819` to `2026-11-12T113852` (from `2026-11-12T112604` at `ba49a2e` or later):
+  `2026-11-12T105819` to `2026-11-12T113852` (from `2026-11-12T112604` at `58b901e` or later):
   in dark, the Network list, an app's page, a connection's page, the Processes list, an app's
   process page with `Force Quit…` armed, the Ports list, a port's page with and without an
   explanation, the Startup list, a login item's page and Packet access; in light, the

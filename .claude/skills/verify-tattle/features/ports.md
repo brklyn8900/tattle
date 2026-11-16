@@ -41,12 +41,12 @@ Preconditions:
 
 ## Gotchas
 
-- Proven 2026-11-08 on the test Mac, run `2026-11-08T210232` (commit `a687b73`); copy in this Mac's
+- Proven 2026-11-08 on the test Mac, run `2026-11-08T210232` (commit `353c9b6`); copy in this Mac's
   `build/verify/runs/test-mac-2026-11-08/`. Inline code and an interpreter whose arguments cannot be read
   rest on the unit test (`testAListenerIsReadAsTheCodeItRuns`).
 - The row of an Apple-signed file outside macOS, `· Apple, outside macOS`, and the
   `Interpreter signed by Apple, outside macOS` line above were not put on screen (2026-11-15,
-  the test Mac, commit `7e9f4cb`): the run's listener on a high loopback port was not listed,
+  the test Mac, commit `482f034`): the run's listener on a high loopback port was not listed,
   and it opened none on all interfaces, which raises the Application Firewall's prompt. They
   rest on the unit test (`testPorts` in `ApplesProgramTests`).
 - A listener whose file is not the code it runs, with no signer, was not seen in the app

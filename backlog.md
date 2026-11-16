@@ -221,7 +221,7 @@ and (d) are done)
   which claims nothing about what runs, and that would settle the wrapper line above
   (`CodeSignature.swift`).
 
-**From the review triage of 2026-11-07** (its "consider" list, verified at `a297ef7`; IDs
+**From the review triage of 2026-11-07** (its "consider" list, verified at `17a873f`; IDs
 are the triage's)
 
 - A4: A signer comes from the file at the process's path. Closed for a process whose file

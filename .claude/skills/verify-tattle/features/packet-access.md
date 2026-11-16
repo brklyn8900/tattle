@@ -74,7 +74,7 @@ Preconditions:
   `tattle-broker-probe io.github.eladefrati.tattle.capture-broker en0`; sign copies as in
   the run below. Read the broker's lines with `/usr/bin/log show --predicate 'process
   CONTAINS "capture-broker"'`: in zsh a bare `log` is a builtin and prints nothing useful.
-- XPC broker, release build of `a309158`, run 2026-10-26T132304: `Install again` (pressed by the user in the panel) replaced
+- XPC broker, release build of `dabba8b`, run 2026-10-26T132304: `Install again` (pressed by the user in the panel) replaced
   the installed socket broker (link `Packet access: install again` before, `Packet
   access` after; plist with `MachServices` and `--service`, root-owned, `--uid 501`;
   installed helper's cdhash equals the bundled one; legacy socket file gone; capture
@@ -85,8 +85,8 @@ Preconditions:
   log; the hardened one with Tattle's identifier is accepted. The broker exits after a
   minute idle and launchd starts it again on the next request. Its probe copies and
   entitlements plist are in `probes/`. Not replayed: the fork-and-exec attack.
-- XPC broker after the 2026-10-26 review, release build of `108d4a9`, run
-  2026-10-26T164905: `Install again` replaced `a309158`'s broker (helper cdhash
+- XPC broker after the 2026-10-26 review, release build of `97c85e9`, run
+  2026-10-26T164905: `Install again` replaced `dabba8b`'s broker (helper cdhash
   `fa7224e3...` before, the bundled `28b03956...` after; plist root-owned with `--uid 501`
   and `--service`; no stage left; capture through the broker; example.com named from
   http). Against the installed daemon: the five probes as before (four refused, the
@@ -100,7 +100,7 @@ Preconditions:
   The broker exits after a minute idle and the next request starts it again. The root
   broker cannot be stopped from the user's account, so the deterministic stop-until-exec
   form of that check runs only in the tests.
-- A launcher's exception ports after the 2026-11-07 review, dev copy of `8e0864f` on the Mac
+- A launcher's exception ports after the 2026-11-07 review, dev copy of `1fca8ba` on the Mac
   with the broker installed; launcher and output in
   `build/verify/runs/2026-11-08-exception-ports/`. Started directly under a parent holding
   only a crash port, the copy captured through the broker; after `SIGABRT` the parent received
@@ -110,17 +110,17 @@ Preconditions:
   crash-port parent write the dying child's memory (`thread_create` succeeded, but the thread
   never ran), dropping the corpse port as well left no crash report, and a corpse-port parent
   could read the dead child's memory.
-- The drop at launch, after the branch review of 2026-11-08. On the test Mac, dev copies of `1f60ce8`
-  and `417916d` started under an inherited stack limit by a launcher holding every exception
+- The drop at launch, after the branch review of 2026-11-08. On the test Mac, dev copies of `d370c0f`
+  and `96369d1` started under an inherited stack limit by a launcher holding every exception
   port (`sweep.c`, results in `build/verify/runs/test-mac-2026-11-08/launch-drop/`). Before, from
   8 to 160 KB the startup overflowed and the launcher ran a thread in Tattle. After, from 64
   KB up it received only the dead process or nothing; at 56 KB and below the overflow is in
   the dynamic loader, before Tattle's own code, and the launcher still runs a thread there
   (ADR-0003). A stand-in linked with `-Wl,-stack_size,0x800000` ran normally at 8 KB. On the
-  Mac with the broker, the dev copy of `1ff27a5` under a crash-port parent captured through
+  Mac with the broker, the dev copy of `0065d4a` under a crash-port parent captured through
   the broker, the parent received nothing after `SIGABRT`, and macOS wrote the crash report.
   lldb and xctrace before and after are in the same folder (`tools-*.txt`).
-- The fixed main-thread stack (`c564bb8`): the dev copy received nothing under each of 23
+- The fixed main-thread stack (`93148ae`): the dev copy received nothing under each of 23
   stack limits from 8 KB to 1 MB, on the test Mac and on the Mac with the broker
   (`build/verify/runs/2026-11-08-exception-ports/sweep-arm64.txt`). Unpinned on that Mac,
   64 KB and below still gave a live task in the dynamic loader. The pinned dev copy, opened
@@ -138,7 +138,7 @@ Preconditions:
   plist away. No run folder: the panel was driven outside a `$V` run. Not tried: a move by
   hand in the Finder.
 - Install and Remove from the view, 2026-11-15 on the test Mac: an ad-hoc release build of
-  `7e9f4cb`, the user typing the password in each dialog (`osascript wants to make changes.`).
+  `482f034`, the user typing the password in each dialog (`osascript wants to make changes.`).
   Install: the view showed the plist it would write, with this build's `cdhash` and `--uid
   502`; the log read `installing the packet-access broker from <private>`, `packet-access
   broker installed`, `capturing on en0, link type 1, through the broker`; the plist and the
@@ -152,7 +152,7 @@ Preconditions:
   stops at `chown -R root:wheel`. The view shows the command's own line, `execution error:
   chown: /Library/PrivilegedHelperTools/.<stage>/Tattle.app/Contents/Resources/AppIcon.icns:
   Operation not permitted (1)`; the log reads `broker install failed: <private>`;
-  no plist and no helper is left. Since `9e30597` the script refuses a Finder-locked copy
+  no plist and no helper is left. Since `801fdd4` the script refuses a Finder-locked copy
   before `chown`, in a sentence of its own; that needs the test Mac's password and rests on
   `testALockedFileFailsOneInstallAndWedgesNone` (2026-11-15).
 - Not proven: Cancel, `Install for this account`, and a second account
