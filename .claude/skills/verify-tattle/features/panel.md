@@ -77,7 +77,8 @@ Preconditions:
   loops' wiring rest on the runs above.
 - The first click on the eye while the Settings window is open does not open the panel; the
   next one does. Seen on `main` too.
-- The redesigned panel, seen 2026-11-12 on the development Mac in the dev copy, runs
+- The opaque look, now the look before macOS 26, seen 2026-11-12 on the development Mac in the
+  dev copy, runs
   `2026-11-12T105819` to `2026-11-12T113852` (from `2026-11-12T112604` at `58b901e` or later):
   in dark, the Network list, an app's page, a connection's page, the Processes list, an app's
   process page with `Force Quit…` armed, the Ports list, a port's page with and without an
@@ -93,3 +94,11 @@ Preconditions:
   could not start.` with SQLite's error and `Quit Tattle` (`2026-11-12-failed-start/`). Not
   driven: the lists without packet access or Full Disk Access, and a process, an app's
   connections or a startup item gone under its open page.
+- From macOS 26 the panel draws on the system's glass (`PanelLook.glass`): the lists' rows lie
+  on the window and light up under the pointer, which also shows their arrow; the tabs are one
+  capsule; the readings have no boxes; Processes sorts by its column titles; the Back button is a
+  chevron, still labelled `Back`. Before macOS 26 the panel keeps the opaque look. The labels
+  the recipes use are the same in both. Seen 2026-11-16 on the development Mac in the dev copy at
+  `93f6151`, run `2026-11-16T174432`: the four tabs, Processes sorted by Memory and by CPU, the
+  macOS row's page, a port's page and Packet access, in dark, and the same views captured in
+  light. Not driven: any macOS before 26, where the look rests on its code being `main`'s.

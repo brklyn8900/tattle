@@ -7,7 +7,10 @@ and for the user's own processes `Quit` and `Force Quit…`.
 
 ## Sub-features
 
-- `pr-header`: `N apps and programs, M processes` and the sort segments `Memory`, `CPU`.
+- `pr-header`: `N apps and programs, M processes`, the line `Each app with its helpers, ...`
+  and the sort controls `Memory`, `CPU`. From macOS 26 they are the titles of the two columns,
+  buttons whose value is `sorted` for the one in use; before it, the segments of a `Sort by`
+  picker.
 - `pr-group`: a group row; one with several members opens a list, one with a single
   member opens its detail.
 - `pr-detail`: facts including `Process <name> (pid N)` and `Parent`, `No longer running`
@@ -128,8 +131,9 @@ Preconditions:
   folder holding `index.js` (`setInterval(() => {}, 5000)`). The row reads `node, 1 process
   · node script`, not `.`. With node.js's own build (the test Mac's `~/.local/node`), the detail
   has `Interpreter signed by Node.js Foundation` and `Interpreter team HX7739G8FX`.
-- **Sort.** `$V ax press CPU` (the segment; the resources line's `CPU` text is not
-  pressable), wait 3 s, `$V save processes-cpu`; the rows reorder by CPU.
+- **Sort.** `$V ax press CPU` (the column title, or the segment before macOS 26; the
+  resources line's `CPU, N%` text is not pressable), wait 3 s, `$V save processes-cpu`; the
+  rows reorder by CPU, and from macOS 26 `sorted` follows `CPU` in `processes-cpu.txt`.
 - **Marker process.** Start one the run owns: `nohup /bin/sleep 7777 >/dev/null 2>&1 &`
   and note its pid. It is filed under the app responsible for this terminal: press
   `--prefix "<terminal>,"`. Members are listed in process-tree order, so the marker is far
