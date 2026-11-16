@@ -37,13 +37,18 @@ private struct ProcessesList: View {
         ScrollView {
             VStack(alignment: .leading, spacing: PanelLook.glass ? 6 : 12) {
                 if PanelLook.glass {
-                    // The columns' titles sort, as in Activity Monitor; what a row is moves to
-                    // the count's tooltip.
-                    HStack(spacing: 0) {
-                        Text("\(snapshot.groups.count) apps and programs, \(snapshot.items.count) processes")
-                            .accessibilityAddTraits(.isHeader)
-                            .help("Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
-                        Spacer(minLength: 0)
+                    // The columns' titles sort, as in Activity Monitor, and sit on the line
+                    // just above the rows' figures.
+                    HStack(alignment: .lastTextBaseline, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(snapshot.groups.count) apps and programs, \(snapshot.items.count) processes")
+                                .accessibilityAddTraits(.isHeader)
+                            Text("Each app with its helpers, each program with what it started. Everything that is part of macOS is one row.")
+                                .font(PanelFont.small)
+                                .foregroundStyle(PanelColor.sub)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 12)
                         sortTitle(.memory).frame(width: 64, alignment: .trailing)
                         sortTitle(.cpu).frame(width: 44, alignment: .trailing)
                     }
