@@ -5,8 +5,8 @@ background`, your agents (`~/Library/LaunchAgents`), agents for every user
 (`/Library/LaunchAgents`), daemons (`/Library/LaunchDaemons`), and `App extensions`, then
 one `Apple N system jobs` row. Each row says when it runs, its state (`running, pid N`,
 `not running`, `not running, last exit N`, `not loaded`, `disabled`, `on`, `off`, `empty file,
-nothing runs`, `could not be read`, `could not be listed`) and who signed it. A
-detail adds facts, an explanation, and controls.
+nothing runs`, `could not be read`, `could not be listed`, `state not known`) and who signed
+it. A detail adds facts, an explanation, and controls.
 
 ## Sub-features
 
@@ -17,11 +17,24 @@ detail adds facts, an explanation, and controls.
 - `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Runs Apple's` when a launch
   item that is not Apple's runs one of Apple's programs, `Plist` with the path), `Explain`,
   `Reveal Plist`, `Login Items Settings`.
-- `st-control`: `Load` / `Unload` for agents, in the domain the agent loads in; `Loading or
-  unloading a daemon needs root` for daemons, `Remove` only on Tattle's broker.
+- `st-control`: `Load` / `Unload` for agents, in the domain the agent loads in. `Load` only
+  on a row `not loaded` whose label no other plist's job holds. `Unload` acts only when
+  `launchctl print` says the label's job came from the row's plist; otherwise it says
+  `launchd's job for this label was not loaded from this plist but from <path>; nothing was
+  unloaded` and the job stays. `Loading or unloading a daemon needs root` for daemons,
+  `Remove` only on Tattle's broker.
 - `st-state`: what launchd has loaded reads as running or not running, whatever the plist's
   `Disabled` or an override says. Each job reads its own domain's state: a daemon the system
   domain, an agent `gui/<uid>`, or `user/<uid>` when its plist limits it to `Background`.
+- `st-shared`: a row is identified by its plist's path, or, for a login item not joined to a
+  plist, by the identifier of macOS's record, so two plists carrying one label are two rows.
+  Where more than one plist in a domain carries a label (an empty plist does not count),
+  launchd's job of that label goes only to the row of the plist `launchctl print` says it was
+  loaded from, compared as launchd reports it. The other row is held: `not loaded` (or
+  `disabled`), the fact `Label held by <path>`, the note `Another plist's job holds this label,
+  so launchd will not load this one` and no `Load`. When launchd does not say which plist,
+  both rows read `state not known` with that Reason. `Label held by` is shown on the page and
+  left out of the Explain prompt.
 - `st-unreadable`: a plist Tattle cannot read is a row of its group, `<file name>, unknown ·
   could not be read`; the detail has `Reason` and `Reveal Plist`, and no `Explain`. With Full
   Disk Access the row takes macOS's record of the plist: its name, `Runs`, signer and
@@ -247,16 +260,19 @@ Preconditions:
   (`testADaemonsProgramIsFoundAsRootFindsIt`,
   `testAJobInADomainLaunchctlCouldNotReadHasNoKnownState`).
 - Two user agents with one label proven 2026-11-16 on the test Mac, run `2026-11-16T195038`
-  (commit `5b7014a`); copy in the development Mac's `build/verify/runs/test-mac-2026-11-16/`.
+  (on the commit that became `beab456` when rebased); copy in the development Mac's
+  `build/verify/runs/test-mac-2026-11-16/`.
   Each row opened its own plist (`Plist ~/Library/LaunchAgents/tattle-verify-dup-a.plist`,
   then `-b`), and `Unload` on the loaded one left both rows `not loaded` and `launchctl print`
-  with no such service. Both rows read the one loaded job's `running, pid N`: a job's state
-  is found by its label.
+  with no such service. Both rows read the one loaded job's `running, pid N`, as before
+  `3bfe1f3`, when a job's state was found by its label alone; since then only the row of the
+  plist launchd loaded it from does (next entry).
 - A shared label's job on the plist it was loaded from proven 2026-11-16 on the test Mac, run
-  `2026-11-16T200018` (commit `0c659b7`), with the same two agents; copy in the development
-  Mac's `build/verify/runs/test-mac-2026-11-16/`. With `a` loaded, its row read `running, pid
-  N` and `b`'s `not loaded` with `Label held by` `a`'s path, the note `Another plist's job holds
-  this label, so launchd will not load this one` and no `Load`. `Unload` on `a` freed the label
+  `2026-11-16T200018` (on the commit that became `3bfe1f3` when rebased), with the same two
+  agents; copy in the development Mac's `build/verify/runs/test-mac-2026-11-16/`. With `a`
+  loaded, its row read `running, pid N` and `b`'s `not loaded` with `Label held by` `a`'s
+  path, the note `Another plist's job holds this label, so launchd will not load this one` and
+  no `Load`. `Unload` on `a` freed the label
   and `b` offered `Load`; loaded, `b` read `not running` (`launchctl print` path `b`) and `a`
   was held by `b`. `Unload` on `b` left both `not loaded`. The check that refuses `Unload` when
   the label's job was swapped for the other plist's rests on the unit test
@@ -270,3 +286,10 @@ Preconditions:
   launchctl's `Could not find service ...`. An empty plist named for a loaded job's label left
   that job `running, pid N`. launchd reports the real path it loaded, links resolved (a link in
   `LaunchAgents`, a link elsewhere, `/tmp`, a relative path; macOS 26.7.1).
+- Shared labels, unit-tested only, not driven in the app: launchd not saying which plist a
+  shared label's job came from (`state not known`), and `Label held by` left out of the prompt
+  (`testOnlyThePlistLaunchdLoadedFromReadsAsLoaded`); `Unload` refused when the label's job
+  was swapped for the other plist's (`testLoadAndUnloadInUserDomain`); a file at launchd's
+  path that has since become a link to the row's plist
+  (`testLaunchdsPathIsComparedAsReportedAndTheRowsResolved`); a label whose line break makes
+  a second `path` line (`testAJobsPathIsItsOneFirstLevelPathLine`).
