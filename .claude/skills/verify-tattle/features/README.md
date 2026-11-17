@@ -59,7 +59,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   of them, `open`'s long options, xcrun, registered items and launch items running Apple's
   programs, a loaded job's state, plists that cannot be read and a daemon's controls
   2026-11-08; an item gone under its open detail 2026-11-10; arch, a long wrapper chain, a
-  label with a space and an agent's PATH 2026-11-15.
+  label with a space and an agent's PATH 2026-11-15; two agents sharing a label, its job
+  given only to the plist it was loaded from, and Unload's check of that plist 2026-11-16.
 - [Processes](./processes.md): running apps and programs with their helpers, memory and
   CPU, and Quit. Proven 2026-10-25; the macOS row, a script started by launchd, standard
   input under launchd, Python (with the Command Line Tools, with Xcode, and a Tk window),
@@ -78,6 +79,7 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   2026-11-08; rows another process wrote into the rule table, for processes and ports, and a
   command that leaves its process group, 2026-11-15.
 - [Panel open and closed](./panel.md): closing the panel keeps its views and stops their
-  work, and what reopening shows. Proven 2026-11-09.
+  work, and what reopening shows. Proven 2026-11-09; the glass look from macOS 26 seen
+  2026-11-16.
 - [App icon and menu bar glyph](./icon.md): the bundle's icon and the menu bar eye, running
   and after a failed start. Proven 2026-11-12 on the test Mac.
