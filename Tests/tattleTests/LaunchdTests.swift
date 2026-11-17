@@ -153,16 +153,40 @@ final class LaunchdTests: XCTestCase {
         let result = LaunchdReader().read()
         for plist in result.unreadable where plist.reason != "Tattle has no permission to read this file" {
             XCTAssertFalse(plist.isFolder, "\(plist)")
-            let plutil = Process(), output = Pipe()
-            plutil.executableURL = URL(fileURLWithPath: "/usr/bin/plutil")
-            plutil.arguments = ["-extract", "Label", "raw", "-expect", "string", "-o", "-", plist.url.path]
-            plutil.standardOutput = output
-            plutil.standardError = FileHandle.nullDevice
-            try plutil.run()
-            let label = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            plutil.waitUntilExit()
-            XCTAssertTrue(plutil.terminationStatus != 0 || label.isEmpty, "plutil reads label \(label) in \(plist)")
+            XCTAssertNil(try plutilLabel(at: plist.url), "\(plist)")
         }
         XCTAssertGreaterThan(result.appleCount, 100)
+    }
+
+    /// The judge the machine test relies on: plutil finds a label only where launchd would.
+    func testPlutilFindsALabelOnlyWhereLaunchdWould() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func label(_ body: Data) throws -> String? {
+            let url = folder.appending(path: UUID().uuidString + ".plist")
+            try body.write(to: url)
+            return try plutilLabel(at: url)
+        }
+        XCTAssertEqual(try label(plist("<key>Label</key><string>com.a</string>")), "com.a")
+        XCTAssertNil(try label(plist("<key>Label</key><string></string>")), "launchd rejects an empty label too")
+        XCTAssertNil(try label(plist("<key>Label</key><integer>1</integer>")))
+        XCTAssertNil(try label(plist("")))
+        XCTAssertNil(try label(Data("<plist><dict><key>Label".utf8)))
+    }
+
+    /// The plist's label as plutil reads it, nil when it has no non-empty string one.
+    private func plutilLabel(at url: URL) throws -> String? {
+        let plutil = Process(), output = Pipe()
+        plutil.executableURL = URL(fileURLWithPath: "/usr/bin/plutil")
+        plutil.arguments = ["-extract", "Label", "raw", "-expect", "string", "-o", "-", url.path]
+        plutil.standardOutput = output
+        plutil.standardError = FileHandle.nullDevice
+        try plutil.run()
+        // plutil ends the value with a line break, and prints only that for an empty label.
+        let label = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .newlines)
+        plutil.waitUntilExit()
+        return plutil.terminationStatus == 0 && !label.isEmpty ? label : nil
     }
 }
