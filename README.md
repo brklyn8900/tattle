@@ -161,7 +161,10 @@ Startup tab, which does not show the plist.
 </p>
 
 With an Apple Development identity, the broker recognises Tattle by its team and bundle
-identifier, so it keeps accepting the release app and the dev copy after a rebuild. On a
+identifier, so it keeps accepting the release app and the dev copy after a rebuild. The
+installed broker itself stays the code of the build that installed it until you install it
+again from **Packet access**; when this build's broker differs, that screen says the
+installed one is from another build and still serves this one. On a
 Mac that holds that identity's signing key, any process you run can therefore obtain a
 capture descriptor: it can sign a program of its own with the same identity, and the broker
 accepts it. An ad-hoc build is recognised by its code hash, which changes with every
