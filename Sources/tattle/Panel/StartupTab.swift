@@ -148,7 +148,7 @@ struct StartupDetail: View {
         } bar: {
             let daemon = !gone && Self.needsRoot(item)
             if item.plistURL != nil || item.isLoginItem || !gone {
-                ActionBar(note: daemon ? "Loading or unloading a daemon needs root" : nil, error: actionError) {
+                ActionBar(note: daemon ? "Loading or unloading a daemon needs root" : Self.heldNote(item, gone: gone), error: actionError) {
                     if let plist = item.plistURL {
                         Button(item.isUnlistedFolder ? "Reveal Folder" : "Reveal Plist") { NSWorkspace.shared.activateFileViewerSelecting([plist]) }
                     }
@@ -164,6 +164,12 @@ struct StartupDetail: View {
                 }
             }
         }
+    }
+
+    /// launchd refuses to load a plist while another plist's job holds its label.
+    private static func heldNote(_ item: StartupItem, gone: Bool) -> String? {
+        guard !gone, item.labelHeldBy != nil, item.state == .notLoaded else { return nil }
+        return "Another plist's job holds this label, so launchd will not load this one"
     }
 
     /// A daemon that is not Tattle's own broker: launchd lets only root load or unload it.
@@ -187,11 +193,13 @@ struct StartupDetail: View {
                 .disabled(state.network.accessBusy)
             } else if Launchctl.canControl(scope) {
                 switch item.state {
-                case .notLoaded:
+                case .notLoaded where item.labelHeldBy == nil:
                     Button("Load") { perform { try Launchctl.load(plist: plist, in: item.launchDomain) } }
                 case .running, .idle:
-                    Button("Unload") { perform { try Launchctl.unload(label: item.label, in: item.launchDomain) } }
-                case .disabled, .placeholder, .enabled, .off, .unreadable, .unlisted, .unknown:
+                    // Checked again at the press: the job may have been swapped for the other plist's.
+                    let from = item.sharesLabel ? plist : nil
+                    Button("Unload") { perform { try Launchctl.unload(label: item.label, in: item.launchDomain, from: from) } }
+                case .notLoaded, .disabled, .placeholder, .enabled, .off, .unreadable, .unlisted, .unknown:
                     EmptyView()
                 }
             }

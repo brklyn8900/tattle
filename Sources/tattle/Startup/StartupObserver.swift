@@ -27,7 +27,7 @@ final class StartupObserver {
                 loginItemsError = "Login items could not be read: \(error)"
             }
             if let loginItemsError { Log.app.error("\(loginItemsError, privacy: .public)") }
-            let state = LaunchctlState.read()
+            let state = LaunchctlState.read(pathsOf: launchd.sharedLabels)
             var snapshot = StartupSnapshot.build(
                 launchd: launchd, loginItems: loginItems, state: state, signature: signatures.signature(at:))
             snapshot.loginItemsError = loginItemsError

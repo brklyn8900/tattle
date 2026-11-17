@@ -512,6 +512,18 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertEqual(LaunchctlState.parseOverrides(output), ["com.apple.Siri.agent": true])
     }
 
+    /// The job's own `path` line, never one of a nested block's, and none when a label's line
+    /// break makes a second.
+    func testAJobsPathIsItsOneFirstLevelPathLine() {
+        func print(_ lines: String) -> String { "gui/501/com.acme.agent = {\n\tactive count = 1\n\(lines)\tstdout path = /tmp/out\n\tendpoints = {\n\t\tpath = /nested\n\t}\n}\n" }
+        XCTAssertEqual(Launchctl.jobPath(print("\tpath = /Users/username/Library/LaunchAgents/a.plist\n")), "/Users/username/Library/LaunchAgents/a.plist")
+        XCTAssertEqual(Launchctl.jobPath(print("\tpath = (submitted by Acme[42])\n")), "(submitted by Acme[42])")
+        XCTAssertNil(Launchctl.jobPath(print("")))
+        XCTAssertNil(Launchctl.jobPath(print("\tpath = /a.plist\n\tpath = /b.plist\n")))
+        XCTAssertFalse(Launchctl.isSameFile("(submitted by Acme[42])", "/a.plist"))
+        XCTAssertTrue(Launchctl.isSameFile("/Library/LaunchAgents/../LaunchAgents/a.plist", "/Library/LaunchAgents/a.plist"))
+    }
+
     func testLoadAndUnloadInUserDomain() throws {
         let label = "io.github.eladefrati.tattle.test." + UUID().uuidString
         let plist = FileManager.default.temporaryDirectory.appending(path: label + ".plist")
@@ -524,7 +536,11 @@ final class LaunchctlStateTests: XCTestCase {
 
         try Launchctl.load(plist: plist)
         XCTAssertNotNil(LaunchctlState.read().gui.services[label])
-        try Launchctl.unload(label: label)
+        XCTAssertEqual(LaunchctlState.read(pathsOf: [.gui: [label]]).gui.jobPaths[label].map { Launchctl.isSameFile($0, plist.path) }, true)
+        let other = FileManager.default.temporaryDirectory.appending(path: label + ".other.plist")
+        XCTAssertThrowsError(try Launchctl.unload(label: label, from: other), "another plist's job is not unloaded")
+        XCTAssertNotNil(LaunchctlState.read().gui.services[label])
+        try Launchctl.unload(label: label, from: plist)
         XCTAssertNil(LaunchctlState.read().gui.services[label])
         XCTAssertThrowsError(try Launchctl.unload(label: label)) { error in
             guard case Launchctl.ControlError.failed = error else { return XCTFail("\(error)") }

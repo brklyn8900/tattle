@@ -95,6 +95,13 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     var launchdScope: LaunchdItem.Scope?
     /// Where Load and Unload act.
     var launchDomain = LaunchDomain.gui
+    /// Another plist carries this job's label in its domain. launchd holds one job per label
+    /// there, so the loaded job is this row's only when launchd says it came from this plist.
+    var sharesLabel = false
+    /// What launchd says the loaded job of this label came from, when that is not this plist:
+    /// another plist's path, or what submitted a job that has none. launchd refuses to load
+    /// this plist while that job holds the label.
+    var labelHeldBy: String?
 
     var runs: String? { program.map { ([$0] + arguments).joined(separator: " ") } }
 
@@ -176,6 +183,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         if let developer { facts.append(Fact(name: "Developer", value: developer)) }
         if let parent { facts.append(Fact(name: "Part of", value: parent)) }
         if let plistURL { facts.append(Fact(name: isUnlistedFolder ? "Folder" : "Plist", value: plistURL.path)) }
+        if let labelHeldBy { facts.append(Fact(name: "Label held by", value: labelHeldBy)) }
         return facts
     }
 }
@@ -209,8 +217,10 @@ struct StartupSnapshot: Equatable, Sendable {
 
         var items: [StartupItem] = []
         var joined = Set<String>()
+        let shared = launchd.sharedLabels
 
         for job in launchd.items {
+            let (jobState, heldBy) = launchdState(job, state: state, shared: shared)
             let records = byPlistPath[job.plistURL.path] ?? []
             joined.formUnion(records.map(\.identifier))
             let registered = records.first { $0.jobLabel == job.label } ?? records.first
@@ -226,7 +236,7 @@ struct StartupSnapshot: Equatable, Sendable {
                 program: job.program,
                 arguments: job.arguments,
                 trigger: job.isPlaceholder ? "never" : job.triggers.map { $0.description(scope: job.scope) }.joined(separator: ", "),
-                state: launchdState(job, state: state),
+                state: jobState,
                 signature: started?.signature,
                 codeVersion: started?.version ?? .unknown,
                 developer: registered?.developerName,
@@ -235,7 +245,9 @@ struct StartupSnapshot: Equatable, Sendable {
                 plistURL: job.plistURL,
                 isLoginItem: registered != nil,
                 launchdScope: job.scope,
-                launchDomain: job.domains.first { state[$0].services[job.label] != nil } ?? job.domains[0]))
+                launchDomain: job.domains.first { state[$0].services[job.label] != nil } ?? job.domains[0],
+                sharesLabel: job.domains.contains { shared[$0]?.contains(job.label) == true },
+                labelHeldBy: heldBy))
         }
 
         for plist in launchd.unreadable {
@@ -299,16 +311,31 @@ struct StartupSnapshot: Equatable, Sendable {
         }
     }
 
-    private static func launchdState(_ job: LaunchdItem, state: LaunchctlState) -> StartupItem.State {
-        if job.isPlaceholder { return .placeholder }
-        let domains = job.domains.map { state[$0] }
+    /// The job's state, and what holds its label when launchd's job of that label is another
+    /// plist's.
+    private static func launchdState(
+        _ job: LaunchdItem, state: LaunchctlState, shared: [LaunchDomain: Set<String>]
+    ) -> (StartupItem.State, heldBy: String?) {
+        if job.isPlaceholder { return (.placeholder, nil) }
+        var heldBy: String?
         // A loaded job runs whatever the plist says, and a disable only stops the next load.
-        if let service = domains.lazy.compactMap({ $0.services[job.label] }).first {
-            if let pid = service.pid { return .running(pid: pid) }
-            return .idle(lastExitStatus: service.lastExitStatus)
+        if let domain = job.domains.first(where: { state[$0].services[job.label] != nil }),
+           let service = state[domain].services[job.label] {
+            if shared[domain]?.contains(job.label) == true {
+                // Another plist carries the label: the job is this one's only if launchd says so.
+                guard let path = state[domain].jobPaths[job.label] else {
+                    return (.unknown(reason: "Another plist carries its label, and launchd did not say which of them its loaded job came from"), nil)
+                }
+                if !Launchctl.isSameFile(path, job.plistURL.path) { heldBy = path }
+            }
+            if heldBy == nil {
+                if let pid = service.pid { return (.running(pid: pid), nil) }
+                return (.idle(lastExitStatus: service.lastExitStatus), nil)
+            }
         }
-        if let reason = domains.lazy.compactMap(\.unread).first { return .unknown(reason: reason) }
-        return domains.lazy.compactMap({ $0.overrides[job.label] }).first ?? job.disabled ? .disabled : .notLoaded
+        let domains = job.domains.map { state[$0] }
+        if let reason = domains.lazy.compactMap(\.unread).first { return (.unknown(reason: reason), heldBy) }
+        return (domains.lazy.compactMap({ $0.overrides[job.label] }).first ?? job.disabled ? .disabled : .notLoaded, heldBy)
     }
 
     private static func loginItemState(_ item: LoginItem, state: LaunchctlState) -> StartupItem.State {
@@ -351,5 +378,17 @@ struct StartupSnapshot: Equatable, Sendable {
             return base.appending(path: item.executablePath ?? url).path
         }
         return nil
+    }
+}
+
+extension LaunchdReader.Result {
+    /// Labels more than one plist carries within a domain. launchd holds one job per label in a
+    /// domain, so which plist a loaded job of such a label came from must be asked.
+    var sharedLabels: [LaunchDomain: Set<String>] {
+        var counts: [LaunchDomain: [String: Int]] = [:]
+        for job in items {
+            for domain in job.domains { counts[domain, default: [:]][job.label, default: 0] += 1 }
+        }
+        return counts.mapValues { Set($0.filter { $0.value > 1 }.keys) }.filter { !$0.value.isEmpty }
     }
 }

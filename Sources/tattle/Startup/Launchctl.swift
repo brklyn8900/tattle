@@ -17,6 +17,9 @@ struct LaunchctlState: Equatable, Sendable {
         var overrides: [String: Bool] = [:]
         /// Why the domain could not be read, nil when it was: its jobs' state is then not known.
         var unread: String? = nil
+        /// Label to the plist launchd says its loaded job came from, read only for the labels
+        /// asked for: those more than one plist carries.
+        var jobPaths: [String: String] = [:]
     }
 
     /// `gui/<uid>`: agents of the logged-in session.
@@ -25,10 +28,16 @@ struct LaunchctlState: Equatable, Sendable {
     var user = Domain()
     var system = Domain()
 
-    static func read() -> LaunchctlState {
+    /// `pathsOf` names, per domain, the labels whose loaded job's plist is asked for, one run
+    /// each.
+    static func read(pathsOf labels: [LaunchDomain: Set<String>] = [:]) -> LaunchctlState {
         // One run per domain: `print` ends with the overrides `print-disabled` lists.
         func read(_ domain: LaunchDomain) -> Domain {
-            Self.domain(domain.name, printed: try? Launchctl.run(["print", domain.name]))
+            var read = Self.domain(domain.name, printed: try? Launchctl.run(["print", domain.name]))
+            for label in labels[domain] ?? [] where read.services[label] != nil {
+                read.jobPaths[label] = Launchctl.loadedPath(of: label, in: domain)
+            }
+            return read
         }
         return LaunchctlState(gui: read(.gui), user: read(.user), system: read(.system))
     }
@@ -91,7 +100,7 @@ struct LaunchctlState: Equatable, Sendable {
 }
 
 /// Where launchd keeps a job.
-enum LaunchDomain: Equatable, Sendable {
+enum LaunchDomain: Hashable, Sendable {
     case gui, user, system
 
     var name: String {
@@ -114,8 +123,40 @@ enum Launchctl {
         try check(run(["bootstrap", domain.name, plist.path]))
     }
 
-    static func unload(label: String, in domain: LaunchDomain = .gui) throws {
+    /// `plist`, when given, must be the file launchd says the label's job came from: another
+    /// plist can carry the label, and its job is not this one's to unload.
+    static func unload(label: String, in domain: LaunchDomain = .gui, from plist: URL? = nil) throws {
+        if let plist {
+            let path = loadedPath(of: label, in: domain)
+            guard let path, isSameFile(path, plist.path) else {
+                throw ControlError.failed(status: 0, message: "launchd's job for this label was not loaded from this plist"
+                                          + (path.map { " but from \($0)" } ?? "") + "; nothing was unloaded")
+            }
+        }
         try check(run(["bootout", domain.name + "/" + label]))
+    }
+
+    /// The plist launchd says the label's loaded job came from, nil when it cannot say.
+    static func loadedPath(of label: String, in domain: LaunchDomain) -> String? {
+        guard let result = try? run(["print", domain.name + "/" + label]), result.status == 0 else { return nil }
+        return jobPath(result.stdout)
+    }
+
+    /// The job's `path = ` line in `launchctl print <domain>/<label>`: a plist's path, or what
+    /// submitted a job that has none. The output is not trusted: a label can hold a line
+    /// break, so the line is taken only when it is the job's one line at the first level.
+    static func jobPath(_ output: String) -> String? {
+        let paths = output.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.hasPrefix("\tpath = ") }
+            .map { String($0.dropFirst("\tpath = ".count)) }
+        guard paths.count == 1, let path = paths.first, !path.isEmpty else { return nil }
+        return path
+    }
+
+    /// Whether launchd's path names the file at `path`, through any link in either.
+    static func isSameFile(_ reported: String, _ path: String) -> Bool {
+        func resolved(_ path: String) -> String { URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path }
+        return reported.hasPrefix("/") && resolved(reported) == resolved(path)
     }
 
     static func canControl(_ scope: LaunchdItem.Scope) -> Bool {

@@ -347,14 +347,51 @@ final class StartupSnapshotTests: XCTestCase {
         var state = LaunchctlState()
         state.gui.services = ["com.shared": .init(pid: 5, lastExitStatus: nil), "com.helper": .init(pid: 11, lastExitStatus: nil)]
         state.gui.overrides = ["com.off": true]
+        state.gui.jobPaths = ["com.shared": "/Library/LaunchAgents/com.shared.plist"]
         state.system.overrides = ["com.shared": true]
         let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: [
             login("16.com.helper", name: "Helper", kind: .daemon, url: "file:///x/com.helper.plist", bundle: "com.helper", allowed: true),
             login("8.com.helper", name: "Helper agent", kind: .agent, url: "file:///x/com.helper.agent.plist", bundle: "com.helper", allowed: true),
         ], state: state, signature: { _ in nil })
-        XCTAssertEqual(snapshot.items.prefix(4).map(\.state), [.running(pid: 5), .running(pid: 5), .disabled, .notLoaded])
+        XCTAssertEqual(snapshot.items.prefix(4).map(\.state), [.running(pid: 5), .notLoaded, .disabled, .notLoaded])
         XCTAssertEqual(snapshot.items.first { $0.name == "Helper agent" }?.state, .running(pid: 11))
         XCTAssertEqual(snapshot.items.first { $0.name == "Helper" }?.state, .enabled, "the daemon's domain has no such job running")
+    }
+
+    /// launchd holds one job per label in a domain. When two plists carry the label, the job is
+    /// the one launchd says it loaded from; the other row is not loaded and offers no Load
+    /// launchd would refuse. When launchd does not say, neither row reads as running.
+    func testOnlyThePlistLaunchdLoadedFromReadsAsLoaded() throws {
+        let label = "com.acme.agent"
+        let a = "/Users/username/Library/LaunchAgents/a.plist", b = "/Library/LaunchAgents/b.plist"
+        let launchd = LaunchdReader.Result(items: [
+            job(label, scope: .userAgent, plist: a), job(label, scope: .globalAgent, plist: b),
+            job(label, scope: .daemon, plist: "/Library/LaunchDaemons/\(label).plist"), job("com.alone"),
+        ], appleCount: 0, unreadable: [])
+        XCTAssertEqual(launchd.sharedLabels, [.gui: [label]], "an agent and a daemon are in different domains")
+        func rows(loadedFrom path: String?, disabled: Bool = false) -> [StartupItem] {
+            var state = LaunchctlState()
+            state.gui.services = [label: .init(pid: 5, lastExitStatus: nil), "com.alone": .init(pid: 6, lastExitStatus: nil)]
+            state.gui.jobPaths = path.map { [label: $0] } ?? [:]
+            if disabled { state.gui.overrides = [label: true] }
+            return StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil }).items
+        }
+
+        let fromB = rows(loadedFrom: b)
+        XCTAssertEqual(fromB.map(\.state), [.notLoaded, .running(pid: 5), .notLoaded, .running(pid: 6)])
+        XCTAssertEqual(fromB.map(\.labelHeldBy), [b, nil, nil, nil])
+        XCTAssertEqual(fromB.map(\.sharesLabel), [true, true, false, false])
+        XCTAssertEqual(fromB[0].facts.last, Fact(name: "Label held by", value: b))
+        XCTAssertEqual(rows(loadedFrom: a).map(\.state).prefix(2), [.running(pid: 5), .notLoaded])
+
+        let unknown = rows(loadedFrom: nil)
+        XCTAssertEqual(unknown.prefix(2).map(\.state.text), ["state not known", "state not known"])
+        XCTAssertFalse(unknown.contains { $0.label == label && $0.state.isActive })
+
+        let submitted = rows(loadedFrom: "(submitted by Acme[42])")
+        XCTAssertEqual(submitted.prefix(2).map(\.state), [.notLoaded, .notLoaded])
+        XCTAssertEqual(submitted.prefix(2).map(\.labelHeldBy), ["(submitted by Acme[42])", "(submitted by Acme[42])"])
+        XCTAssertEqual(rows(loadedFrom: b, disabled: true)[0].state, .disabled, "the override is the label's, whoever holds it")
     }
 
     /// A plist only root can read still runs as a job: its row stays in its group, saying so.
