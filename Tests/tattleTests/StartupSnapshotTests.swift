@@ -397,6 +397,19 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(rows(loadedFrom: b, disabled: true)[0].state, .disabled, "the override is the label's, whoever holds it")
     }
 
+    /// An empty plist's label is its file's name, and launchd loads nothing from it: a job
+    /// beside it with that label is the only one, its state read without asking for its path.
+    func testAnEmptyPlistSharesNoLabel() {
+        let launchd = LaunchdReader.Result(items: [
+            job("com.acme.agent"), job("com.acme.agent", plist: "/Users/username/Library/LaunchAgents/com.acme.agent.plist", placeholder: true),
+        ], appleCount: 0, unreadable: [])
+        XCTAssertEqual(launchd.sharedLabels, [:])
+        var state = LaunchctlState()
+        state.gui.services = ["com.acme.agent": .init(pid: 5, lastExitStatus: nil)]
+        let items = StartupSnapshot.build(launchd: launchd, loginItems: [], state: state, signature: { _ in nil }).items
+        XCTAssertEqual(items.map(\.state), [.running(pid: 5), .placeholder])
+    }
+
     /// A plist only root can read still runs as a job: its row stays in its group, saying so.
     func testAPlistThatCannotBeReadIsARowOfItsGroup() throws {
         let url = URL(fileURLWithPath: "/Library/LaunchDaemons/com.acme.helper.plist")

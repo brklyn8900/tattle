@@ -381,10 +381,11 @@ struct StartupSnapshot: Equatable, Sendable {
 
 extension LaunchdReader.Result {
     /// Labels more than one plist carries within a domain. launchd holds one job per label in a
-    /// domain, so which plist a loaded job of such a label came from must be asked.
+    /// domain, so which plist a loaded job of such a label came from must be asked. An empty
+    /// plist is no job: its label is only its file's name.
     var sharedLabels: [LaunchDomain: Set<String>] {
         var counts: [LaunchDomain: [String: Int]] = [:]
-        for job in items {
+        for job in items where !job.isPlaceholder {
             for domain in job.domains { counts[domain, default: [:]][job.label, default: 0] += 1 }
         }
         return counts.mapValues { Set($0.filter { $0.value > 1 }.keys) }.filter { !$0.value.isEmpty }
