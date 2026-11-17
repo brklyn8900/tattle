@@ -146,11 +146,23 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(try parsed(""), [])
     }
 
-    func testThisMachineParsesCleanly() {
+    /// A plist on this machine that Tattle does not read is the machine's business, shown as a
+    /// row that could not be read: one only root may read, or one with no label for launchd.
+    /// plutil, not the parser, says it has none, so a plist the parser fails on alone fails here.
+    func testThisMachineParsesEveryPlistThatHasALabel() throws {
         let result = LaunchdReader().read()
-        // A plist only root may read is the machine's business, not a parser's failure.
-        let failed = result.unreadable.filter { $0.reason != "Tattle has no permission to read this file" }
-        XCTAssertTrue(failed.isEmpty, "\(failed)")
+        for plist in result.unreadable where plist.reason != "Tattle has no permission to read this file" {
+            XCTAssertFalse(plist.isFolder, "\(plist)")
+            let plutil = Process(), output = Pipe()
+            plutil.executableURL = URL(fileURLWithPath: "/usr/bin/plutil")
+            plutil.arguments = ["-extract", "Label", "raw", "-expect", "string", "-o", "-", plist.url.path]
+            plutil.standardOutput = output
+            plutil.standardError = FileHandle.nullDevice
+            try plutil.run()
+            let label = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            plutil.waitUntilExit()
+            XCTAssertTrue(plutil.terminationStatus != 0 || label.isEmpty, "plutil reads label \(label) in \(plist)")
+        }
         XCTAssertGreaterThan(result.appleCount, 100)
     }
 }
