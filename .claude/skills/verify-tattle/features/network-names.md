@@ -259,8 +259,8 @@ Preconditions:
   kept, the index on its four columns, the lookup's plan on `connection_flow`, and a named
   connection's row `example.com | http`. `Quit Tattle` left 3.9 MB in `tattle.sqlite-wal` and
   `tattle.sqlite` as it was at launch: the app does not close the database on quit, so the log
-  is not folded in at exit. The rest is from `77d7315`, the first version of `c5cb5ec`, whose
-  index also listed `id`. Run `2026-11-10T105220`, with a copy of the release build's history
+  is not folded in at exit. The rest is from the first version of `c5cb5ec`, whose
+  index also listed `id`, a commit no longer in the history. Run `2026-11-10T105220`, with a copy of the release build's history
   (211,609 rows) in place of the dev copy's data: the first launch switched it to WAL and ran
   `v8-connection-flow-index`, 507 ms from process start to the startup log line against 296 ms
   for `1f33215` on the same data (run `2026-11-10T104816`), one launch each. doctor read it with
@@ -274,7 +274,7 @@ Preconditions:
   for 35 against 22 for 32, `fsync` on the main thread 43 ms against none.
 - History write volume measured 2026-11-10 on the test Mac, dev copy with its own data and no broker,
   panel never opened, 90 minutes each after 2 minutes' warm-up: `1f33215` 573 row changes
-  (opens and closes), `77d7315` (the index with `id`) 665. Logical bytes written 41.85 against
+  (opens and closes), the first version of `c5cb5ec` (the index with `id`) 665. Logical bytes written 41.85 against
   18.02 MB, 0.073 against 0.027 MB a row change (15-minute slices 0.067 to 0.080 and 0.023 to
   0.030). `tattle.sqlite` changed 279 times against 4 checkpoints, about 25 minutes apart after
   the first. The app's charged disk writes read 32.56 against 1.44 MB, but they leave out the
