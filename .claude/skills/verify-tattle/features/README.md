@@ -51,7 +51,8 @@ to get to it (user POV)`, `Driving it with tattle-verify` (starting with
   sniffer packets; the password step is the user's. Remove and Install proven 2026-10-25 on
   both copies, Remove from Startup and the refused callers on the release build; a
   launcher's crash port, the drop at launch and the fixed stack 2026-11-08; Install and
-  Remove on an ad-hoc release, and a locked file in the bundle, 2026-11-15.
+  Remove on an ad-hoc release, and a locked file in the bundle, 2026-11-15; the downloaded
+  release installed by hand and its broker installed 2026-11-16.
 - [Resources line](./resources.md): CPU, memory and the network rate above the tabs, and
   which interfaces the rate counts. Proven 2026-11-08.
 - [Startup items](./startup.md): what starts at login and boot, grouped, with details.
