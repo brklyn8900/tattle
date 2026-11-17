@@ -177,7 +177,8 @@ Packet access is tested on macOS 26 only.
 
 The Startup tab reads the login-items database, which macOS puts behind Full Disk Access.
 Without the grant, the tab lists launchd jobs only and says what is missing. To grant it,
-click **Open Full Disk Access Settings** in the Startup tab and turn Tattle on. Nothing
+click **Open Full Disk Access Settings** in the Startup tab and turn Tattle on. If Tattle
+is not in the list, click **+**, choose Tattle in Applications and turn it on. Nothing
 else in the app needs the grant. An ad-hoc build loses it on every rebuild.
 [ADR-0002](docs/adr/0002-login-items-full-disk-access.md) explains why.
 
