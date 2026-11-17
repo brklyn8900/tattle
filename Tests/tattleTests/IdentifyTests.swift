@@ -521,7 +521,31 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertNil(Launchctl.jobPath(print("")))
         XCTAssertNil(Launchctl.jobPath(print("\tpath = /a.plist\n\tpath = /b.plist\n")))
         XCTAssertFalse(Launchctl.isSameFile("(submitted by Acme[42])", "/a.plist"))
-        XCTAssertTrue(Launchctl.isSameFile("/Library/LaunchAgents/../LaunchAgents/a.plist", "/Library/LaunchAgents/a.plist"))
+        XCTAssertTrue(Launchctl.isSameFile("/Library/LaunchAgents/a.plist", "/Library/LaunchAgents/a.plist"))
+        XCTAssertFalse(Launchctl.isSameFile("/Library/LaunchAgents/../LaunchAgents/a.plist", "/Library/LaunchAgents/a.plist"),
+                       "launchd reports a real path; any other spelling is not taken for it")
+    }
+
+    /// launchd reports the real path it loaded. The row's plist is resolved, so a row whose
+    /// plist is a link matches the file launchd loaded through it; launchd's path is not, so a
+    /// file there that has since become a link to the row's plist does not match it.
+    func testLaunchdsPathIsComparedAsReportedAndTheRowsResolved() throws {
+        let fileManager = FileManager.default
+        let folder = fileManager.temporaryDirectory.appending(path: UUID().uuidString)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: folder) }
+        let plist = folder.appending(path: "a.plist"), link = folder.appending(path: "link.plist"), swapped = folder.appending(path: "b.plist")
+        try Data("x".utf8).write(to: plist)
+        try fileManager.createSymbolicLink(at: link, withDestinationURL: plist)
+        try fileManager.createSymbolicLink(at: swapped, withDestinationURL: plist)
+        let real = try XCTUnwrap(realpath(plist.path, nil).map { resolved in defer { free(resolved) }; return String(cString: resolved) })
+        XCTAssertNotEqual(real, plist.path, "the temporary folder is itself reached through a link")
+
+        XCTAssertTrue(Launchctl.isSameFile(real, plist.path))
+        XCTAssertTrue(Launchctl.isSameFile(real, link.path), "a row whose plist is a link to the loaded file")
+        XCTAssertFalse(Launchctl.isSameFile(plist.path, plist.path), "launchd's path is never resolved")
+        XCTAssertFalse(Launchctl.isSameFile(real.replacingOccurrences(of: "a.plist", with: "b.plist"), plist.path),
+                       "a loaded file since swapped for a link to this plist")
     }
 
     func testLoadAndUnloadInUserDomain() throws {

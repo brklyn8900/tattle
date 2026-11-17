@@ -156,10 +156,18 @@ enum Launchctl {
         return path
     }
 
-    /// Whether launchd's path names the file at `path`, through any link in either.
+    /// Whether launchd's path names the plist at `path`. launchd reports the real path it
+    /// loaded, with links resolved at the load (seen on macOS 26 for a link in LaunchAgents, a
+    /// link elsewhere, `/tmp` and a relative path), so its path is compared as it is and never
+    /// resolved: a file there could since have become a link to this plist. Only `path` is
+    /// resolved, now; a file gone is compared by its path.
     static func isSameFile(_ reported: String, _ path: String) -> Bool {
-        func resolved(_ path: String) -> String { URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path }
-        return reported.hasPrefix("/") && resolved(reported) == resolved(path)
+        guard reported.hasPrefix("/") else { return false }
+        let real = realpath(path, nil).map { resolved in
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        return reported == (real ?? URL(fileURLWithPath: path).standardizedFileURL.path)
     }
 
     static func canControl(_ scope: LaunchdItem.Scope) -> Bool {
