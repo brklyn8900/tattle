@@ -139,7 +139,11 @@ Swift, SwiftUI `MenuBarExtra`, macOS 14 or later. Swift Package Manager with a M
 the hardened runtime: with the first Apple Development identity in the keychain, or ad hoc
 without one; no Xcode project
 unless something forces one. GitHub Actions on `macos-latest` runs the tests and `make app`
-on every push.
+on every push and pull request. `make release VERSION=<YYYY.MM.DD.N>` builds a release: the
+app for Apple silicon and Intel, signed ad hoc and stamped with the version, zipped, with the
+zip's SHA-256 checksum. The release workflow runs it on a push to `build/release` or by hand,
+numbers the version from the date and the existing releases, and uploads the zip and its
+checksum to a draft release.
 
 The app icon is an eye, drawn in `Resources/AppIcon.svg`. `make icon` redraws
 `Resources/AppIcon.icns` from it with `sips` and `iconutil`; the `.icns` is committed, so a
