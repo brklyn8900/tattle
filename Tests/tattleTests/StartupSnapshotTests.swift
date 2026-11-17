@@ -20,7 +20,7 @@ final class StartupSnapshotTests: XCTestCase {
     /// starts under a State that says it does not.
     func testWhyHereSaysWhenItRunsOrWhatStopsIt() {
         func item(_ trigger: String?, _ state: StartupItem.State = .notLoaded, parent: String? = nil) -> StartupItem {
-            StartupItem(id: "a", group: .userAgents, name: "a", program: "/x", trigger: trigger, state: state, parent: parent, isLoginItem: false)
+            StartupItem(id: "a", label: "a", group: .userAgents, name: "a", program: "/x", trigger: trigger, state: state, parent: parent, isLoginItem: false)
         }
         XCTAssertEqual(item("at login, kept running").whyHere(gone: false), "It runs at login, kept running.")
         XCTAssertEqual(item("at login, by its app", .enabled, parent: "Acme").whyHere(gone: false), "It runs at login, by its app. It belongs to Acme.")
@@ -65,7 +65,7 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(extensions[0].state, .off)
         XCTAssertEqual(extensions[0].parent, "Magnet")
 
-        let updater = snapshot.items(in: .userAgents).first { $0.id == "com.acme.updater" }!
+        let updater = snapshot.items(in: .userAgents).first { $0.label == "com.acme.updater" }!
         XCTAssertEqual(updater.name, "Acme Updater", "the login-items name wins over the label")
         XCTAssertEqual(updater.state, .running(pid: 42))
         XCTAssertEqual(updater.developer, "Acme Inc")
@@ -76,16 +76,16 @@ final class StartupSnapshotTests: XCTestCase {
         let prompt = Prompt.build(instructions: "", request: ExplainRequest(kind: .launchItem, key: updater.explainKey, facts: updater.facts), redactor: .addressesOnly)
         XCTAssertTrue(prompt.contains(#"{"name":"Runs","value":"/usr/bin/x (1 argument, not sent)"}"#),
                       "arguments can carry tokens and addresses: only the program goes out")
-        XCTAssertEqual(snapshot.items.filter { $0.id == "com.acme.updater" }.count, 1, "joined, not duplicated")
+        XCTAssertEqual(snapshot.items.filter { $0.label == "com.acme.updater" }.count, 1, "joined, not duplicated")
 
         XCTAssertEqual(snapshot.items(in: .daemons).first?.state, .idle(lastExitStatus: 1))
         XCTAssertEqual(snapshot.items(in: .daemons).first?.trigger, "kept running")
-        XCTAssertEqual(snapshot.items(in: .userAgents).first { $0.id == "com.empty" }?.state, .placeholder)
-        XCTAssertEqual(snapshot.items(in: .userAgents).first { $0.id == "com.off" }?.state, .disabled)
+        XCTAssertEqual(snapshot.items(in: .userAgents).first { $0.label == "com.empty" }?.state, .placeholder)
+        XCTAssertEqual(snapshot.items(in: .userAgents).first { $0.label == "com.off" }?.state, .disabled)
 
         let apps = snapshot.items(in: .loginItems)
         XCTAssertEqual(apps.map(\.name), ["Magnet"], "only apps, as in System Settings' Open at Login")
-        XCTAssertEqual(apps[0].id, "com.example.magnet")
+        XCTAssertEqual(apps[0].label, "com.example.magnet")
         XCTAssertEqual(apps[0].state, .running(pid: 7))
         XCTAssertEqual(apps[0].runs, "/Applications/Magnet.app")
         let background = snapshot.items(in: .background)
@@ -104,6 +104,36 @@ final class StartupSnapshotTests: XCTestCase {
         ], appleCount: 0, unreadable: [])
         let items = StartupSnapshot.build(launchd: launchd, loginItems: [], state: LaunchctlState(), signature: { _ in nil }).items
         XCTAssertEqual(items.filter(\.isCaptureBroker).map(\.launchdScope), [.daemon])
+    }
+
+    /// Plists in different folders can carry one label, and so can a plist that could not be
+    /// read, through macOS's record of it, and a registered agent whose plist is inside its
+    /// app. Each is its own row with its own id, the same at every reading; the label still
+    /// keys its answer.
+    func testRowsSharingALabelHaveTheirOwnIds() {
+        let label = "com.acme.agent"
+        let unreadable = URL(fileURLWithPath: "/Library/LaunchAgents/com.acme.copy.plist")
+        let launchd = LaunchdReader.Result(items: [
+            job(label, scope: .userAgent, plist: "/Users/username/Library/LaunchAgents/\(label).plist"),
+            job(label, scope: .globalAgent),
+            job(label, scope: .daemon, plist: "/Library/LaunchDaemons/\(label).plist"),
+        ], appleCount: 0, unreadable: [.init(url: unreadable, scope: .globalAgent, reason: "x")])
+        let records = [
+            login("8.\(label)", name: "Acme", kind: .agent, url: unreadable.absoluteString, legacy: true),
+            login("16.\(label)", name: "Acme Agent", kind: .agent, bundle: label),
+        ]
+        func build() -> [StartupItem] {
+            StartupSnapshot.build(launchd: launchd, loginItems: records, state: LaunchctlState(), signature: { _ in nil }).items
+        }
+        let items = build()
+        XCTAssertEqual(items.count, 5)
+        XCTAssertEqual(items.map(\.id), [
+            "/Users/username/Library/LaunchAgents/\(label).plist", "/Library/LaunchAgents/\(label).plist",
+            "/Library/LaunchDaemons/\(label).plist", unreadable.path, "16.\(label)",
+        ])
+        XCTAssertEqual(Set(items.map(\.label)), [label])
+        XCTAssertEqual(Set(items.map(\.explainKey)), [label])
+        XCTAssertEqual(build().map(\.id), items.map(\.id))
     }
 
     func testStartupFactKeepsTheCertificateNameOutOfItsPromptValue() throws {
@@ -125,7 +155,7 @@ final class StartupSnapshotTests: XCTestCase {
             ],
             state: LaunchctlState(), signature: apple)
 
-        let item = try XCTUnwrap(snapshot.items.first { $0.id == "local.sqlite" })
+        let item = try XCTUnwrap(snapshot.items.first { $0.label == "local.sqlite" })
         XCTAssertEqual(item.signature?.signer, .launchItem(applesProgram: "sqlite3"))
         XCTAssertEqual(item.signature?.summary, "launch item, not signed")
         XCTAssertEqual(item.facts.first { $0.name == "Signed by" }?.value, "launch item, not signed")
@@ -434,7 +464,7 @@ final class StartupSnapshotTests: XCTestCase {
             let snapshot = StartupSnapshot.build(launchd: launchd, loginItems: records, state: LaunchctlState(), signature: { _ in nil })
             XCTAssertEqual(snapshot.items.count, 1, "neither record is a second row")
             let row = try XCTUnwrap(snapshot.items(in: .globalAgents).first)
-            XCTAssertEqual(row.id, "com.acme.agent")
+            XCTAssertEqual(row.label, "com.acme.agent")
             XCTAssertEqual(row.name, "Acme Agent")
             XCTAssertEqual(row.developer, "Acme Inc")
             XCTAssertTrue(row.isLoginItem)

@@ -68,7 +68,12 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         }
     }
 
+    /// Unique among the rows and the same at every reading: the plist's path, or for a login
+    /// item not joined to a plist, the identifier of macOS's record. A label is not: two
+    /// plists can carry one, and so can a login item and a plist it was not joined to.
     var id: String
+    /// The launchd label, or a login item's bundle id; the plist's path when nothing names it.
+    var label: String
     var group: Group
     var name: String
     /// What runs: the program, or the app.
@@ -94,11 +99,11 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     var runs: String? { program.map { ([$0] + arguments).joined(separator: " ") } }
 
     /// The knowledge-base key: the launchd label, or the bundle id for an app.
-    var explainKey: String { id }
+    var explainKey: String { label }
 
     /// Tattle's own daemon, the one system job Tattle removes (ADR-0003). An agent that
     /// carries its label is someone else's job.
-    var isCaptureBroker: Bool { id == CaptureBroker.label && launchdScope == .daemon }
+    var isCaptureBroker: Bool { label == CaptureBroker.label && launchdScope == .daemon }
 
     var isUnlistedFolder: Bool {
         if case .unlisted = state { return true }
@@ -214,7 +219,8 @@ struct StartupSnapshot: Equatable, Sendable {
                                       asRoot: job.scope == .daemon, changesRoot: job.rootDirectory != nil, reading: signature)
             }
             items.append(StartupItem(
-                id: job.label,
+                id: job.plistURL.path,
+                label: job.label,
                 group: group(for: job.scope),
                 name: registered?.name ?? job.label,
                 program: job.program,
@@ -240,7 +246,8 @@ struct StartupSnapshot: Equatable, Sendable {
             let path = registered?.executablePath.flatMap { $0.hasPrefix("/") ? $0 : nil }
             let signed = registered.flatMap { item in path.flatMap { registeredSignature(of: item, at: $0, reading: signature) } }
             items.append(StartupItem(
-                id: registered?.jobLabel ?? plist.url.path,
+                id: plist.url.path,
+                label: registered?.jobLabel ?? plist.url.path,
                 group: group(for: plist.scope),
                 name: registered?.name ?? plist.url.deletingPathExtension().lastPathComponent,
                 program: path,
@@ -264,7 +271,8 @@ struct StartupSnapshot: Equatable, Sendable {
             let plist = item.url.flatMap(URL.init(string:)).flatMap { $0.isFileURL && $0.pathExtension == "plist" ? $0 : nil }
             let signed = path.flatMap { registeredSignature(of: item, at: $0, reading: signature) }
             items.append(StartupItem(
-                id: item.jobLabel ?? item.identifier,
+                id: item.identifier,
+                label: item.jobLabel ?? item.identifier,
                 group: item.isExtension ? .extensions : item.kind == .app ? .loginItems : .background,
                 name: item.name,
                 program: path,

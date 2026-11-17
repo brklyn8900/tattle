@@ -191,7 +191,7 @@ final class ApplesProgramTests: XCTestCase {
         XCTAssertNil(NetworkSnapshot(connections: [named(1, "/a/updater"), named(2, "/b/updater")], takenAt: started).groups.first?.identity)
 
         // A launch item's is its program's signature, else what its plist says runs.
-        var item = StartupItem(id: "a", group: .userAgents, name: "a", program: "/bin/sh", arguments: ["-c", "x"], trigger: "", state: .notLoaded,
+        var item = StartupItem(id: "a", label: "a", group: .userAgents, name: "a", program: "/bin/sh", arguments: ["-c", "x"], trigger: "", state: .notLoaded,
                                signature: CodeSignature(signer: .unnamed), codeVersion: .line, isLoginItem: false)
         XCTAssertEqual(item.identity, CodeIdentity.command("/bin/sh -c x"))
         item.signature = CodeSignature(signer: .developerID(name: "Acme"), identifier: "com.acme.a", teamIdentifier: "ABCDE12345")
@@ -204,7 +204,7 @@ final class ApplesProgramTests: XCTestCase {
     /// A plist's first word can be a wrapper, which says nothing about the code it starts.
     func testALaunchItemBehindAWrapperIsNotKnownByTheWrapper() {
         func item(_ target: String, _ signature: CodeSignature) -> StartupItem {
-            StartupItem(id: "a", group: .userAgents, name: "a", program: "/usr/bin/env", arguments: [target], trigger: "", state: .notLoaded,
+            StartupItem(id: "a", label: "a", group: .userAgents, name: "a", program: "/usr/bin/env", arguments: [target], trigger: "", state: .notLoaded,
                         signature: signature, codeVersion: .file(target), isLoginItem: false)
         }
         let unsigned = CodeSignature(signer: .unsigned)
