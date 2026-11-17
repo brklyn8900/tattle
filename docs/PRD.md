@@ -248,15 +248,19 @@ Nothing is sent until the user has chosen a provider and clicked explain on an i
 
 ### Distribution
 
+Releases are versioned `YYYY.MM.DD.N` and tagged `v<version>`. Each is one universal build,
+for Apple silicon and Intel, made by a GitHub Actions workflow that uploads it and its
+checksum to a draft release; publishing the draft makes the tag.
+
 Releases are ad-hoc signed. On current macOS a user opens one by allowing it under System
 Settings, Privacy & Security, after the first blocked launch; the README says so. Ad-hoc
 signatures do not carry a stable identity, so TCC permissions are asked again after every
 new build. A build from source is signed with the first Apple Development identity in the
 keychain, so grants survive rebuilds
 ([ADR-0002](adr/0002-login-items-full-disk-access.md)); without one it is ad hoc. An
-ad-hoc build must install the packet-access broker again after each rebuild, and the app
-says when the installed broker is not this build's
-([ADR-0003](adr/0003-bpf-descriptor-broker.md)). Each release publishes a checksum.
+ad-hoc build must install the packet-access broker again after each rebuild, and so a
+downloaded release after each update; the app says when the installed broker is not this
+build's ([ADR-0003](adr/0003-bpf-descriptor-broker.md)). Each release publishes a checksum.
 Building from source is a first-class path. A Homebrew cask is possible; the user passes
 `--no-quarantine` themselves.
 
