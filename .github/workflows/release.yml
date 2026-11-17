@@ -7,6 +7,13 @@ on:
   push:
     branches: [build/release]
   workflow_dispatch:
+    inputs:
+      # Today's date in UTC is already the next day's in an evening west of UTC, so whoever
+      # starts a run can give the date the release is named for.
+      date:
+        description: "The release's date, YYYY.MM.DD, within a day of today's in UTC; empty for today's in UTC"
+        required: false
+        type: string
 
 # Read only, unless a job says otherwise.
 permissions:
@@ -35,12 +42,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          # Typed by whoever started the run, so read from here, never written into the script.
+          RELEASE_DATE: ${{ inputs.date }}
         run: |
-          # YYYY.MM.DD.N from today's date in UTC, one past the highest N among the releases,
-          # drafts included, and the tags. Either list failing to read fails the step.
+          # YYYY.MM.DD.N from the date given or, with none, today's date in UTC, one past the
+          # highest N among the releases, drafts included, and the tags. Either list failing to
+          # read fails the step.
+          # A date given must be yesterday, today or tomorrow in UTC, so a typo cannot name the
+          # release for another day. All three come from one reading of the clock.
+          now=$(date -u +%s)
+          day=$(date -u -d "@$now" +%Y.%m.%d)
+          if [[ -n "$RELEASE_DATE" ]]; then
+            # Not printed before its shape is checked: a line in it could read as a workflow command.
+            [[ "$RELEASE_DATE" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}$ ]] \
+              || { echo "::error::the date input is not of the form YYYY.MM.DD"; exit 1; }
+            yesterday=$(date -u -d "@$((now - 86400))" +%Y.%m.%d)
+            tomorrow=$(date -u -d "@$((now + 86400))" +%Y.%m.%d)
+            [[ "$RELEASE_DATE" == "$yesterday" || "$RELEASE_DATE" == "$day" || "$RELEASE_DATE" == "$tomorrow" ]] \
+              || { echo "::error::the date $RELEASE_DATE is not $yesterday, $day or $tomorrow, the dates within a day of today's in UTC"; exit 1; }
+            day=$RELEASE_DATE
+          fi
           releases=$(gh api "repos/$REPOSITORY/releases" --paginate --jq '.[].tag_name')
           tags=$(gh api "repos/$REPOSITORY/tags" --paginate --jq '.[].name')
-          prefix="v$(date -u +%Y.%m.%d)."
+          prefix="v$day."
           last=$(printf '%s\n%s\n' "$releases" "$tags" | awk -v p="$prefix" 'index($0, p) == 1 { n = substr($0, length(p) + 1)
               if (n ~ /^[0-9]+$/ && n + 0 > max) max = n + 0 } END { print max + 0 }')
           echo "version=${prefix#v}$((last + 1))" >> "$GITHUB_OUTPUT"
