@@ -107,6 +107,19 @@ it:
 4. In the alert that follows, click Open Anyway again.
 5. Enter an administrator's name and password. Tattle opens.
 
+### Updating
+
+To update, download and check the new release as above, and put it in Applications in place
+of the old copy. Each release is signed ad hoc, so to macOS and to the packet-access broker
+it is a different build:
+
+- The installed broker recognises the build that installed it by its code hash, so it
+  refuses the new one. The link at the bottom of the Network tab reads **Packet access:
+  install again**; install the broker again from the **Packet access** screen, in one
+  administrator dialog.
+- Full Disk Access is lost: grant it again as under [Full Disk Access](#full-disk-access).
+- Your history and settings, in `~/Library/Application Support/Tattle/`, are kept.
+
 ### Build from source
 
 You need Xcode 26 or its command line tools.
