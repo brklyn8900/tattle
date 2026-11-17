@@ -183,7 +183,9 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         if let developer { facts.append(Fact(name: "Developer", value: developer)) }
         if let parent { facts.append(Fact(name: "Part of", value: parent)) }
         if let plistURL { facts.append(Fact(name: isUnlistedFolder ? "Folder" : "Plist", value: plistURL.path)) }
-        if let labelHeldBy { facts.append(Fact(name: "Label held by", value: labelHeldBy)) }
+        // launchd's own text, which can name another plist or the app that submitted the job:
+        // shown, not sent.
+        if let labelHeldBy { facts.append(Fact(name: "Label held by", value: labelHeldBy, inPrompt: false)) }
         return facts
     }
 }
