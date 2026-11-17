@@ -114,9 +114,9 @@ of the old copy. Each release is signed ad hoc, so to macOS and to the packet-ac
 it is a different build:
 
 - The installed broker recognises the build that installed it by its code hash, so it
-  refuses the new one. The link at the bottom of the Network tab reads **Packet access:
-  install again**; install the broker again from the **Packet access** screen, in one
-  administrator dialog.
+  refuses the new one. Open the **Packet access** screen from the link at the bottom of the
+  Network tab, click **Install again** and approve the administrator dialog. While Tattle is
+  not capturing, the link reads **Packet access: install again**.
 - Full Disk Access is lost: grant it again as under [Full Disk Access](#full-disk-access).
 - Your history and settings, in `~/Library/Application Support/Tattle/`, are kept.
 
