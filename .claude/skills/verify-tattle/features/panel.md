@@ -96,9 +96,11 @@ Preconditions:
   connections or a startup item gone under its open page.
 - From macOS 26 the panel draws on the system's glass (`PanelLook.glass`): the lists' rows lie
   on the window and light up under the pointer, which also shows their arrow; the tabs are one
-  capsule; the readings have no boxes; Processes sorts by its column titles; the Back button is a
-  chevron, still labelled `Back`. Before macOS 26 the panel keeps the opaque look. The labels
-  the recipes use are the same in both. Seen 2026-11-16 on the development Mac in the dev copy at
-  `93f6151`, run `2026-11-16T174432`: the four tabs, Processes sorted by Memory and by CPU, the
-  macOS row's page, a port's page and Packet access, in dark, and the same views captured in
-  light. Not driven: any macOS before 26, where the look rests on its code being `main`'s.
+  capsule; the readings have no boxes (resources.md); Processes sorts by its column titles
+  (processes.md); the Back button is a chevron, still labelled `Back`. Before macOS 26 the
+  panel keeps the opaque look. The labels the recipes use are the same in both. Seen
+  2026-11-16 on the development Mac in the dev copy at `93f6151`, run `2026-11-16T174432`: the
+  four tabs, Processes sorted by Memory and by CPU, the macOS row's page, a port's page and
+  Packet access, in dark, and the same views captured in light. Not driven: any macOS before
+  26, where the look rests on the opaque look's code, seen 2026-11-12 (above) and kept for
+  macOS before 26 behind the macOS 26 checks.

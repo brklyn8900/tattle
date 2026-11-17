@@ -7,6 +7,13 @@ interface at a time between two readings.
 ## Sub-features
 
 - `res-line`: `CPU`, `Memory`, `In` and `Out`, each followed by its value (`5 kB/s`).
+- `res-glass`: from macOS 26 the readings lie on the glass with no box. Each label sits above
+  its 20 pt numeral, `In` and `Out` with a down and an up arrow, and CPU and Memory have a
+  meter under it. `In` and `Out` are each as wide as their widest reading, `999.9 MB/s`, and
+  sit at the right edge; CPU and Memory share the rest. Memory reads `<used> of <total> GB`,
+  or `<used> /<total> GB` when the total is 1,000 GB or more. Hovering CPU shows `All N cores
+  together. 100% is every core fully used.` Each reading is one static text to accessibility,
+  `Memory, 11.2 of 16 GB`. Before macOS 26 the readings are one bar of four cells.
 - `res-rate`: loopback, tunnels (`utun`, `ipsec`, `gif`, `stf`), bridges and the VM interfaces
   that join them (`bridge`, `vmenet`), VLANs (`vlan`), link aggregates (`bond`) and virtual
   Ethernet pairs (`feth`) are not counted. Every other interface is.
@@ -37,3 +44,9 @@ Preconditions:
 - Not driven in the app: an interface disappearing while the copy runs, which needs a dock or
   adapter to unplug; a VM's interfaces would not show it, since they are not counted.
   `ResourceSampleTests` covers it.
+- The glass readings seen 2026-11-16 in the dev copy at `93f6151`, run `2026-11-16T174432`
+  (panel.md), and the layout since `3be24b4` (In and Out at the right edge) by the user in the
+  dev copy on the development Mac, no run folder. Not driven in the app: In and Out at their
+  widest and the `/<total> GB` form, checked only in offscreen renders of the line at set
+  readings (no Mac at hand has 1,000 GB); the CPU tooltip, which a scripted pointer did not
+  bring up and the user's own pointer did, in the dev copy.
