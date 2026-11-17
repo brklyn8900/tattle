@@ -542,8 +542,10 @@ final class LaunchctlStateTests: XCTestCase {
         XCTAssertNotNil(LaunchctlState.read().gui.services[label])
         try Launchctl.unload(label: label, from: plist)
         XCTAssertNil(LaunchctlState.read().gui.services[label])
-        XCTAssertThrowsError(try Launchctl.unload(label: label)) { error in
-            guard case Launchctl.ControlError.failed = error else { return XCTFail("\(error)") }
+        XCTAssertThrowsError(try Launchctl.unload(label: label, from: plist)) { error in
+            guard case Launchctl.ControlError.failed(_, let message) = error else { return XCTFail("\(error)") }
+            XCTAssertFalse(message.contains("not loaded from this plist"), "a job that is gone says so in launchctl's words: \(message)")
+            XCTAssertTrue(message.contains(label), message)
         }
         XCTAssertFalse(Launchctl.canControl(.daemon))
         XCTAssertTrue(Launchctl.canControl(.globalAgent))

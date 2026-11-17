@@ -95,9 +95,6 @@ struct StartupItem: Equatable, Sendable, Identifiable {
     var launchdScope: LaunchdItem.Scope?
     /// Where Load and Unload act.
     var launchDomain = LaunchDomain.gui
-    /// Another plist carries this job's label in its domain. launchd holds one job per label
-    /// there, so the loaded job is this row's only when launchd says it came from this plist.
-    var sharesLabel = false
     /// What launchd says the loaded job of this label came from, when that is not this plist:
     /// another plist's path, or what submitted a job that has none. launchd refuses to load
     /// this plist while that job holds the label.
@@ -248,7 +245,6 @@ struct StartupSnapshot: Equatable, Sendable {
                 isLoginItem: registered != nil,
                 launchdScope: job.scope,
                 launchDomain: job.domains.first { state[$0].services[job.label] != nil } ?? job.domains[0],
-                sharesLabel: job.domains.contains { shared[$0]?.contains(job.label) == true },
                 labelHeldBy: heldBy))
         }
 

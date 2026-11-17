@@ -196,9 +196,7 @@ struct StartupDetail: View {
                 case .notLoaded where item.labelHeldBy == nil:
                     Button("Load") { perform { try Launchctl.load(plist: plist, in: item.launchDomain) } }
                 case .running, .idle:
-                    // Checked again at the press: the job may have been swapped for the other plist's.
-                    let from = item.sharesLabel ? plist : nil
-                    Button("Unload") { perform { try Launchctl.unload(label: item.label, in: item.launchDomain, from: from) } }
+                    Button("Unload") { perform { try Launchctl.unload(label: item.label, in: item.launchDomain, from: plist) } }
                 case .notLoaded, .disabled, .placeholder, .enabled, .off, .unreadable, .unlisted, .unknown:
                     EmptyView()
                 }

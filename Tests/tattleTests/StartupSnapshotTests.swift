@@ -380,7 +380,6 @@ final class StartupSnapshotTests: XCTestCase {
         let fromB = rows(loadedFrom: b)
         XCTAssertEqual(fromB.map(\.state), [.notLoaded, .running(pid: 5), .notLoaded, .running(pid: 6)])
         XCTAssertEqual(fromB.map(\.labelHeldBy), [b, nil, nil, nil])
-        XCTAssertEqual(fromB.map(\.sharesLabel), [true, true, false, false])
         XCTAssertEqual(fromB[0].facts.last, Fact(name: "Label held by", value: b, inPrompt: false))
         let prompt = Prompt.build(instructions: "", request: ExplainRequest(kind: .launchItem, key: fromB[0].explainKey, facts: fromB[0].facts),
                                   redactor: .addressesOnly)

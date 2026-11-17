@@ -123,17 +123,20 @@ enum Launchctl {
         try check(run(["bootstrap", domain.name, plist.path]))
     }
 
-    /// `plist`, when given, must be the file launchd says the label's job came from: another
-    /// plist can carry the label, and its job is not this one's to unload.
-    static func unload(label: String, in domain: LaunchDomain = .gui, from plist: URL? = nil) throws {
-        if let plist {
-            let path = loadedPath(of: label, in: domain)
-            guard let path, isSameFile(path, plist.path) else {
-                throw ControlError.failed(status: 0, message: "launchd's job for this label was not loaded from this plist"
-                                          + (path.map { " but from \($0)" } ?? "") + "; nothing was unloaded")
-            }
+    /// Unloads the label's job only when launchd says it came from `plist`: another plist can
+    /// carry the label, or a job be loaded under it from elsewhere, and that job is not this
+    /// plist's to unload.
+    static func unload(label: String, in domain: LaunchDomain = .gui, from plist: URL) throws {
+        let target = domain.name + "/" + label
+        let printed = try run(["print", target])
+        // A job gone since the list was read fails here, in launchctl's own words.
+        try check(printed)
+        let path = jobPath(printed.stdout)
+        guard let path, isSameFile(path, plist.path) else {
+            throw ControlError.failed(status: 0, message: "launchd's job for this label was not loaded from this plist"
+                                      + (path.map { " but from \($0)" } ?? "") + "; nothing was unloaded")
         }
-        try check(run(["bootout", domain.name + "/" + label]))
+        try check(run(["bootout", target]))
     }
 
     /// The plist launchd says the label's loaded job came from, nil when it cannot say.
