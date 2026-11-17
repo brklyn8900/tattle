@@ -252,3 +252,12 @@ Preconditions:
   then `-b`), and `Unload` on the loaded one left both rows `not loaded` and `launchctl print`
   with no such service. Both rows read the one loaded job's `running, pid N`: a job's state
   is found by its label.
+- A shared label's job on the plist it was loaded from proven 2026-11-16 on the test Mac, run
+  `2026-11-16T200018` (commit `0c659b7`), with the same two agents; copy in the development
+  Mac's `build/verify/runs/test-mac-2026-11-16/`. With `a` loaded, its row read `running, pid
+  N` and `b`'s `not loaded` with `Label held by` `a`'s path, the note `Another plist's job holds
+  this label, so launchd will not load this one` and no `Load`. `Unload` on `a` freed the label
+  and `b` offered `Load`; loaded, `b` read `not running` (`launchctl print` path `b`) and `a`
+  was held by `b`. `Unload` on `b` left both `not loaded`. The check that refuses `Unload` when
+  the label's job was swapped for the other plist's rests on the unit test
+  (`testLoadAndUnloadInUserDomain`).
