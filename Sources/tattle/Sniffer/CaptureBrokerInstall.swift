@@ -277,7 +277,7 @@ extension CaptureBroker {
         read-only and hands it only to a program carrying Tattle's signature, which it \
         checks for whoever asks. On a Mac that holds the key that signed this build, any \
         program you run can make that signature. The daemon has no other function, keeps \
-        nothing, and is removed with one click here or from the Startup tab. The packet \
+        no descriptor, and is removed with one click here or from the Startup tab. The packet \
         devices themselves stay root-only.
         """
 
