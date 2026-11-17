@@ -136,7 +136,8 @@ Launch agents and daemons, and login items. Sources: [design](design.md#startup)
 items under `/System/Library` are counted on one "Apple" line, not listed.
 
 Identify: program path and arguments, trigger (at login, on a schedule, on demand, watching
-a path), loaded or not, last run, and signer.
+a path), loaded or not, running or not with the last exit status when it was not zero, and
+signer.
 
 The login-items database needs Full Disk Access. Tattle asks for it once, from the Startup
 tab, with a button to the System Settings pane and the reason stated there; there is no
@@ -286,8 +287,8 @@ Building from source is a first-class path. A Homebrew cask is possible; the use
   connections. For each host, IP block owner (ASN data), country, domain category and owning
   company (Tracker Radar), Apple's published host list, and the app's own
   `InternetAccessPolicy.plist` on the rare occasions it ships one.
-- **More for the Startup tab.** Cron and `periodic` entries, and the installing app, matched
-  by bundle identifier prefix and signer.
+- **More for the Startup tab.** Cron and `periodic` entries, when an item last ran, and the
+  installing app, matched by bundle identifier prefix and signer.
 - **Patterns from answers.** The user promotes a model's proposed pattern to a glob rule at
   confirmation. Needs a storage decision of its own: a pattern in the database would be any
   process's to write (ADR-0005).
