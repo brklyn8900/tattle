@@ -145,9 +145,11 @@ alone, and says what is missing ([ADR-0002](adr/0002-login-items-full-disk-acces
 The packet-access broker is listed like any other daemon, and removing it is one click.
 
 System Settings shows two lists of developer names with toggles. This tab shows what each
-item runs, when, and why. Control stays where it already works: plist-based items can be
-loaded and unloaded here; database-backed login items are toggled in System Settings via a
-deep link.
+item runs, when, and why. Control stays where it already works: launch agents can be loaded
+and unloaded here, each only as the job launchd loaded from that plist. A plist whose label
+another plist's job holds offers no Load and says why, and Unload refuses when launchd's job
+of that label did not come from that plist. Daemons need root and are not offered;
+database-backed login items are toggled in System Settings via a deep link.
 
 Actions: explain; load/unload; reveal the plist; open System Settings.
 
@@ -176,8 +178,9 @@ Resolution order for any item:
    what it is, so the model explains known facts instead of guessing. Some facts stay out. A
    host's request leaves out the connection's direction and the process that made it,
    because the answer is shown on every connection to that host. A process's request leaves
-   out its working directory, a startup item's gives only the number of its arguments, and
-   the account a process runs as reads `you` when it is the user's. The model returns
+   out its working directory, a startup item's gives only the number of its arguments and
+   leaves out what holds its label, and the account a process runs as reads `you` when it
+   is the user's. The model returns
    structured JSON in the shape of a rule. The answer is stored as an **exact-item** rule with `source = llm`, shown as
    "unconfirmed" until the user has read it, judged it against the facts panel, and
    confirmed it. An answer is shown without being stored when nothing would tell a later
