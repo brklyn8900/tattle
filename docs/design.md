@@ -156,5 +156,6 @@ checksum to a draft release.
 
 The app icon is an eye, drawn in `Resources/AppIcon.svg`. `make icon` redraws
 `Resources/AppIcon.icns` from it with `sips` and `iconutil`; the `.icns` is committed, so a
-build does not depend on either. The menu bar item shows the same eye in one colour, drawn
-in code (`MenuBarGlyph`) as a template image, and struck through when Tattle failed to start.
+build does not depend on either. The menu bar item shows a mark of its own, two crossed
+leaves around a ring, drawn in code (`MenuBarGlyph`) as a template image, and struck through
+when Tattle failed to start.
