@@ -79,6 +79,14 @@ Full Disk Access ([ADR-0002](adr/0002-login-items-full-disk-access.md)), is undo
 and is a keyed archive with more than one schema version in the wild; it is decoded with a
 generic record class in place of the private ones (`Startup/LoginItems.swift`).
 
+## Panel
+
+The panel has two looks, chosen by the macOS version it runs on (`PanelLook` in
+`Panel/PanelStyle.swift`). From macOS 26 it is drawn on the system's glass: rows lie on the
+window, text takes the system's label colours, the tabs are one glass capsule, and the
+readings have no box around them. Before macOS 26 it keeps its own opaque colours and cards.
+Both looks give the controls and readings the same accessibility labels.
+
 ## Knowledge base
 
 The seed knowledge base ships in the repo as JSON files, one per source. They are copied
