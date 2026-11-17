@@ -261,3 +261,12 @@ Preconditions:
   was held by `b`. `Unload` on `b` left both `not loaded`. The check that refuses `Unload` when
   the label's job was swapped for the other plist's rests on the unit test
   (`testLoadAndUnloadInUserDomain`).
+- The review fixes proven 2026-11-16 on the test Mac in the glass look, runs `2026-11-16T201929`,
+  `2026-11-16T202035` and `2026-11-16T202110` (commit `587fad4`); copies in the development
+  Mac's `build/verify/runs/test-mac-2026-11-16/`. The held row showed `Label held by` and its
+  note. `Unload` on an agent whose label's job was loaded from a plist outside the folders
+  said `launchd's job for this label was not loaded from this plist but from <path>; nothing
+  was unloaded`, and the job stayed. `Unload` on a job booted out after the list was read said
+  launchctl's `Could not find service ...`. An empty plist named for a loaded job's label left
+  that job `running, pid N`. launchd reports the real path it loaded, links resolved (a link in
+  `LaunchAgents`, a link elsewhere, `/tmp`, a relative path; macOS 26.7.1).
