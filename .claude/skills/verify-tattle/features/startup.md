@@ -14,9 +14,13 @@ it. A detail adds facts, an explanation, and controls.
 - `st-row`: `"<name>, <when> · <state> · <signer>"`; the name is the one macOS's
   background-items record gives (`CometUpdater`), which Tattle reads only with Full Disk
   Access; otherwise, and for an agent macOS has not registered, the launchd label.
-- `st-detail`: facts (`Runs`, `When`, `State`, `Signed by`, `Runs Apple's` when a launch
-  item that is not Apple's runs one of Apple's programs, `Plist` with the path), `Explain`,
-  `Reveal Plist`, `Login Items Settings`.
+- `st-detail`: under the name, `Signed by <signer>`, with `· Team <id>` when the signature
+  has a team; facts `Runs`, `When`, `State`, `Reason` (a plist or folder that could not be
+  read or listed, or a state not known), `Runs Apple's` when a launch item that is not
+  Apple's runs one of Apple's programs, `Team` when nothing is signed but macOS's record
+  names a team, `Developer` and `Part of` from macOS's record, `Plist` with the path
+  (`Folder` for a folder that could not be listed), and `Label held by` (`st-shared`);
+  `Explain`, `Reveal Plist`, `Login Items Settings`.
 - `st-control`: `Load` / `Unload` for agents, in the domain the agent loads in. `Load` only
   on a row `not loaded` whose label no other plist's job holds. `Unload` acts only when
   `launchctl print` says the label's job came from the row's plist; otherwise it says
