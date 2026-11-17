@@ -246,3 +246,9 @@ Preconditions:
   Mac's password and launchctl cannot be made to fail under the app
   (`testADaemonsProgramIsFoundAsRootFindsIt`,
   `testAJobInADomainLaunchctlCouldNotReadHasNoKnownState`).
+- Two user agents with one label proven 2026-11-16 on the test Mac, run `2026-11-16T195038`
+  (commit `5b7014a`); copy in the development Mac's `build/verify/runs/test-mac-2026-11-16/`.
+  Each row opened its own plist (`Plist ~/Library/LaunchAgents/tattle-verify-dup-a.plist`,
+  then `-b`), and `Unload` on the loaded one left both rows `not loaded` and `launchctl print`
+  with no such service. Both rows read the one loaded job's `running, pid N`: a job's state
+  is found by its label.
