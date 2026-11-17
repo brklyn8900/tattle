@@ -474,14 +474,31 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertTrue(next.items.contains { $0.cpu != nil }, "the reading after the baseline has CPU")
     }
 
+    /// A signature can take a tenth of a second to read, so a build reads one per file, not one
+    /// per process, and the next build reads none of them again. Counted, not timed: how long
+    /// the reads take depends on the machine.
     func testThisMachine() throws {
-        let start = Date()
-        let cache = SignatureCache()
-        let snapshot = ProcessSnapshot.build(
-            entries: try ProcessTable.read(signature: cache.signature(of:at:)), previous: nil,
-            signature: cache.signature(at:), executable: cache.reading(of:at:))
-        let elapsed = Date().timeIntervalSince(start)
-        XCTAssertLessThan(elapsed, 10, "first build reads every signature: \(elapsed) s")
+        final class Reads: @unchecked Sendable {
+            private let lock = NSLock()
+            private var paths: [String] = []
+            func add(_ path: String) { lock.withLock { paths.append(path) } }
+            var all: [String] { lock.withLock { paths } }
+        }
+        let reads = Reads()
+        let cache = SignatureCache(read: {
+            reads.add($0)
+            return CodeSignature.reading(path: $0)
+        })
+        func build() throws -> ProcessSnapshot {
+            ProcessSnapshot.build(
+                entries: try ProcessTable.read(signature: cache.signature(of:at:)), previous: nil,
+                signature: cache.signature(at:), executable: cache.reading(of:at:))
+        }
+        let snapshot = try build()
+        XCTAssertFalse(reads.all.isEmpty, "the first build reads the signatures")
+        _ = try build()
+        let repeated = Dictionary(grouping: reads.all, by: { $0 }).filter { $0.value.count > 1 }.keys.sorted()
+        XCTAssertEqual(repeated, [], "each file's signature is read once, unless the file changed meanwhile")
         XCTAssertEqual(snapshot.groups.reduce(0) { $0 + $1.members.count }, snapshot.items.count, "every process in exactly one row")
         XCTAssertEqual(Set(snapshot.groups.map(\.id)).count, snapshot.groups.count)
         let system = try XCTUnwrap(snapshot.group(id: ProcessGroup.systemID))
