@@ -30,16 +30,15 @@ private struct ConnectionsList: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if !fresh.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            SectionTitle(title: "First contact", marked: true)
+                        PanelSection(title: "First contact", marked: true) {
                             CardRows(items: fresh) { live in
                                 NavRow(route: .connection(live)) { FirstContactRow(live: live, now: snapshot.takenAt, state: state) }
                             }
                         }
                     }
                     if !seen.connections.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            SectionTitle(title: "Seen before", trailing: seen.connections.count == 1 ? "1 connection" : "\(seen.connections.count) connections")
+                        PanelSection(title: "Seen before", trailing: seen.connections.count == 1 ? "1 connection" : "\(seen.connections.count) connections",
+                                     follows: !fresh.isEmpty) {
                             CardRows(items: seen.groups) { group in
                                 // The page is the app's, with every connection it has open.
                                 NavRow(route: .connectionGroup(snapshot.group(id: group.id) ?? group)) { ConnectionGroupRow(group: group) }
