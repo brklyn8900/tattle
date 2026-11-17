@@ -47,11 +47,11 @@ private struct StartupList: View {
                         .padding(.vertical, 10)
                     }
                 }
-                ForEach(StartupItem.Group.allCases, id: \.self) { group in
+                let shown = StartupItem.Group.allCases.filter { !snapshot.items(in: $0).isEmpty }
+                ForEach(shown, id: \.self) { group in
                     let items = snapshot.items(in: group)
                     if !items.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            SectionTitle(title: group.title, description: group.description)
+                        PanelSection(title: group.title, description: group.description, follows: group != shown.first) {
                             CardRows(items: items) { item in
                                 NavRow(route: .startupItem(item)) { StartupRow(item: item) }
                             }
