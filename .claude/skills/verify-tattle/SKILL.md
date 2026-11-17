@@ -101,7 +101,7 @@ value; `ax dump` shows both.
 
 Stable handles: the tabs `Network`, `Processes`, `Ports`, `Startup`; the buttons
 `Settings…`, `Quit Tattle`, `Back`, `Explain`, `Reveal in Finder`; the packet-access
-link at the bottom of the Network list (`Packet access on`, `Allow packet access`, `Packet
+link in the panel's footer on the Network tab (`Packet access on`, `Allow packet access`, `Packet
 access off`, or `Packet access: install again`); the Network list's summary, which starts
 `N open from M apps`.
 

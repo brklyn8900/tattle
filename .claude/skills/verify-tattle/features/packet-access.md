@@ -8,7 +8,7 @@ the same view or from the Startup tab. Design: `docs/adr/0003-bpf-descriptor-bro
 
 ## Sub-features
 
-- `pa-link`: the link at the bottom of the Network list reads `Packet access on` while
+- `pa-link`: the link in the panel's footer on the Network tab reads `Packet access on` while
   capturing, else `Allow packet access` (none installed), `Packet access off` (this
   build's, not capturing), or `Packet access: install again` (another build's, another
   account's, incomplete or not loaded).
@@ -24,7 +24,7 @@ the same view or from the Startup tab. Design: `docs/adr/0003-bpf-descriptor-bro
 
 ## How to get to it (user POV)
 
-- Network tab, the link under the heading, then the buttons in the view.
+- Network tab, the link in the panel's footer, then the buttons in the view.
 - Startup tab, the daemons group, the broker's row, `Remove`.
 
 ## Driving it with tattle-verify
