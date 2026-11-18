@@ -26,6 +26,8 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(item("at login, by its app", .enabled, parent: "Acme").whyHere(gone: false), "It runs at login, by its app. It belongs to Acme.")
         XCTAssertEqual(item("at login", .disabled).whyHere(gone: false), "It is disabled, so macOS does not start it.")
         XCTAssertEqual(item("at login", .off).whyHere(gone: false), "It is switched off in System Settings, so it does not run.")
+        XCTAssertEqual(item("at login", .notTurnedOn).whyHere(gone: false), "Its app has not turned it on, so it does not run.")
+        XCTAssertEqual(item("at login", .notTurnedOn).whyHere(gone: true), "Its app had not turned it on, so it did not run.")
         XCTAssertEqual(item("never", .placeholder).whyHere(gone: false), "Its file is empty, so nothing runs.")
         XCTAssertEqual(item(nil, .unreadable(reason: "x")).whyHere(gone: false), "Tattle could not read its file, so when it runs is not known.")
         XCTAssertEqual(item(nil, .enabled).whyHere(gone: false), "Nothing says when it runs.")
@@ -90,10 +92,42 @@ final class StartupSnapshotTests: XCTestCase {
         XCTAssertEqual(apps[0].runs, "/Applications/Magnet.app")
         let background = snapshot.items(in: .background)
         XCTAssertEqual(background.map(\.name), ["magnetLauncher", "Podcasts refresh"])
-        XCTAssertEqual(background[0].state, .enabled, "the allowed bit is the System Settings toggle")
+        XCTAssertEqual(background[0].state, .notTurnedOn, "allowed, but its app has not turned it on")
         XCTAssertEqual(background[0].parent, "Magnet")
         XCTAssertEqual(background[0].runs, "/Applications/Magnet.app/Contents/Library/LoginItems/magnetLauncher.app")
         XCTAssertEqual(background[1].state, .off, "set by the app but switched off by the user")
+    }
+
+    /// A helper or an agent an app registers runs only when its app has turned it on (the
+    /// enabled bit) and System Settings allows it (the allowed bit). The allowed bit stays set
+    /// on a record its app has not turned on, and launchd then has no job for it.
+    func testARegisteredHelperOrAgentIsOnOnlyWhenItsAppTurnedItOnAndSettingsAllowIt() {
+        let settingsOff = "It is switched off in System Settings, so it does not run."
+        let appOff = "Its app has not turned it on, so it does not run."
+        let cases: [(enabled: Bool, allowed: Bool, stopped: String?)] = [
+            (true, true, nil), (true, false, settingsOff), (false, true, appOff), (false, false, appOff),
+        ]
+        for (enabled, allowed, stopped) in cases {
+            let app = login("2.com.example.app", name: "Example", kind: .app, url: "file:///Applications/Example.app/",
+                            bundle: "com.example.app", enabled: false, allowed: true)
+            // As macOS records an agent registered from inside its app: no bundle id, paths
+            // relative to the app.
+            let agent = login("8.com.example.launcher", name: "ExampleLauncher", kind: .agent,
+                              url: "Contents/Library/LaunchAgents/com.example.launcher.plist", executable: "Contents/Resources/ExampleLauncher",
+                              container: "2.com.example.app", enabled: enabled, allowed: allowed)
+            let helper = login("4.com.example.helper", name: "ExampleHelper", kind: .loginItemHelper,
+                               url: "Contents/Library/LoginItems/ExampleHelper.app", container: "2.com.example.app",
+                               bundle: "com.example.helper", enabled: enabled, allowed: allowed)
+            let rows = StartupSnapshot.build(launchd: .init(items: [], appleCount: 0, unreadable: []), loginItems: [app, agent, helper],
+                                             state: LaunchctlState(), signature: { _ in nil }).items(in: .background)
+            XCTAssertEqual(rows.map(\.name), ["ExampleHelper", "ExampleLauncher"])
+            for row in rows {
+                let bits = "\(row.name), enabled \(enabled), allowed \(allowed)"
+                XCTAssertEqual(row.state.text, stopped == nil ? "on" : "off", bits)
+                XCTAssertEqual(row.state.isActive, stopped == nil, bits)
+                XCTAssertEqual(row.whyHere(gone: false), (stopped ?? "It runs \(row.trigger ?? "").") + " It belongs to Example.", bits)
+            }
+        }
     }
 
     func testOnlyTheDaemonWithTheBrokersLabelIsTattlesBroker() {

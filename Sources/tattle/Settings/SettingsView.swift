@@ -63,6 +63,9 @@ struct SettingsView: View {
                     Text("Keep connection history for \(settings.retentionDays) days")
                 }
             }
+            Section {
+                LabeledContent("Version", value: AppVersion.current)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 720)

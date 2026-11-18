@@ -1,19 +1,21 @@
 import XCTest
+@testable import tattle
 
 /// Checks on how `make app` builds the bundle, read from make's dry run, so make builds nothing.
 final class BuildTests: XCTestCase {
     private var repository: URL { URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() }
 
-    private func recipe(_ variables: [String]) throws -> [String] {
+    private func recipe(_ variables: [String], environment: [String: String] = [:], status: Int32 = 0) throws -> [String] {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/make")
         process.arguments = ["-n", "-C", repository.path, "app"] + variables
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
-        if waitForExit(process) { XCTAssertEqual(process.terminationStatus, 0) }
         let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        if waitForExit(process) { XCTAssertEqual(process.terminationStatus, status, "make app \(variables)") }
         return text.split(separator: "\n").map(String.init)
     }
 
@@ -27,6 +29,39 @@ final class BuildTests: XCTestCase {
         for line in signing {
             XCTAssertTrue(line.contains("--options runtime"), line)
         }
+    }
+
+    /// make app records the version and the commit under the keys Settings reads. The version
+    /// is given here, as make release gives it: a clone without tags, such as CI's, has none.
+    func testEveryBuildRecordsItsVersionAndCommitWhereTheAppReadsThem() throws {
+        let lines = try recipe(["SIGN_IDENTITY=-", "VERSION=2026.11.17.1"])
+        // The dry run prints a command's continued lines one by one.
+        let start = try XCTUnwrap(lines.firstIndex { $0.contains("version='2026.11.17.1'") })
+        let end = lines[start...].firstIndex { !$0.hasSuffix("\\") } ?? lines.endIndex - 1
+        let command = lines[start...end].joined(separator: "\n")
+        XCTAssertTrue(command.contains("plutil -replace \(AppVersion.versionKey) "), command)
+        XCTAssertTrue(command.contains("plutil -replace \(AppVersion.sourceCommitKey) "), command)
+    }
+
+    /// One exported in the environment must not stamp a build.
+    func testTheVersionIsTakenFromTheCommandLineOnly() throws {
+        let lines = try recipe(["SIGN_IDENTITY=-"], environment: ["VERSION": "2026.11.17.9"])
+        XCTAssertFalse(lines.contains { $0.contains("2026.11.17.9") })
+    }
+
+    func testAVersionOfAnotherFormIsRefused() throws {
+        for version in ["2026.11.17", "2026.11.17.0", "v2026.11.17.1", "1.0"] {
+            XCTAssertEqual(try recipe(["SIGN_IDENTITY=-", "VERSION=\(version)"], status: 2), [], version)
+        }
+    }
+
+    /// Nothing committed says which release the code is: the source's Info.plist holds a
+    /// placeholder the app reads as no version.
+    func testTheSourceCarriesNoVersion() throws {
+        let data = try Data(contentsOf: repository.appending(path: "Resources/Info.plist"))
+        let info = try XCTUnwrap(try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        XCTAssertEqual(AppVersion.text(info: info), "Unknown")
+        XCTAssertEqual(AppVersion.text(info: info.merging([AppVersion.sourceCommitKey: "abc1234"]) { $1 }), "abc1234")
     }
 
     /// What the ad-hoc signing line actually does, not just what it says: a copy of the
