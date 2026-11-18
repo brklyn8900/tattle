@@ -91,9 +91,11 @@ on the selected one, and the readings have no box around them. On glass the pane
 whatever the Mac's appearance and the Appearance setting, as a Control Center panel is; a
 line sets each group of rows apart from the one above, and a group's title folds its rows
 away until the app quits; a row with no app icon has a round badge; a page slides in over
-the one it came from; and Settings and Quit are a gear and a power symbol. Only what the
-user does moves: no reading animates when it changes, and with Reduce Motion nothing slides
-or folds with a spring.
+the one it came from; and Settings and Quit are a gear and a power symbol. The Network
+list's summary is a few words at the bottom of the panel, with the whole line as their
+tooltip and accessibility label; only an error from packet access stays above the list.
+Only what the user does moves: no reading animates when it changes, and with Reduce Motion
+nothing slides or folds with a spring.
 Before macOS 26 it keeps its own opaque colours and cards.
 Both looks give the controls and readings the same accessibility labels.
 
