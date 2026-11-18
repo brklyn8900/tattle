@@ -51,7 +51,7 @@ struct PanelView: View {
             case .processes: "cpu"
             case .ports: "door.left.hand.open"
             // On glass the power symbol is Quit's, at the bottom of the panel.
-            case .startup: PanelLook.glass ? "play.circle" : "power"
+            case .startup: PanelLook.glass ? "sun.max" : "power"
             }
         }
     }
@@ -116,8 +116,8 @@ struct PanelView: View {
         }
     }
 
-    /// The tabs from macOS 26: one glass capsule holding the four, the selected one a raised
-    /// pill that slides to wherever it is picked.
+    /// The tabs from macOS 26: the four in a row on the window with nothing behind them, the
+    /// selected one a raised pill that slides to wherever it is picked.
     @available(macOS 26.0, *)
     private var glassTabs: some View {
         HStack(spacing: 0) {
@@ -150,8 +150,9 @@ struct PanelView: View {
                         if selected {
                             Capsule()
                                 .fill(.primary.opacity(0.13))
-                                .overlay { Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.5) }
-                                .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
+                                // A whole point wide: half a point is half a pixel on a display
+                                // that is not Retina, where the bottom of the outline went missing.
+                                .overlay { Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 1) }
                                 .matchedGeometryEffect(id: "selection", in: tabSelection)
                         }
                     }
@@ -163,11 +164,9 @@ struct PanelView: View {
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        // Only the capsule animates the change, so the pill slides while the list and the
-        // footer switch at once.
+        // Only the row animates the change, so the pill slides while the list and the footer
+        // switch at once.
         .animation(.snappy(duration: 0.3, extraBounce: 0.12), value: tab)
-        .padding(4)
-        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
     /// The tabs before macOS 26.
