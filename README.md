@@ -117,7 +117,11 @@ it is a different build:
   refuses the new one. Open the **Packet access** screen from the link at the bottom of the
   Network tab, click **Install again** and approve the administrator dialog. While Tattle is
   not capturing, the link reads **Packet access: install again**.
-- Full Disk Access is lost: grant it again as under [Full Disk Access](#full-disk-access).
+- Full Disk Access is lost, though its switch may still show on: the grant belongs to the
+  build you replaced. In System Settings, turn Tattle's switch off; macOS might say Tattle
+  keeps the access until it is quit and offer **Quit & Reopen** or **Later**: choose **Later**.
+  Then quit Tattle, turn the switch on and open Tattle again. If Tattle is not in the list,
+  add it as under [Full Disk Access](#full-disk-access).
 - Your history and settings, in `~/Library/Application Support/Tattle/`, are kept.
 
 ### Build from source
