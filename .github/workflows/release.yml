@@ -120,16 +120,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # A release or draft of this version, made by hand or by an earlier run, is refused:
-          # to build it again, delete the stale draft first.
-          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
-          # Not a pipe: under pipefail, grep -q leaving early could fail the writer and read as no match.
-          if grep -qxF "v$VERSION" <<<"$existing"; then
-            echo "::error::a release or draft named v$VERSION exists already; delete the stale draft and run again"
+          # A published release of this version is refused: the version job refuses one too, but
+          # one may have been published since. Every draft of it, made by hand or by an earlier
+          # run, is replaced: the new draft is made first, then the earlier ones are deleted, so a
+          # failed upload leaves them as they were. Any call failing fails the step.
+          # Releases are listed as "<tag> <draft> <id>"; a tag holds no space.
+          releases=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | "\(.tag_name) \(.draft) \(.id)"')
+          matches=$(awk -v tag="v$VERSION" '$1 == tag' <<<"$releases")
+          if awk '$2 == "false" { found = 1 } END { exit !found }' <<<"$matches"; then
+            echo "::error::a published release named v$VERSION exists already; write the next release's version in Resources/Info.plist"
             exit 1
           fi
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
             --title "Tattle $VERSION" --notes "" "dist/Tattle-$VERSION.zip" "dist/Tattle-$VERSION.zip.sha256"
+          for id in $(awk '{ print $3 }' <<<"$matches"); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+            echo "Deleted the earlier draft v$VERSION ($id)"
+          done
           {
             echo "Draft v$VERSION from $GITHUB_SHA"
             echo

@@ -144,7 +144,8 @@ on every push and pull request. The app's version (`YYYY.MM.DD.N`) is written in
 release is published carries it. `make release` builds a release: the app for Apple silicon
 and Intel, signed ad hoc, zipped and named for that version, with the zip's SHA-256 checksum.
 The release workflow runs it on a push to `build/release` or by hand, refuses a version
-already published, and uploads the zip and its checksum to a draft release.
+already published, and uploads the zip and its checksum to a draft release, which replaces
+any earlier draft of that version.
 
 The app icon is an eye, drawn in `Resources/AppIcon.svg`. `make icon` redraws
 `Resources/AppIcon.icns` from it with `sips` and `iconutil`; the `.icns` is committed, so a
