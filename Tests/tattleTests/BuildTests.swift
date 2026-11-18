@@ -1,4 +1,5 @@
 import XCTest
+@testable import tattle
 
 /// Checks on how `make app` builds the bundle, read from make's dry run, so make builds nothing.
 final class BuildTests: XCTestCase {
@@ -30,9 +31,9 @@ final class BuildTests: XCTestCase {
     }
 
     /// A bundle that records no commit is the release, so every build but make release's
-    /// records one.
+    /// records one, under the key the app reads.
     func testOnlyTheReleaseRecordsNoCommit() throws {
-        let recordsCommit = { (line: String) in line.contains("plutil -replace TattleSourceCommit") }
+        let recordsCommit = { (line: String) in line.contains("plutil -replace \(AppVersion.sourceCommitKey) ") }
         XCTAssertTrue(try recipe(["SIGN_IDENTITY=-"]).contains(where: recordsCommit))
         XCTAssertFalse(try recipe(["SIGN_IDENTITY=-", "RELEASE=1"]).contains(where: recordsCommit))
     }

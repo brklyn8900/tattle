@@ -92,9 +92,9 @@ endif
 ifeq ($(RELEASE),)
 	@# Any build but the release records the commit it was built from, with "-dirty" when the
 	@# tree had changes, in TattleSourceCommit, a key of the app's own: both version keys hold
-	@# only numbers and periods. A bundle without the key is the release. A copy that is not its
-	@# own git checkout (a source archive, or one unpacked inside another repository) records
-	@# "unknown".
+	@# only numbers and periods. Settings shows it after the version (AppVersion); a bundle
+	@# without the key is the release. A copy that is not its own git checkout (a source
+	@# archive, or one unpacked inside another repository) records "unknown".
 	@plist=$(APPDIR)/Contents/Info.plist; \
 	top=$$(git rev-parse --show-toplevel 2>/dev/null); \
 	if [ -z "$$top" ] || [ "$$(cd "$$top" && pwd -P)" != "$$(pwd -P)" ]; then \
