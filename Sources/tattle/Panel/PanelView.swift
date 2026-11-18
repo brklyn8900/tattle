@@ -251,6 +251,17 @@ struct PanelView: View {
             }
             .accessibilityLabel("Settings\u{2026}")
             .help(PanelLook.glass ? "Settings" : "")
+            if PanelLook.glass, tab == .network, router.path.isEmpty, let snapshot = state.panelNetworkSnapshot {
+                // The list's summary in a few words; the whole of it for a pointer held here
+                // and for VoiceOver.
+                let summary = NetworkSummary(snapshot: snapshot, network: state.network)
+                Text(summary.short)
+                    .font(PanelFont.small)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .help(summary.full)
+                    .accessibilityLabel(summary.full)
+            }
             Spacer()
             if tab == .network, router.path.isEmpty {
                 let capturing = if case .capturing = state.network.captureStatus { true } else { false }
@@ -263,7 +274,7 @@ struct PanelView: View {
                     }
                     .contentShape(Rectangle())
                 }
-                Spacer()
+                if !PanelLook.glass { Spacer() }
             }
             QuitButton(symbolOnly: PanelLook.glass)
         }
