@@ -5,16 +5,21 @@ DEV_ID        := $(APP_ID).dev
 CONFIG        ?= release
 BUILD         := build
 # The architectures make app builds, joined into one universal binary (empty builds this Mac's
-# own only, as a plain swift build does), and the version it stamps into the app. Both are
-# taken from the command line only, as make release passes them: make reads every
-# environment variable as a variable, and one exported under either name must not change
-# what make app or make run builds.
+# own only, as a plain swift build does). It is taken from the command line only, as make
+# release passes it: make reads every environment variable as a variable, and one exported
+# under that name must not change what make app or make run builds.
 ifneq ($(origin ARCHS),command line)
 override ARCHS :=
 endif
-ifneq ($(origin VERSION),command line)
-override VERSION :=
+# The app's version is written in Resources/Info.plist, both version keys alike, by the commit
+# that prepares a release, and every build until that release is published carries it. A
+# release is tagged v<version>. Nothing given to make changes it; one in the environment is
+# overridden here.
+ifeq ($(origin VERSION),command line)
+$(error the version is written in Resources/Info.plist; make takes no VERSION)
 endif
+VERSION_FORMAT := ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$$
+VERSION       := $(shell plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)
 BINDIR       := $(if $(ARCHS),.build/universal/$(CONFIG),.build/$(CONFIG))
 BIN           := $(BINDIR)/$(APP)
 # What make app bundles: the release app unless dev-app overrides all three.
@@ -52,6 +57,10 @@ test:
 
 # Each product on its own: `build` would link the app without its stack size first.
 app:
+	@echo "$(VERSION)" | grep -qE '$(VERSION_FORMAT)' \
+	  || { echo "error: CFBundleShortVersionString in Resources/Info.plist is not of the form YYYY.MM.DD.N: $(VERSION)" >&2; exit 1; }
+	@[ "$$(plutil -extract CFBundleVersion raw -o - Resources/Info.plist)" = "$(VERSION)" ] \
+	  || { echo "error: CFBundleVersion in Resources/Info.plist differs from its CFBundleShortVersionString" >&2; exit 1; }
 ifeq ($(ARCHS),)
 	swift build -c $(CONFIG) --product $(BROKER) $(LINK_SDK)
 	swift build -c $(CONFIG) --product $(APP) $(LINK_SDK) -Xlinker -stack_size -Xlinker $(APP_STACK)
@@ -76,8 +85,6 @@ endif
 	cp Resources/Info.plist $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(BUNDLE_NAME)" $(APPDIR)/Contents/Info.plist
-	$(if $(VERSION),plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(APPDIR)/Contents/Info.plist)
-	$(if $(VERSION),plutil -replace CFBundleVersion -string "$(VERSION)" $(APPDIR)/Contents/Info.plist)
 	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
 	cp Resources/AppIcon.icns $(APPDIR)/Contents/Resources/AppIcon.icns
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
@@ -137,14 +144,12 @@ endif
 dev-app:
 	$(MAKE) app APPDIR=$(DEVDIR) BUNDLE_ID=$(DEV_ID) BUNDLE_NAME="Tattle Dev"
 
-# What a release ships: the app for Apple silicon and Intel, signed ad hoc and stamped with
-# VERSION (YYYY.MM.DD.N), zipped with ditto so the bundle and its signature survive, and the
-# zip's SHA-256 checksum.
+# What a release ships: the app for Apple silicon and Intel, signed ad hoc, zipped with ditto
+# so the bundle and its signature survive and named for the version in Resources/Info.plist
+# (make app checks its form), and the zip's SHA-256 checksum.
 release:
-	@echo "$(VERSION)" | grep -qE '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$$' \
-	  || { echo "error: give the version as VERSION=YYYY.MM.DD.N" >&2; exit 1; }
 	rm -rf $(DISTDIR)
-	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=- VERSION=$(VERSION)
+	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=-
 	@# A build on a person's Mac leaves their home folder's path in the binaries, and signing
 	@# with an identity leaves its certificate's name: neither ships. Only the path of GitHub's
 	@# runner account, where releases are built, is expected; a release built elsewhere fails.
