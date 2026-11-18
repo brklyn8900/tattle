@@ -29,6 +29,14 @@ final class BuildTests: XCTestCase {
         }
     }
 
+    /// A bundle that records no commit is the release, so every build but make release's
+    /// records one.
+    func testOnlyTheReleaseRecordsNoCommit() throws {
+        let recordsCommit = { (line: String) in line.contains("plutil -replace TattleSourceCommit") }
+        XCTAssertTrue(try recipe(["SIGN_IDENTITY=-"]).contains(where: recordsCommit))
+        XCTAssertFalse(try recipe(["SIGN_IDENTITY=-", "RELEASE=1"]).contains(where: recordsCommit))
+    }
+
     /// What the ad-hoc signing line actually does, not just what it says: a copy of the
     /// broker probe signed with its options, launched with DYLD_INSERT_LIBRARIES, must not
     /// run the library. A copy signed without them must, or the library would prove nothing.

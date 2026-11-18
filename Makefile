@@ -5,11 +5,15 @@ DEV_ID        := $(APP_ID).dev
 CONFIG        ?= release
 BUILD         := build
 # The architectures make app builds, joined into one universal binary (empty builds this Mac's
-# own only, as a plain swift build does). It is taken from the command line only, as make
-# release passes it: make reads every environment variable as a variable, and one exported
-# under that name must not change what make app or make run builds.
+# own only, as a plain swift build does), and RELEASE, which only make release sets. Both are
+# taken from the command line only, as make release passes them: make reads every
+# environment variable as a variable, and one exported under either name must not change
+# what make app or make run builds.
 ifneq ($(origin ARCHS),command line)
 override ARCHS :=
+endif
+ifneq ($(origin RELEASE),command line)
+override RELEASE :=
 endif
 # The app's version is written in Resources/Info.plist, both version keys alike, by the commit
 # that prepares a release, and every build until that release is published carries it. A
@@ -85,6 +89,25 @@ endif
 	cp Resources/Info.plist $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(BUNDLE_NAME)" $(APPDIR)/Contents/Info.plist
+ifeq ($(RELEASE),)
+	@# Any build but the release records the commit it was built from, with "-dirty" when the
+	@# tree had changes, in TattleSourceCommit, a key of the app's own: both version keys hold
+	@# only numbers and periods. A bundle without the key is the release. A copy that is not its
+	@# own git checkout (a source archive, or one unpacked inside another repository) records
+	@# "unknown".
+	@plist=$(APPDIR)/Contents/Info.plist; \
+	top=$$(git rev-parse --show-toplevel 2>/dev/null); \
+	if [ -z "$$top" ] || [ "$$(cd "$$top" && pwd -P)" != "$$(pwd -P)" ]; then \
+	  commit=unknown; \
+	  echo "warning: not a git checkout; the app records its commit as unknown" >&2; \
+	else \
+	  commit=$$(git rev-parse --short HEAD) && [ -n "$$commit" ] \
+	    || { echo "error: cannot read the commit of HEAD" >&2; exit 1; }; \
+	  [ -z "$$(git status --porcelain)" ] || commit=$$commit-dirty; \
+	fi; \
+	plutil -replace TattleSourceCommit -string "$$commit" $$plist; \
+	echo "version $(VERSION), commit $$commit"
+endif
 	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
 	cp Resources/AppIcon.icns $(APPDIR)/Contents/Resources/AppIcon.icns
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
@@ -149,7 +172,7 @@ dev-app:
 # (make app checks its form), and the zip's SHA-256 checksum.
 release:
 	rm -rf $(DISTDIR)
-	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=-
+	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=- RELEASE=1
 	@# A build on a person's Mac leaves their home folder's path in the binaries, and signing
 	@# with an identity leaves its certificate's name: neither ships. Only the path of GitHub's
 	@# runner account, where releases are built, is expected; a release built elsewhere fails.
