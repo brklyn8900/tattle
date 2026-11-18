@@ -35,8 +35,11 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         case disabled
         /// An empty plist.
         case placeholder
-        /// A login item with its System Settings toggle on or off.
+        /// A login item System Settings allows (a helper or an agent its app registered also
+        /// needs its app to have turned it on), or one System Settings does not allow.
         case enabled, off
+        /// A login item its app has not turned on: it does not run, whatever System Settings allows.
+        case notTurnedOn
         /// A plist Tattle could not read: launchd may still run the job.
         case unreadable(reason: String)
         /// A folder Tattle could not list: launchd may still run the jobs in it.
@@ -53,7 +56,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
             case .disabled: "disabled"
             case .placeholder: "empty file, nothing runs"
             case .enabled: "on"
-            case .off: "off"
+            case .off, .notTurnedOn: "off"
             case .unreadable: "could not be read"
             case .unlisted: "could not be listed"
             case .unknown: "state not known"
@@ -148,6 +151,7 @@ struct StartupItem: Equatable, Sendable, Identifiable {
         let when = switch state {
         case .disabled: "It \(be) disabled, so macOS \(does) not start it."
         case .off: "It \(be) switched off in System Settings, so it \(does) not run."
+        case .notTurnedOn: "Its app \(gone ? "had" : "has") not turned it on, so it \(does) not run."
         case .placeholder: "Its file \(be) empty, so nothing \(gone ? "ran" : "runs")."
         case .unreadable, .unlisted: "Tattle could not read its file, so when it runs is not known."
         default: trigger.map { "It \(gone ? "ran" : "runs") \($0)." } ?? "Nothing says when it runs."
@@ -340,7 +344,17 @@ struct StartupSnapshot: Equatable, Sendable {
         if let label = item.bundleIdentifier, let service = state[item.kind == .daemon ? .system : .gui].services[label], let pid = service.pid {
             return .running(pid: pid)
         }
-        return item.allowed ? .enabled : .off
+        switch item.kind {
+        // A helper or an agent its app registered runs only with both bits set: the app sets
+        // enabled when it turns the item on, and allowed stays set after the app turns it off.
+        case .loginItemHelper, .agent where !item.legacy:
+            if !item.enabled { return .notTurnedOn }
+            return item.allowed ? .enabled : .off
+        // No record has shown what the enabled bit does for the other kinds: they keep to the
+        // allowed bit.
+        default:
+            return item.allowed ? .enabled : .off
+        }
     }
 
     private static func trigger(for item: LoginItem) -> String? {
