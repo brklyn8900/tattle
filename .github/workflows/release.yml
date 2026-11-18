@@ -1,12 +1,15 @@
 name: Release
 
 # Builds the release zip and its checksum and uploads them to a draft release. A draft makes
-# no tag: GitHub tags the commit the zip was built from when the draft is published.
-# A push to build/release runs it, since a manual run needs this file on the default branch.
+# no tag: GitHub tags the commit the zip was built from when the draft is published. It is
+# started by hand, with the release's version, since nothing in the repository names it.
 on:
-  push:
-    branches: [build/release]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "The release's version, YYYY.MM.DD.N: the day it is released, within a day of today's in UTC, and N counting that day's releases"
+        required: true
+        type: string
 
 # Read only, unless a job says otherwise.
 permissions:
@@ -21,9 +24,8 @@ defaults:
 concurrency: release
 
 jobs:
-  # Reads the version the commit carries and refuses one already published. It has no checkout
-  # and runs no code from the repository and no third-party action: gh and Python's plist
-  # reader alone.
+  # Checks the version given and refuses one already published or tagged. It has no checkout
+  # and runs no code from the repository and no third-party action: gh alone.
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -34,36 +36,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          # Typed by whoever started the run, so read from here, never written into the script.
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          # The version is CFBundleShortVersionString in Resources/Info.plist at the commit being
-          # built, written there by the commit that prepares the release; CFBundleVersion must
-          # match it. Python only reads the two values; their shape is checked here before
-          # either is printed, since a line in one could read as a workflow command.
-          gh api -H "Accept: application/vnd.github.raw+json" \
-            "repos/$REPOSITORY/contents/Resources/Info.plist?ref=$GITHUB_SHA" > Info.plist
-          values=$(python3 -I -c 'import plistlib, sys
-          info = plistlib.load(open(sys.argv[1], "rb"))
-          for key in ("CFBundleShortVersionString", "CFBundleVersion"):
-              value = info.get(key)
-              print(value if isinstance(value, str) and "\n" not in value else "")' Info.plist)
-          version=$(sed -n 1p <<<"$values")
-          build=$(sed -n 2p <<<"$values")
-          [[ "$version" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$ ]] \
-            || { echo "::error::CFBundleShortVersionString in Resources/Info.plist is not of the form YYYY.MM.DD.N"; exit 1; }
-          [[ "$build" == "$version" ]] \
-            || { echo "::error::CFBundleVersion in Resources/Info.plist differs from its CFBundleShortVersionString"; exit 1; }
-          # A published release, or a tag, already holds this version: the commit that prepares
-          # the next release writes its version in Info.plist first. Either list failing to read
-          # fails the step. Drafts are not counted: a build is redone under the same version
-          # until its release is published.
+          # Not printed before its shape is checked: a line in it could read as a workflow command.
+          [[ "$RELEASE_VERSION" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$ ]] \
+            || { echo "::error::the version input is not of the form YYYY.MM.DD.N"; exit 1; }
+          # Its date must be yesterday, today or tomorrow in UTC, so a typo cannot name the
+          # release for another day; today's date in UTC is already the next day's in an evening
+          # west of UTC. All three come from one reading of the clock.
+          day=${RELEASE_VERSION%.*}
+          now=$(date -u +%s)
+          yesterday=$(date -u -d "@$((now - 86400))" +%Y.%m.%d)
+          today=$(date -u -d "@$now" +%Y.%m.%d)
+          tomorrow=$(date -u -d "@$((now + 86400))" +%Y.%m.%d)
+          [[ "$day" == "$yesterday" || "$day" == "$today" || "$day" == "$tomorrow" ]] \
+            || { echo "::error::the date $day is not $yesterday, $today or $tomorrow, the dates within a day of today's in UTC"; exit 1; }
+          # A published release, or a tag, already holds this version. Either list failing to
+          # read fails the step. Drafts are not counted, and this token cannot see them: a build
+          # is redone under the same version until its release is published.
           releases=$(gh api "repos/$REPOSITORY/releases" --paginate --jq '.[] | select(.draft | not) | .tag_name')
           tags=$(gh api "repos/$REPOSITORY/tags" --paginate --jq '.[].name')
           # Not a pipe: under pipefail, grep -q leaving early could fail the writer and read as no match.
-          if grep -qxF "v$version" <<<"$releases"$'\n'"$tags"; then
-            echo "::error::v$version is published already; write the next release's version in Resources/Info.plist"
+          if grep -qxF "v$RELEASE_VERSION" <<<"$releases"$'\n'"$tags"; then
+            echo "::error::v$RELEASE_VERSION is published or tagged already; start a run with the next version"
             exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
   build:
     needs: version
@@ -71,7 +70,8 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      # The version names the files this job uploads: its shape is checked before any use.
+      # The version goes into the app's Info.plist and the files' names: its shape is checked
+      # before anything uses it.
       - name: Check the version
         run: |
           [[ "$VERSION" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$ ]] \
@@ -83,7 +83,7 @@ jobs:
           persist-credentials: false
 
       - name: Build
-        run: make release
+        run: make release VERSION="$VERSION"
 
       # Anyone signed in to GitHub can download a public repository's run artifacts, so the
       # untested zip is kept one day, enough for the draft job, not the default 90.
@@ -128,7 +128,7 @@ jobs:
           releases=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | "\(.tag_name) \(.draft) \(.id)"')
           matches=$(awk -v tag="v$VERSION" '$1 == tag' <<<"$releases")
           if awk '$2 == "false" { found = 1 } END { exit !found }' <<<"$matches"; then
-            echo "::error::a published release named v$VERSION exists already; write the next release's version in Resources/Info.plist"
+            echo "::error::a published release named v$VERSION exists already; start a run with the next version"
             exit 1
           fi
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \

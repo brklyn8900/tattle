@@ -5,25 +5,27 @@ DEV_ID        := $(APP_ID).dev
 CONFIG        ?= release
 BUILD         := build
 # The architectures make app builds, joined into one universal binary (empty builds this Mac's
-# own only, as a plain swift build does), and RELEASE, which only make release sets. Both are
-# taken from the command line only, as make release passes them: make reads every
-# environment variable as a variable, and one exported under either name must not change
-# what make app or make run builds.
+# own only, as a plain swift build does), and VERSION, the release's version, which make
+# release requires. Both are taken from the command line only, as make release passes them:
+# make reads every environment variable as a variable, and one exported under either name
+# must not change what make app or make run builds.
 ifneq ($(origin ARCHS),command line)
 override ARCHS :=
 endif
-ifneq ($(origin RELEASE),command line)
-override RELEASE :=
+ifneq ($(origin VERSION),command line)
+override VERSION :=
 endif
-# The app's version is written in Resources/Info.plist, both version keys alike, by the commit
-# that prepares a release, and every build until that release is published carries it. A
-# release is tagged v<version>. Nothing given to make changes it; one in the environment is
-# overridden here.
-ifeq ($(origin VERSION),command line)
-$(error the version is written in Resources/Info.plist; make takes no VERSION)
+ifneq ($(VERSION),)
+ifeq ($(shell echo '$(VERSION)' | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$$'),)
+$(error VERSION is not of the form YYYY.MM.DD.N: $(VERSION))
 endif
-VERSION_FORMAT := ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[1-9][0-9]*$$
-VERSION       := $(shell plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)
+endif
+# What make app records in the app about its source, read by scripts/source-version.sh: the
+# version, VERSION when make release gives it or else the newest release tag the code
+# includes, and the commit. Both are read when make app's recipe is expanded, before it
+# builds, so nothing the build writes counts as a change to the tree.
+SOURCE_VERSION = $(if $(VERSION),$(VERSION),$(shell sh scripts/source-version.sh version))
+SOURCE_COMMIT  = $(shell sh scripts/source-version.sh commit)
 BINDIR       := $(if $(ARCHS),.build/universal/$(CONFIG),.build/$(CONFIG))
 BIN           := $(BINDIR)/$(APP)
 # What make app bundles: the release app unless dev-app overrides all three.
@@ -61,10 +63,6 @@ test:
 
 # Each product on its own: `build` would link the app without its stack size first.
 app:
-	@echo "$(VERSION)" | grep -qE '$(VERSION_FORMAT)' \
-	  || { echo "error: CFBundleShortVersionString in Resources/Info.plist is not of the form YYYY.MM.DD.N: $(VERSION)" >&2; exit 1; }
-	@[ "$$(plutil -extract CFBundleVersion raw -o - Resources/Info.plist)" = "$(VERSION)" ] \
-	  || { echo "error: CFBundleVersion in Resources/Info.plist differs from its CFBundleShortVersionString" >&2; exit 1; }
 ifeq ($(ARCHS),)
 	swift build -c $(CONFIG) --product $(BROKER) $(LINK_SDK)
 	swift build -c $(CONFIG) --product $(APP) $(LINK_SDK) -Xlinker -stack_size -Xlinker $(APP_STACK)
@@ -89,25 +87,23 @@ endif
 	cp Resources/Info.plist $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" $(APPDIR)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(BUNDLE_NAME)" $(APPDIR)/Contents/Info.plist
-ifeq ($(RELEASE),)
-	@# Any build but the release records the commit it was built from, with "-dirty" when the
-	@# tree had changes, in TattleSourceCommit, a key of the app's own: both version keys hold
-	@# only numbers and periods. Settings shows it after the version (AppVersion); a bundle
-	@# without the key is the release. A copy that is not its own git checkout (a source
-	@# archive, or one unpacked inside another repository) records "unknown".
-	@plist=$(APPDIR)/Contents/Info.plist; \
-	top=$$(git rev-parse --show-toplevel 2>/dev/null); \
-	if [ -z "$$top" ] || [ "$$(cd "$$top" && pwd -P)" != "$$(pwd -P)" ]; then \
-	  commit=unknown; \
-	  echo "warning: not a git checkout; the app records its commit as unknown" >&2; \
+	@# The version in both version keys and the commit in TattleSourceCommit, a key of the
+	@# app's own: Settings shows them (AppVersion). One that cannot be read is not written, and
+	@# the build goes on: the version keys keep Resources/Info.plist's placeholder, which the
+	@# app reads as no version.
+	@plist=$(APPDIR)/Contents/Info.plist; version='$(SOURCE_VERSION)'; commit='$(SOURCE_COMMIT)'; \
+	if [ -n "$$version" ]; then \
+	  plutil -replace CFBundleShortVersionString -string "$$version" $$plist \
+	    && plutil -replace CFBundleVersion -string "$$version" $$plist || exit 1; \
 	else \
-	  commit=$$(git rev-parse --short HEAD) && [ -n "$$commit" ] \
-	    || { echo "error: cannot read the commit of HEAD" >&2; exit 1; }; \
-	  [ -z "$$(git status --porcelain)" ] || commit=$$commit-dirty; \
+	  echo "warning: no release tag can be read from the source; the app records no version" >&2; \
 	fi; \
-	plutil -replace TattleSourceCommit -string "$$commit" $$plist; \
-	echo "version $(VERSION), commit $$commit"
-endif
+	if [ -n "$$commit" ]; then \
+	  plutil -replace TattleSourceCommit -string "$$commit" $$plist || exit 1; \
+	else \
+	  echo "warning: not a git checkout of its own; the app records no commit" >&2; \
+	fi; \
+	echo "version $${version:-none}, commit $${commit:-none}"
 	cp -R Resources/knowledge $(APPDIR)/Contents/Resources/knowledge
 	cp Resources/AppIcon.icns $(APPDIR)/Contents/Resources/AppIcon.icns
 	@if [ -n "$(SIGN_IDENTITY)" ]; then \
@@ -167,12 +163,17 @@ endif
 dev-app:
 	$(MAKE) app APPDIR=$(DEVDIR) BUNDLE_ID=$(DEV_ID) BUNDLE_NAME="Tattle Dev"
 
-# What a release ships: the app for Apple silicon and Intel, signed ad hoc, zipped with ditto
-# so the bundle and its signature survive and named for the version in Resources/Info.plist
-# (make app checks its form), and the zip's SHA-256 checksum.
+# What a release ships: the app for Apple silicon and Intel, signed ad hoc and stamped with
+# VERSION (YYYY.MM.DD.N), zipped with ditto so the bundle and its signature survive, and the
+# zip's SHA-256 checksum.
 release:
+	@[ -n "$(VERSION)" ] || { echo "error: give the release's version as VERSION=YYYY.MM.DD.N" >&2; exit 1; }
+	@# The release shows the commit it is built from, the one its tag is made on, so it is
+	@# built from a git checkout with no changes.
+	@echo '$(SOURCE_COMMIT)' | grep -qE '^[0-9a-f]+$$' \
+	  || { echo "error: a release is built from a git checkout with no changes; its commit reads as \"$(SOURCE_COMMIT)\"" >&2; exit 1; }
 	rm -rf $(DISTDIR)
-	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=- RELEASE=1
+	$(MAKE) app APPDIR=$(DISTDIR)/Tattle.app CONFIG=release ARCHS="arm64 x86_64" SIGN_IDENTITY=- VERSION=$(VERSION)
 	@# A build on a person's Mac leaves their home folder's path in the binaries, and signing
 	@# with an identity leaves its certificate's name: neither ships. Only the path of GitHub's
 	@# runner account, where releases are built, is expected; a release built elsewhere fails.
