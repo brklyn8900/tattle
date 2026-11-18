@@ -24,8 +24,9 @@ defaults:
 concurrency: release
 
 jobs:
-  # Checks the version given and refuses one already published or tagged. It has no checkout
-  # and runs no code from the repository and no third-party action: gh alone.
+  # Checks the version given and refuses one already published or tagged, or one that skips a
+  # number. It has no checkout and runs no code from the repository and no third-party action:
+  # gh alone.
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -62,6 +63,13 @@ jobs:
             echo "::error::v$RELEASE_VERSION is published or tagged already; start a run with the next version"
             exit 1
           fi
+          # N counts the day's releases, so it is one past the highest N among that day's
+          # published releases and tags: a typo cannot skip a number. A draft's number is taken
+          # only once it is published.
+          last=$(printf '%s\n%s\n' "$releases" "$tags" | awk -v p="v$day." 'index($0, p) == 1 { n = substr($0, length(p) + 1)
+              if (n ~ /^[0-9]+$/ && n + 0 > max) max = n + 0 } END { print max + 0 }')
+          [[ "${RELEASE_VERSION##*.}" == "$((last + 1))" ]] \
+            || { echo "::error::v$RELEASE_VERSION is not the next number: the next release of $day is v$day.$((last + 1))"; exit 1; }
           echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
   build:
