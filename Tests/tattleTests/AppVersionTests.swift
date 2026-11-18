@@ -2,24 +2,30 @@ import XCTest
 @testable import tattle
 
 final class AppVersionTests: XCTestCase {
-    private let version = "CFBundleShortVersionString"
+    private let version = AppVersion.versionKey, commit = AppVersion.sourceCommitKey
 
-    func testTheReleaseShowsItsVersionAlone() {
+    func testEveryCopyShowsItsVersionAndCommit() {
+        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1", commit: "abc1234"]), "2026.11.17.1 (abc1234)")
+        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.12", commit: "abc1234-dirty"]), "2026.11.17.12 (abc1234-dirty)")
+    }
+
+    /// A build where no release tag can be read, such as a shallow clone's.
+    func testNoVersionShowsTheCommitAlone() {
+        XCTAssertEqual(AppVersion.text(info: [commit: "abc1234"]), "abc1234")
+        XCTAssertEqual(AppVersion.text(info: [version: "0.0.0", commit: "abc1234"]), "abc1234", "a placeholder")
+        XCTAssertEqual(AppVersion.text(info: [version: "", commit: "abc1234-dirty"]), "abc1234-dirty")
+    }
+
+    func testNoCommitShowsTheVersionAlone() {
         XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1"]), "2026.11.17.1")
+        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1", commit: ""]), "2026.11.17.1")
     }
 
-    func testAnotherBuildShowsDevAndItsCommit() {
-        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1", AppVersion.sourceCommitKey: "abc1234"]),
-                       "2026.11.17.1 dev (abc1234)")
-        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1", AppVersion.sourceCommitKey: "abc1234-dirty"]),
-                       "2026.11.17.1 dev (abc1234-dirty)")
-        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1", AppVersion.sourceCommitKey: "unknown"]),
-                       "2026.11.17.1 dev (unknown)")
-    }
-
-    /// No version key is no release: a bare executable has no Info.plist.
-    func testABundleWithoutAVersionIsNotTheRelease() {
-        XCTAssertEqual(AppVersion.text(info: [:]), "unknown dev (unknown)")
-        XCTAssertEqual(AppVersion.text(info: [AppVersion.sourceCommitKey: "abc1234"]), "unknown dev (abc1234)")
+    /// A build from a source archive, or a bare executable, which has no Info.plist.
+    func testNeitherShowsAPlainWord() {
+        XCTAssertEqual(AppVersion.text(info: [:]), "Unknown")
+        XCTAssertEqual(AppVersion.text(info: [version: "0.0.0"]), "Unknown", "a placeholder")
+        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.0"]), "Unknown", "N counts from 1")
+        XCTAssertEqual(AppVersion.text(info: [version: "2026.11.17.1\n"]), "Unknown")
     }
 }
