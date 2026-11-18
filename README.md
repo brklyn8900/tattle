@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="docs/images/network.png" width="480"
-       alt="Tattle's panel on the Network tab: the resources line, the four tabs, two First contact connections each named by its host, and below them the connections seen before, grouped by app with how many go to the internet or this network and who signed it">
+       alt="Tattle's panel on the Network tab: the resources line, the four tabs, three First contact connections each named by its host, and below them the connections seen before, grouped by app with how many go to the internet or this network and who signed it">
 </p>
 
 Tattle lists your Mac's network connections, running processes, listening ports and
@@ -56,7 +56,7 @@ probably here**, and **Should I care**.
 
 <p align="center">
   <img src="docs/images/process.png" width="360"
-       alt="WindowServer's page: signed by Apple, what it is, why it is probably here and whether to care, then its path, parent, account, start time and memory">
+       alt="sharingd's page: signed by Apple, what it is, why it is probably here and whether to care, then its path, parent, account, start time and memory">
 </p>
 
 Some things the Mac's own traffic does not reveal. A name hidden by Encrypted Client Hello
