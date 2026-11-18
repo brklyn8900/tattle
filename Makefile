@@ -32,6 +32,13 @@ SIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning | awk -F'"' '/
 # app's own link carries it: ld refuses it for the test bundle, which links the app's code too,
 # and a plain swift build links the app again without it.
 APP_STACK     := 0x800000
+# The SDK make app builds with, handed to the link of each Swift executable. swiftc gives the
+# SDK to clang, which runs the link, as --sysroot, and clang reads an SDK's version only from
+# -isysroot or SDKROOT: under the Swift Build system, which runs the link without SDKROOT,
+# ld then records the deployment target (macOS 14) as the SDK, and macOS draws the app's
+# windows as for that system.
+SDK           := $(shell xcrun --sdk macosx --show-sdk-path)
+LINK_SDK      := -Xswiftc -Xclang-linker -Xswiftc -isysroot -Xswiftc -Xclang-linker -Xswiftc $(SDK)
 # make release builds here, so it never replaces a release build running from build/Tattle.app.
 DISTDIR       := $(BUILD)/dist
 
@@ -46,14 +53,14 @@ test:
 # Each product on its own: `build` would link the app without its stack size first.
 app:
 ifeq ($(ARCHS),)
-	swift build -c $(CONFIG) --product $(BROKER)
-	swift build -c $(CONFIG) --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK)
+	swift build -c $(CONFIG) --product $(BROKER) $(LINK_SDK)
+	swift build -c $(CONFIG) --product $(APP) $(LINK_SDK) -Xlinker -stack_size -Xlinker $(APP_STACK)
 else
 	@# Each architecture's products are copied beside the joined ones, so lipo gets known,
 	@# quoted paths; the assignment stops the build if the bin path cannot be read.
 	@set -e; for a in $(ARCHS); do \
-	  swift build -c $(CONFIG) --arch $$a --product $(BROKER); \
-	  swift build -c $(CONFIG) --arch $$a --product $(APP) -Xlinker -stack_size -Xlinker $(APP_STACK); \
+	  swift build -c $(CONFIG) --arch $$a --product $(BROKER) $(LINK_SDK); \
+	  swift build -c $(CONFIG) --arch $$a --product $(APP) $(LINK_SDK) -Xlinker -stack_size -Xlinker $(APP_STACK); \
 	  bin=$$(swift build -c $(CONFIG) --arch $$a --show-bin-path); \
 	  mkdir -p "$(BINDIR)/$$a"; \
 	  cp "$$bin/$(BROKER)" "$$bin/$(APP)" "$(BINDIR)/$$a/"; \
@@ -111,6 +118,19 @@ endif
 	for a in $$archs; do \
 	  otool -arch $$a -l $(APPDIR)/Contents/MacOS/$(APP) | grep -A4 LC_MAIN | grep -q "stacksize $$(printf %d $(APP_STACK))" \
 	    || { echo "error: $(APPDIR)/Contents/MacOS/$(APP) ($$a) does not fix its main thread's stack size" >&2; exit 1; }; \
+	done
+	@# macOS draws an app's windows by the SDK recorded in its binary, so a binary that records an
+	@# older SDK than the one it was built with gets an older system's windows (see SDK above).
+	@want=$$(xcrun --sdk "$(SDK)" --show-sdk-version) && [ -n "$$want" ] \
+	  || { echo "error: cannot read the version of the SDK $(SDK)" >&2; exit 1; }; \
+	for f in $(APPDIR)/Contents/MacOS/$(APP) $(APPDIR)/Contents/MacOS/$(BROKER); do \
+	  archs=$$(lipo -archs $$f) && [ -n "$$archs" ] \
+	    || { echo "error: cannot read the architectures of $$f" >&2; exit 1; }; \
+	  for a in $$archs; do \
+	    got=$$(otool -arch $$a -l $$f | awk '/cmd LC_BUILD_VERSION/ { b = 1 } b && $$1 == "sdk" { print $$2; exit }'); \
+	    [ -n "$$got" ] && [ "$$(printf '%s\n%s\n' "$$want" "$$got" | sort -V | head -n 1)" = "$$want" ] \
+	      || { echo "error: $$f ($$a) records SDK $${got:-none}, older than the SDK $$want it was built with" >&2; exit 1; }; \
+	  done; \
 	done
 	@codesign -dv $(APPDIR) 2>&1 | grep -E '^(Authority|TeamIdentifier)' || true
 
