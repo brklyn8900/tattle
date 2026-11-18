@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="docs/images/network.png" width="480"
-       alt="Tattle's panel on the Network tab: the resources line, the four tabs, two First contact connections each named by its host, and below them the connections seen before, grouped by app with how many go to the internet or this network and who signed it">
+       alt="Tattle's panel on the Network tab: the resources line, the four tabs, three First contact connections each named by its host, and below them the connections seen before, grouped by app with how many go to the internet or this network and who signed it">
 </p>
 
 Tattle lists your Mac's network connections, running processes, listening ports and
@@ -56,7 +56,7 @@ probably here**, and **Should I care**.
 
 <p align="center">
   <img src="docs/images/process.png" width="360"
-       alt="WindowServer's page: signed by Apple, what it is, why it is probably here and whether to care, then its path, parent, account, start time and memory">
+       alt="sharingd's page: signed by Apple, what it is, why it is probably here and whether to care, then its path, parent, account, start time and memory">
 </p>
 
 Some things the Mac's own traffic does not reveal. A name hidden by Encrypted Client Hello
@@ -117,7 +117,11 @@ it is a different build:
   refuses the new one. Open the **Packet access** screen from the link at the bottom of the
   Network tab, click **Install again** and approve the administrator dialog. While Tattle is
   not capturing, the link reads **Packet access: install again**.
-- Full Disk Access is lost: grant it again as under [Full Disk Access](#full-disk-access).
+- Full Disk Access is lost, though its switch may still show on: the grant belongs to the
+  build you replaced. In System Settings, turn Tattle's switch off; macOS might say Tattle
+  keeps the access until it is quit and offer **Quit & Reopen** or **Later**: choose **Later**.
+  Then quit Tattle, turn the switch on and open Tattle again. If Tattle is not in the list,
+  add it as under [Full Disk Access](#full-disk-access).
 - Your history and settings, in `~/Library/Application Support/Tattle/`, are kept.
 
 ### Build from source
@@ -177,7 +181,8 @@ Packet access is tested on macOS 26 only.
 
 The Startup tab reads the login-items database, which macOS puts behind Full Disk Access.
 Without the grant, the tab lists launchd jobs only and says what is missing. To grant it,
-click **Open Full Disk Access Settings** in the Startup tab and turn Tattle on. Nothing
+click **Open Full Disk Access Settings** in the Startup tab and turn Tattle on. If Tattle
+is not in the list, click **+**, choose Tattle in Applications and turn it on. Nothing
 else in the app needs the grant. An ad-hoc build loses it on every rebuild.
 [ADR-0002](docs/adr/0002-login-items-full-disk-access.md) explains why.
 

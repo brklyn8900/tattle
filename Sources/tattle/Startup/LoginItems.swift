@@ -35,7 +35,9 @@ struct LoginItem: Equatable, Sendable {
     var container: String?
     /// Set to run: an app added to Open at Login, or a helper its app registered.
     var enabled: Bool
-    /// The System Settings toggle: the user permits it.
+    /// On an item's own record, the System Settings toggle: the user permits it. An app's
+    /// record can keep it set while its items are switched off. A helper or an agent its app
+    /// registered runs only when `enabled` is set too.
     var allowed: Bool
     var hidden: Bool
     var notified: Bool

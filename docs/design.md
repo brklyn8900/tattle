@@ -148,11 +148,22 @@ Swift, SwiftUI `MenuBarExtra`, macOS 14 or later. Swift Package Manager with a M
 the hardened runtime: with the first Apple Development identity in the keychain, or ad hoc
 without one; no Xcode project
 unless something forces one. GitHub Actions on `macos-latest` runs the tests and `make app`
-on every push and pull request. `make release VERSION=<YYYY.MM.DD.N>` builds a release: the
-app for Apple silicon and Intel, signed ad hoc and stamped with the version, zipped, with the
-zip's SHA-256 checksum. The release workflow runs it on a push to `build/release` or by hand,
-numbers the version from the date and the existing releases, and uploads the zip and its
-checksum to a draft release.
+on every push and pull request.
+
+No version is written in the code. `make app` records two values in the app it builds, read
+from the source before it builds (`scripts/source-version.sh`): the version, the newest
+release tag (`vYYYY.MM.DD.N`) reachable from `HEAD`, and `HEAD`'s short commit, with
+`-dirty` when the tree has changes. Settings shows them as `<version> (<commit>)`. A value
+that cannot be read is left out: a shallow clone without the tag shows the commit alone, and
+a source archive, which has neither, shows "Unknown". A release is given its version when
+its build is started, since its tag is made only when its draft is published. The release
+workflow is run by hand with the version and refuses one whose date is not within a day of
+today's in UTC, one already published or tagged, and one whose number is not one past that
+day's published releases and tags. It runs `make release VERSION=<version>`, which builds,
+from a checkout with no changes, the app for Apple silicon and Intel, signed ad hoc and
+stamped with the version and the commit, zipped, with the zip's SHA-256 checksum; the
+workflow uploads both to a draft release, which replaces any earlier draft of that version.
+Publishing the draft tags the commit it was built from.
 
 The app icon is an eye, drawn in `Resources/AppIcon.svg`. `make icon` redraws
 `Resources/AppIcon.icns` from it with `sips` and `iconutil`; the `.icns` is committed, so a

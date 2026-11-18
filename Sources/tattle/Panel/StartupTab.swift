@@ -197,7 +197,7 @@ struct StartupDetail: View {
                     Button("Load") { perform { try Launchctl.load(plist: plist, in: item.launchDomain) } }
                 case .running, .idle:
                     Button("Unload") { perform { try Launchctl.unload(label: item.label, in: item.launchDomain, from: plist) } }
-                case .notLoaded, .disabled, .placeholder, .enabled, .off, .unreadable, .unlisted, .unknown:
+                case .notLoaded, .disabled, .placeholder, .enabled, .off, .notTurnedOn, .unreadable, .unlisted, .unknown:
                     EmptyView()
                 }
             }
