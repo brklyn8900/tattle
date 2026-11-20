@@ -46,6 +46,20 @@ private struct PortsList: View {
     }
 }
 
+extension ListSummary {
+    init(ports snapshot: PortsSnapshot) {
+        let reachable = snapshot.items(in: .network).count
+        let groups = PortItem.Group.allCases.compactMap { group -> String? in
+            let count = snapshot.items(in: group).count
+            return count == 0 ? nil : "\(count) \(group.title.prefix(1).lowercased() + group.title.dropFirst())"
+        }
+        var few = ["\(snapshot.items.count) listening"]
+        if reachable > 0 { few.append("\(reachable) reachable from your network") }
+        self.init(short: few.joined(separator: " \u{00B7} "),
+                  full: groups.isEmpty ? few[0] : "\(snapshot.items.count) listening: \(groups.joined(separator: ", "))")
+    }
+}
+
 private struct PortRow: View {
     let item: PortItem
 
