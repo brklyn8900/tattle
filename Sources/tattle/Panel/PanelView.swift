@@ -251,16 +251,8 @@ struct PanelView: View {
             }
             .accessibilityLabel("Settings\u{2026}")
             .help(PanelLook.glass ? "Settings" : "")
-            if PanelLook.glass, tab == .network, router.path.isEmpty, let snapshot = state.panelNetworkSnapshot {
-                // The list's summary in a few words; the whole of it for a pointer held here
-                // and for VoiceOver.
-                let summary = NetworkSummary(snapshot: snapshot, network: state.network)
-                Text(summary.short)
-                    .font(PanelFont.small)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .help(summary.full)
-                    .accessibilityLabel(summary.full)
+            if PanelLook.glass, router.path.isEmpty {
+                FooterSummary(tab: tab, state: state)
             }
             Spacer()
             if tab == .network, router.path.isEmpty {
@@ -302,6 +294,33 @@ private struct FooterButtonStyle: ButtonStyle {
                 .foregroundStyle(hovered ? PanelColor.text : PanelColor.sub)
                 .background(hovered || configuration.isPressed ? PanelColor.fill : .clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .onHover { hovered = $0 }
+        }
+    }
+}
+
+/// The list's summary in a few words; the whole of it for a pointer held here and for
+/// VoiceOver. A view of its own, so that a new reading redraws these words and not the panel.
+private struct FooterSummary: View {
+    let tab: PanelView.Tab
+    let state: AppState
+
+    var body: some View {
+        if let summary {
+            Text(summary.short)
+                .font(PanelFont.small)
+                .monospacedDigit()
+                .lineLimit(1)
+                .help(summary.full)
+                .accessibilityLabel(summary.full)
+        }
+    }
+
+    private var summary: ListSummary? {
+        switch tab {
+        case .network: state.panelNetworkSnapshot.map { ListSummary(network: $0, observer: state.network) }
+        case .processes: state.processes.snapshot.map { ListSummary(processes: $0) }
+        case .ports: state.ports.snapshot.map { ListSummary(ports: $0) }
+        case .startup: state.startup.snapshot.map { ListSummary(startup: $0) }
         }
     }
 }

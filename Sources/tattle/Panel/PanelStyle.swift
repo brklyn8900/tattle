@@ -202,8 +202,16 @@ struct PanelSection<Content: View>: View {
     }
 }
 
+/// What a list holds, in a line: in the few words that fit at the bottom of the panel on
+/// glass, and in full for a pointer held over them and for VoiceOver.
+struct ListSummary {
+    let short: String
+    let full: String
+}
+
 /// The title over a card of rows, with an optional line of explanation. With `fold`, the title
-/// is a button that folds its rows away and carries an arrow that says which way they are.
+/// is a button that folds its rows away and carries an arrow that says which way they are, and
+/// the explanation is its tooltip.
 struct SectionTitle: View {
     let title: String
     var description: String?
@@ -227,8 +235,11 @@ struct SectionTitle: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .help(description ?? "")
                     .accessibilityLabel(title)
-                    .accessibilityValue(folded ? "Folded" : "")
+                    // The explanation is not on screen where the title folds, so it is here
+                    // for the accessibility tree, as the pointer has it in the tooltip.
+                    .accessibilityValue(folded ? "Folded" : description ?? "")
                     .accessibilityAddTraits(.isHeader)
                 } else {
                     name
@@ -236,7 +247,7 @@ struct SectionTitle: View {
                 Spacer()
                 if let trailing { Text(trailing).font(PanelFont.small) }
             }
-            if let description {
+            if let description, fold == nil {
                 Text(description)
                     .font(PanelFont.small)
                     .fixedSize(horizontal: false, vertical: true)

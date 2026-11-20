@@ -20,7 +20,7 @@ private struct ConnectionsList: View {
     var body: some View {
         let fresh = snapshot.connections.filter(\.isNew).sorted { $0.connection.firstSeen > $1.connection.firstSeen }
         let seen = NetworkSnapshot(connections: snapshot.connections.filter { !$0.isNew }, takenAt: snapshot.takenAt)
-        let summary = NetworkSummary(snapshot: snapshot, network: state.network)
+        let summary = ListSummary(network: snapshot, observer: state.network)
         VStack(alignment: .leading, spacing: 0) {
             // On glass the summary is at the bottom of the panel, and only what went wrong
             // stays above the list.
@@ -58,14 +58,9 @@ private struct ConnectionsList: View {
     }
 }
 
-/// What the Network list holds, in a line: in full, and in the few words that fit at the bottom
-/// of the panel, where the full line is what a pointer held over them and VoiceOver get.
-struct NetworkSummary {
-    let full: String
-    let short: String
-
+extension ListSummary {
     @MainActor
-    init(snapshot: NetworkSnapshot, network: NetworkObserver) {
+    init(network snapshot: NetworkSnapshot, observer network: NetworkObserver) {
         let groups = snapshot.groups.count
         let apps = "\(groups) \(groups == 1 ? "app" : "apps")"
         var parts = ["\(snapshot.connections.count) open from \(apps)"]
@@ -84,8 +79,7 @@ struct NetworkSummary {
         case .unavailable, .stopped:
             parts.append(PacketAccessView.namesOff(network.broker.installation))
         }
-        full = parts.joined(separator: " \u{00B7} ")
-        short = few.joined(separator: " \u{00B7} ")
+        self.init(short: few.joined(separator: " \u{00B7} "), full: parts.joined(separator: " \u{00B7} "))
     }
 }
 

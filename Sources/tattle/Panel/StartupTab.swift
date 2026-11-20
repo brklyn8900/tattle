@@ -90,6 +90,15 @@ private struct StartupList: View {
     }
 }
 
+extension ListSummary {
+    init(startup snapshot: StartupSnapshot) {
+        let running = snapshot.items.filter { if case .running = $0.state { true } else { false } }.count
+        let items = "\(snapshot.items.count) \(snapshot.items.count == 1 ? "item" : "items")"
+        self.init(short: "\(items) \u{00B7} \(running) running",
+                  full: "\(items) that start by themselves, \(running) running now, and \(snapshot.appleCount) system jobs of Apple's")
+    }
+}
+
 private struct StartupRow: View {
     let item: StartupItem
 
