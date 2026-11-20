@@ -11,6 +11,7 @@ struct TattleApp: App {
             state.sampler.start()
             state.network.start()
             state.settings.appearance.apply()
+            Task(priority: .utility) { await state.readListsAtLaunch() }
             self.state = state
             startupError = nil
         } catch {

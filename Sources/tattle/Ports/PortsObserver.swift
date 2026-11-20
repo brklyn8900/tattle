@@ -9,11 +9,11 @@ final class PortsObserver {
     private let signatures = SignatureCache()
     private var services: ServiceNames?
 
-    func refresh() async {
+    func refresh(priority: TaskPriority = .userInitiated) async {
         let signatures = signatures
         let services = self.services ?? ServiceNames.load()
         self.services = services
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<PortsSnapshot, Error> in
+        let result = await Task.detached(priority: priority) { () -> Result<PortsSnapshot, Error> in
             do {
                 let entries = try SocketTable.read()
                 // Listed without their signatures: each listener's is read when it is named.
