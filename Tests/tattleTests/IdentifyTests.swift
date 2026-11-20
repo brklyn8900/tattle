@@ -156,6 +156,41 @@ final class CodeSignatureTests: XCTestCase {
         XCTAssertEqual(cache.signature(at: file.path)?.codeHash, "2")
     }
 
+    /// A reader that will not wait gets no signature until one has been read, and reads none.
+    func testASignatureIsAwaitedUntilItHasBeenReadOnce() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "tattle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("one".utf8).write(to: file)
+        final class Reads: @unchecked Sendable { var paths: [String] = [] }
+        let reads = Reads()
+        let cache = SignatureCache(files: { _ in [] }, read: {
+            reads.paths.append($0)
+            return CodeSignature.Reading(signature: CodeSignature(signer: $0.hasPrefix("/bin/") ? .apple : .adHoc))
+        }, running: { _ in nil })
+
+        XCTAssertTrue(cache.awaits(file.path))
+        XCTAssertNil(cache.signatureWithoutWaiting(at: file.path))
+        let awaited = cache.readingWithoutWaiting(of: getpid(), at: file.path)
+        XCTAssertTrue(awaited.isAwaited)
+        XCTAssertNil(awaited.signature)
+        XCTAssertFalse(awaited.isSettled, "nothing to keep")
+        XCTAssertEqual(reads.paths, [], "none of them read it")
+
+        XCTAssertEqual(cache.reading(of: getpid(), at: file.path).signature?.signer, .adHoc)
+        XCTAssertFalse(cache.awaits(file.path))
+        XCTAssertEqual(cache.signatureWithoutWaiting(at: file.path)?.signer, .adHoc)
+        let read = cache.readingWithoutWaiting(of: getpid(), at: file.path)
+        XCTAssertFalse(read.isAwaited)
+        XCTAssertEqual(read.signature?.signer, .adHoc)
+        XCTAssertEqual(reads.paths, [file.path], "and it is read once")
+
+        // Where only macOS installs programs a signature is read at once: until it is, nothing
+        // says the process is part of macOS.
+        XCTAssertFalse(cache.awaits("/bin/sh"))
+        XCTAssertEqual(cache.readingWithoutWaiting(of: getpid(), at: "/bin/sh").signature?.signer, .apple)
+        XCTAssertEqual(reads.paths, [file.path, "/bin/sh"])
+    }
+
     /// A bundle's signature is read from files inside it, and writing over one of them leaves
     /// the folder's own dates as they were. The reading says which files they are.
     func testASignatureIsReadAgainWhenAFileItsReadingRestsOnChanges() throws {

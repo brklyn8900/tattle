@@ -454,6 +454,77 @@ final class ProcessSnapshotTests: XCTestCase {
         XCTAssertNil(try rules.lookup(kind: .process, key: "mdnsresponder"), "process names are case-sensitive")
     }
 
+    /// A list is shown before every signature it names is read (`ProcessesObserver`).
+    func testAProcessWhoseSignatureIsAwaitedSaysSoAndNamesNoSigner() throws {
+        func snapshot(awaiting awaited: Set<String>) -> ProcessSnapshot {
+            ProcessSnapshot.build(
+                entries: machine, previous: nil, signature: { awaited.contains($0) ? nil : self.sign($0) },
+                executable: { awaited.contains($1) ? .init(isSettled: false, isAwaited: true) : .init(signature: self.sign($1)) },
+                awaits: awaited.contains, runningApp: running, takenAt: epoch)
+        }
+        let slack = "/Applications/Slack.app"
+        let helper = slack + "/Contents/Frameworks/Slack Helper (GPU).app/Contents/MacOS/Slack Helper (GPU)"
+        let first = snapshot(awaiting: [slack, slack + "/Contents/MacOS/Slack", helper, "/usr/local/bin/ollama", "/usr/local/bin/claude"])
+        XCTAssertEqual(first.groups(sortedBy: .memory).map { "\($0.name):\($0.members.count):\($0.memoryBytes)" }, [
+            "ollama:2:1050", "Comet:2:670", "Slack:2:500", "iTerm:4:425", "macOS:7:349", "Mail:1:300", "node:1:80", "backup.sh:1:3",
+        ], "the rows are the ones the list has once every signature is read")
+
+        let ollama = try XCTUnwrap(first.item(pid: 300))
+        XCTAssertTrue(ollama.signerIsAwaited)
+        XCTAssertNil(ollama.signature)
+        XCTAssertNil(ollama.identity, "nothing tells it from another program of its name yet")
+        XCTAssertEqual(ollama.signerText, "checking who signed it")
+        XCTAssertFalse(ollama.facts.contains { $0.name == "Signed by" })
+        let program = try XCTUnwrap(first.group(id: "pid:300"))
+        XCTAssertTrue(program.signerIsAwaited)
+        XCTAssertEqual(program.signerText, "checking who signed it")
+
+        let app = try XCTUnwrap(first.group(id: slack))
+        XCTAssertTrue(app.signerIsAwaited)
+        XCTAssertNil(app.signature)
+        XCTAssertNil(app.identity)
+        XCTAssertEqual(app.signerText, "checking who signed it")
+
+        let terminal = try XCTUnwrap(first.group(id: "/Applications/iTerm.app"))
+        XCTAssertFalse(terminal.signerIsAwaited, "a program the app started is not a file in its bundle")
+        XCTAssertEqual(terminal.signature?.summary, "iTerm")
+        XCTAssertEqual(first.item(pid: 202)?.signerIsAwaited, true)
+        XCTAssertEqual(first.group(id: ProcessGroup.systemID)?.signerIsAwaited, false)
+
+        XCTAssertEqual(first.awaited(sortedBy: .memory), [
+            .init(pid: 301, path: "/usr/local/bin/ollama"), .init(pid: 300, path: "/usr/local/bin/ollama"),
+            .init(path: slack), .init(pid: 101, path: helper), .init(pid: 100, path: slack + "/Contents/MacOS/Slack"),
+            .init(pid: 202, path: "/usr/local/bin/claude"),
+        ], "row by row as the list is sorted, an app before its processes")
+
+        // The app's signer is not named while a file running in its bundle is still awaited:
+        // it may be one the signer did not sign.
+        let second = snapshot(awaiting: [helper])
+        XCTAssertEqual(second.group(id: slack)?.signerIsAwaited, true)
+        XCTAssertNil(second.group(id: slack)?.signature)
+        XCTAssertEqual(second.awaited(sortedBy: .memory), [.init(path: slack), .init(pid: 101, path: helper)])
+
+        let settled = snapshot(awaiting: [])
+        XCTAssertEqual(settled.group(id: slack)?.signerIsAwaited, false)
+        XCTAssertEqual(settled.group(id: slack)?.signature?.summary, "Slack")
+        XCTAssertTrue(settled.awaited(sortedBy: .memory).isEmpty)
+        XCTAssertEqual(settled, ProcessSnapshot.build(entries: machine, previous: nil, signature: sign, runningApp: running, takenAt: epoch))
+    }
+
+    /// The first reading does not wait for the signatures, and they are all read in the end.
+    @MainActor
+    func testTheListIsReadBeforeItsSignaturesAndSettles() async throws {
+        let observer = ProcessesObserver()
+        await observer.refresh()
+        let first = try XCTUnwrap(observer.snapshot)
+        XCTAssertNotNil(first.group(id: ProcessGroup.systemID), "macOS's own programs are read at once: they are one row from the start")
+        XCTAssertTrue(first.items.filter(\.signerIsAwaited).allSatisfy { $0.signature == nil && $0.identity == nil })
+        await observer.settled()
+        let settled = try XCTUnwrap(observer.snapshot)
+        XCTAssertTrue(settled.awaited(sortedBy: .memory).isEmpty)
+        XCTAssertFalse(settled.items.contains(where: \.signerIsAwaited))
+    }
+
     @MainActor
     func testTheFirstReadingOfARunIsABaselineWithNoCPU() async throws {
         let observer = ProcessesObserver()
@@ -463,6 +534,8 @@ final class ProcessSnapshotTests: XCTestCase {
             return try XCTUnwrap(observer.snapshot)
         }
         await observer.refresh()
+        // The readings that follow as the signatures come in are not the ones counted here.
+        await observer.settled()
         let continuing = try await readAfterAPause()
         XCTAssertTrue(continuing.items.contains { $0.cpu != nil }, "a reading that follows another has CPU")
 

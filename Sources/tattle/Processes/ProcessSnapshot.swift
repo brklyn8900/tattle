@@ -84,6 +84,10 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// The file at its path is not the code it runs (`SignatureCache.ProcessReading`), which
     /// is why it has no signer: an update in place, or another file renamed over its own.
     var differsFromFile = false
+    /// Its executable's signature has yet to be read (`SignatureCache.readingWithoutWaiting`):
+    /// it has no signer and no identity because nothing was read, and its name is the one it
+    /// goes by before that says whether it is an interpreter or a developer tool.
+    var signerIsAwaited = false
 
     var id: Int32 { pid }
     var memoryBytes: UInt64 { usage?.memoryBytes ?? 0 }
@@ -97,6 +101,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     /// that the executable has been deleted since the process started (an upgraded tool), or
     /// that the file at its path is not the code it runs.
     var signerText: String? {
+        if signerIsAwaited { return Self.awaitedSignerText }
         if let interpreter { return signature?.signer == .unnamed ? "\(interpreter), unnamed code" : "\(interpreter) script" }
         if path == nil, pid > 0 { return "executable no longer on disk" }
         if differsFromFile { return Self.changedOnDiskText }
@@ -104,6 +109,7 @@ struct ProcessItem: Equatable, Sendable, Identifiable {
     }
 
     static let changedOnDiskText = "changed on disk since it started"
+    static let awaitedSignerText = "checking who signed it"
 
     /// The working directory with the home folder as "~", when it says something: the
     /// root and the home folder themselves do not.
@@ -202,6 +208,10 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// The app's signer is withheld only because files in its bundle are not the code their
     /// processes run, as an app updated in place is until it is started again.
     var differsFromFile = false
+    /// The signature the row's signer rests on has yet to be read: the top process's, or the
+    /// app's and those of the files in its bundle that are running. The row then has no
+    /// signer and no identity, and is not to be explained as the program it will read as.
+    var signerIsAwaited = false
     /// The member `leader` names.
     var leaderPid: Int32?
 
@@ -220,6 +230,7 @@ struct ProcessGroup: Equatable, Sendable, Identifiable {
     /// in the app's bundle changed on disk since its process started.
     var signerText: String? {
         if kind == .process, let text = leader?.signerText { return text }
+        if signerIsAwaited { return ProcessItem.awaitedSignerText }
         if let signature { return signature.summary }
         return differsFromFile ? ProcessItem.changedOnDiskText : nil
     }
@@ -331,6 +342,24 @@ struct ProcessSnapshot: Equatable, Sendable {
         lastCPU.merging(groups.compactMap { group in group.cpu.map { (group.id, $0) } }) { _, new in new }
     }
 
+    /// A signature the list is shown without: an app's bundle, or a process's executable.
+    struct Awaited: Equatable, Sendable {
+        var pid: Int32?
+        var path: String
+    }
+
+    /// The signatures the list is shown without, in the order they are to be read: row by row
+    /// as the list is sorted, so what is at the top is settled first, and within a row the app
+    /// before its processes, largest first. An app's bundle is named whenever its row awaits
+    /// anything: reading one already read costs nothing.
+    func awaited(sortedBy sort: Sort) -> [Awaited] {
+        groups(sortedBy: sort).flatMap { group -> [Awaited] in
+            var awaited = group.members.filter(\.signerIsAwaited).compactMap { item in item.path.map { Awaited(pid: item.pid, path: $0) } }
+            if case .app(let bundle) = group.kind, group.signerIsAwaited { awaited.insert(Awaited(path: bundle.path), at: 0) }
+            return awaited
+        }
+    }
+
     func item(pid: Int32) -> ProcessItem? { items.first { $0.pid == pid } }
     func group(id: String) -> ProcessGroup? { groups.first { $0.id == id } }
 
@@ -341,9 +370,12 @@ struct ProcessSnapshot: Equatable, Sendable {
     /// say: Chromium browsers run their main process from a code-sign clone of the
     /// bundle under a .app.bundle name. CPU shares come from the difference against
     /// `previous`, when `continuesPrevious` says nothing separates the two readings.
+    /// `awaits` says an app bundle's signature has yet to be read, where `signature` then
+    /// gives none; a process's reading says so itself.
     static func build(
         entries: [ProcessEntry], previous: ProcessSnapshot?, continuesPrevious: Bool = true,
         signature: (String) -> CodeSignature?, executable: (Int32, String) -> SignatureCache.ProcessReading,
+        awaits: (String) -> Bool = { _ in false },
         runningApp: (Int32) -> String? = { _ in nil },
         mainExecutable: (AppBundle) -> String? = { Bundle(path: $0.path)?.executablePath },
         responsible: (Int32) -> Int32? = ResponsibleProcess.pid(for:), takenAt: Date = Date()
@@ -359,6 +391,9 @@ struct ProcessSnapshot: Equatable, Sendable {
         for entry in entries {
             let reading = entry.path.map { executable(entry.pid, $0) }
             let executableSignature = reading?.signature
+            // Awaited, it has no signer, not a script's either: whether its executable is an
+            // interpreter can rest on the signature, and so can what it runs.
+            let isAwaited = reading?.isAwaited ?? false
             var cpu: Double?
             if let before = earlier[entry.pid], abs(before.started.timeIntervalSince(entry.started)) < 1,
                let now = entry.usage?.cpuSeconds, let then = before.usage?.cpuSeconds {
@@ -369,11 +404,12 @@ struct ProcessSnapshot: Equatable, Sendable {
                 uid: entry.uid, name: entry.name, path: entry.path, interpreter: entry.interpreter,
                 workingDirectory: entry.workingDirectory, started: entry.started,
                 usage: entry.usage, cpu: cpu,
-                signature: entry.codeSignature(executable: executableSignature),
-                interpreterSignature: entry.interpreterSignature(executable: executableSignature),
+                signature: isAwaited ? nil : entry.codeSignature(executable: executableSignature),
+                interpreterSignature: isAwaited ? nil : entry.interpreterSignature(executable: executableSignature),
                 app: app(of: entry.pid, in: { byPid[$0] }, runningApp: runningApp, responsible: responsible, memo: &apps),
-                identity: entry.identity(executable: executableSignature),
-                differsFromFile: reading?.differsFromFile ?? false))
+                identity: isAwaited ? nil : entry.identity(executable: executableSignature),
+                differsFromFile: reading?.differsFromFile ?? false,
+                signerIsAwaited: isAwaited))
         }
 
         let itemsByPid = Dictionary(items.map { ($0.pid, $0) }, uniquingKeysWith: { a, _ in a })
@@ -393,7 +429,9 @@ struct ProcessSnapshot: Equatable, Sendable {
                     identity = key.root?.identity
                 case .system: groupSignature = CodeSignature(signer: .apple)
                 }
-                groupsByID[key.id] = ProcessGroup(id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature, identity: identity, leaderPid: key.root?.pid)
+                groupsByID[key.id] = ProcessGroup(
+                    id: key.id, kind: key.kind, name: key.name, members: [], signature: groupSignature, identity: identity,
+                    signerIsAwaited: key.root?.signerIsAwaited ?? false, leaderPid: key.root?.pid)
                 order.append(key.id)
             }
             groupsByID[key.id]!.members.append(item)
@@ -406,7 +444,13 @@ struct ProcessSnapshot: Equatable, Sendable {
             let isForeign = { (item: ProcessItem) in
                 bundle.holdsForeign(item.path, signed: item.interpreterSignature ?? item.signature, bundle: signed)
             }
-            if groups[index].members.contains(where: isForeign) {
+            // Until the bundle's signature and that of each of its files that is running are
+            // read, nothing says whether the signer signed them all: the row names none.
+            if awaits(bundle.path) || groups[index].members.contains(where: { $0.signerIsAwaited && $0.path?.hasPrefix(bundle.path + "/") == true }) {
+                groups[index].signerIsAwaited = true
+                groups[index].signature = nil
+                groups[index].identity = nil
+            } else if groups[index].members.contains(where: isForeign) {
                 groups[index].identity = nil
                 if signed?.namesSigner == true {
                     groups[index].signature = nil

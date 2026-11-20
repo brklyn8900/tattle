@@ -12,6 +12,7 @@ struct ProcessesTab: View {
                 ListPlaceholder(loading: "Reading processes", error: state.processes.error)
             }
         }
+        .onChange(of: sort, initial: true) { _, sort in state.processes.order = sort }
         .task(id: state.panelIsShowing) {
             guard state.panelIsShowing else { return }
             state.processes.beginReadings()
@@ -221,7 +222,9 @@ struct ProcessGroupDetail: View {
         DetailPage(back: back, title: group.name) {
             ItemHeader(name: group.name, path: group.kind == .process ? nil : group.path, signature: group.signature,
                        gone: gone ? "No longer running" : nil)
-            if let key = group.explainKey {
+            if group.signerIsAwaited {
+                AwaitedSignerNote()
+            } else if let key = group.explainKey {
                 ExplainSection(request: ExplainRequest(kind: .process, key: key, facts: group.facts, isApplesProgram: group.isApplesProgram, identity: group.identity),
                                whyHere: group.whyHere(gone: gone), state: state)
             }
@@ -261,11 +264,34 @@ struct ProcessDetail: View {
         let gone = current == nil
         DetailPage(back: back, title: item.name) {
             ItemHeader(name: item.name, signature: item.signature, gone: gone ? "No longer running" : nil)
-            ExplainSection(request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts, isApplesProgram: item.isApplesProgram, identity: item.identity),
-                           whyHere: item.whyHere(gone: gone), state: state)
+            if item.signerIsAwaited {
+                AwaitedSignerNote()
+            } else {
+                ExplainSection(request: ExplainRequest(kind: .process, key: item.explainKey, facts: item.facts, isApplesProgram: item.isApplesProgram, identity: item.identity),
+                               whyHere: item.whyHere(gone: gone), state: state)
+            }
             FactsCard(facts: item.facts.filter { !Self.headerFacts.contains($0.name) })
         } bar: {
             QuitBar(path: item.path, item: gone ? nil : item, name: item.name, state: state, error: $actionError, armed: $armed)
+        }
+    }
+}
+
+/// What a page shows in place of the explanation while its program's signature is being read:
+/// who signed it is part of what tells it from another program of its name, so an answer
+/// asked for or looked up before that is known would not be about this one.
+private struct AwaitedSignerNote: View {
+    var body: some View {
+        Card {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Checking who signed it. What it is can be explained once that is known.")
+                    .foregroundStyle(PanelColor.sub)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
     }
 }

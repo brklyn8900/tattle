@@ -60,6 +60,16 @@ resolved at run time. Without it every reading makes the check, and a process on
 out, which nothing then tells from one whose file is gone, shows no signer where it would
 read as its file (`Identify/RunningCode.swift`).
 
+Reading every signature for the first time takes tens of seconds, so the list is shown
+before they are read. A reading of the list gives a file's signature at once where only
+macOS installs programs: there it is quick, and until it is read nothing says the process is
+part of macOS. It gives any other only once that signature has been read; until then the
+process is listed with its signer awaited, with no signer and no identity, and its page
+explains nothing. The awaited signatures are read one at a time, in the order of the list,
+and the list is read again as they come in. The first reading is made in the background at
+launch, as Startup's and Ports' are, and the list on screen takes it over
+(`Processes/ProcessesObserver.swift`).
+
 Helpers are attributed to their app by
 walking the parent chain and by path containment (`Slack Helper (GPU)` lives inside
 `Slack.app`). A service launchd started for an app has neither, so it is filed under the

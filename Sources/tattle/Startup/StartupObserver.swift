@@ -7,13 +7,19 @@ final class StartupObserver {
     private(set) var snapshot: StartupSnapshot?
     private(set) var isLoading = false
     private let signatures = SignatureCache()
+    private var reading: Task<StartupSnapshot, Never>?
 
-    func refresh() async {
-        guard !isLoading else { return }
+    /// A caller that finds a reading under way waits for it, which lends that reading the
+    /// caller's priority.
+    func refresh(priority: TaskPriority = .userInitiated) async {
+        if let reading {
+            _ = await reading.value
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         let signatures = signatures
-        snapshot = await Task.detached(priority: .userInitiated) { () -> StartupSnapshot in
+        let task = Task.detached(priority: priority) { () -> StartupSnapshot in
             let launchd = LaunchdReader().read()
             var loginItems: [LoginItem] = []
             var loginItemsError: String?
@@ -33,7 +39,10 @@ final class StartupObserver {
             snapshot.loginItemsError = loginItemsError
             snapshot.loginItemsNeedFullDiskAccess = needsFullDiskAccess
             return snapshot
-        }.value
+        }
+        reading = task
+        snapshot = await task.value
+        reading = nil
     }
 }
 
@@ -60,6 +69,8 @@ final class SignatureCache: @unchecked Sendable {
     private let lock = NSLock()
     private var cache: [String: Entry] = [:]
     private var verdicts: [Int32: Verdict] = [:]
+    /// The paths a signature has been read at, kept or not: what `awaits` no longer holds back.
+    private var readPaths: Set<String> = []
     /// How many verdicts are kept before those of processes that have ended are dropped.
     private var verdictLimit = 1024
     private let files: @Sendable (String) -> [String]
@@ -93,6 +104,30 @@ final class SignatureCache: @unchecked Sendable {
         /// is why the reading has no signature, not that none was read or that the reading did
         /// not settle. Not set for code changed in memory, which has no signature either.
         var differsFromFile = false
+        /// Nothing was read: the file's signature has yet to be (`readingWithoutWaiting`), so
+        /// there is none here, and its absence says nothing of the process.
+        var isAwaited = false
+    }
+
+    /// Whether the signature at `path` has yet to be read, by a reader that will not wait for
+    /// it. A first reading takes up to a second for one program, and a list of every process
+    /// tens of seconds for them all. A file where only macOS installs programs is never
+    /// awaited: its reading is quick, its processes are not checked against it, and until it
+    /// is read nothing says its process is part of macOS.
+    func awaits(_ path: String) -> Bool {
+        !ApplesProgram.isInstalled(at: path) && !lock.withLock { readPaths.contains(path) }
+    }
+
+    /// `signature(at:)` for a reader that will not wait: nil while the signature is awaited.
+    func signatureWithoutWaiting(at path: String) -> CodeSignature? {
+        awaits(path) ? nil : signature(at: path)
+    }
+
+    /// `reading(of:at:)` for a reader that will not wait: awaited until the file's signature
+    /// has been read once, by `reading(of:at:)` or `signature(at:)`, and from then on the
+    /// reading those give, kept current as they keep it.
+    func readingWithoutWaiting(of pid: Int32, at path: String) -> ProcessReading {
+        awaits(path) ? ProcessReading(isSettled: false, isAwaited: true) : reading(of: pid, at: path)
     }
 
     /// The signature of the process `pid`, whose executable the kernel names as `path`: the
@@ -138,7 +173,10 @@ final class SignatureCache: @unchecked Sendable {
         let reading = read(path)
         let entry = Entry(files: files, versions: versions, signature: reading.signature)
         let isSettled = reading.files.filter { $0 != path } == files && versions == Self.versions(of: path, files)
-        lock.withLock { cache[path] = isSettled ? entry : nil }
+        lock.withLock {
+            cache[path] = isSettled ? entry : nil
+            readPaths.insert(path)
+        }
         return (entry, isSettled)
     }
 

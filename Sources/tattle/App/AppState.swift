@@ -33,6 +33,20 @@ final class AppState {
     var panelSample: ResourceSample { panelIsShowing ? sampler.sample : heldSample }
     var panelNetworkSnapshot: NetworkSnapshot? { panelIsShowing ? network.snapshot : heldNetworkSnapshot }
 
+    /// Reads Processes, Startup and Ports once, at launch. A list's first reading reads the
+    /// signature of every program it names, which takes seconds to tens of seconds; each
+    /// later one finds them kept. Made here, in the background, the panel opens on a list
+    /// and not on a wait. Processes does not wait for its signatures either: they go on being
+    /// read after this returns (`ProcessesObserver`). What it leaves is as old as the launch,
+    /// and is replaced by the reading each list makes when it comes on screen.
+    func readListsAtLaunch() async {
+        let start = ContinuousClock.now
+        await processes.refresh(priority: .utility)
+        await startup.refresh(priority: .utility)
+        await ports.refresh(priority: .utility)
+        Log.app.info("lists first read in \(String(describing: ContinuousClock.now - start), privacy: .public)")
+    }
+
     init(database: AppDatabase, socketTable: @escaping @Sendable () throws -> [SocketEntry] = { try SocketTable.read() }) throws {
         rules = try RuleStore(database: database)
         connections = ConnectionStore(database: database)
